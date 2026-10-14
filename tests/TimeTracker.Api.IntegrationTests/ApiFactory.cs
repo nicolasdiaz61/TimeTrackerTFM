@@ -47,6 +47,9 @@ public class ApiFactory : WebApplicationFactory<Program>
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
+        // Sin vigilancia de appsettings*.json: en Linux cada host vigilante gasta una instancia de inotify y el límite
+        // por usuario se agota con muchas fábricas vivas (el arranque falla con IOException en vez de validar opciones).
+        builder.UseSetting("hostBuilder:reloadConfigOnChange", "false");
         builder.UseSetting("Cors:AllowedOrigins:0", ValidOrigin);
         builder.UseSetting("ConnectionStrings:Default", ValidConnectionString);
         builder.UseSetting("Jwt:SigningKey", ValidSigningKey);
