@@ -59,6 +59,7 @@ La configuración llega por variables de entorno (nunca en el repositorio). `.en
 | `ASPNETCORE_ENVIRONMENT` | No | `Development` o `Production`; con `dotnet run --launch-profile http` ya viene fijado a `Development` y Compose lo fija igual. |
 | `Seed__DemoUsers` | No (por defecto `false`) | Con `true`, la API siembra al arrancar los cuatro usuarios de prueba. **No lo active en un despliegue real.** |
 | `Seed__DemoPassword` | Solo con `Seed__DemoUsers=true` | Contraseña de los usuarios de prueba (mínimo 12 caracteres). Use la de «Usuarios de prueba»; solo en local. |
+| `Seed__DemoData` | No (por defecto `false`; exige `Seed__DemoUsers=true`) | Con `true`, la API siembra al arrancar un mes de fichajes inventados para los usuarios de prueba (véase «Datos de demostración»). Con `Seed__DemoUsers` en `false` o sin definir, la API no arranca. |
 | `Database__ApplyMigrationsOnStartup` | No (por defecto `false`) | Con `true`, la API aplica las migraciones al arrancar. |
 | `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD` | Solo con Compose | Base de datos, usuario y contraseña (inventada) del contenedor de PostgreSQL. |
 | `ASPNETCORE_HTTP_PORTS` | No | Puerto de escucha; la imagen Docker lo fija en `8080`. |
@@ -183,6 +184,7 @@ Variables del servicio `api` (`railway variables set -s api --skip-deploys "CLAV
 | `Database__ApplyMigrationsOnStartup` | `true`: la API aplica las migraciones al arrancar. |
 | `ForwardedHeaders__Enabled` | `true`: la API está tras el proxy de Railway (véase «Riesgos y decisiones»). |
 | `Seed__DemoUsers` y `Seed__DemoPassword` | `true` y la contraseña de «Usuarios de prueba» (solo para la demostración; véase «Apagar la siembra demo»). |
+| `Seed__DemoData` | `true` para sembrar el historial de un mes (véase «Datos de demostración»); opcional. |
 
 Variable del servicio `web`: `API_BASE_URL=https://<dominio de la API>` (sin barra final). Al arrancar, el contenedor genera `appsettings.json` con ella y abre la CSP (`connect-src`) solo a ese origen; si falta o no es una URL `http`/`https`, el contenedor no arranca. La URL de la API no se versiona.
 
@@ -220,6 +222,8 @@ railway variables delete Seed__DemoPassword -s api
 
 Desactivar la siembra **no borra** los usuarios ya creados: cámbieles la contraseña o elimínelos en la base de datos, o cree otro proyecto/base limpia. Los datos de la demostración son inventados.
 
+Para dejar de sembrar solo los fichajes (y conservar los usuarios): `railway variables set Seed__DemoData=false -s api`. Tampoco borra los intervalos ya creados.
+
 ### Riesgos y decisiones
 
 - **`ForwardedHeaders` (diferido en el ADR 0011, resuelto aquí).** Tras el proxy de Railway, la IP de la conexión es la del proxy y el limitador de login (por IP) vería a todos los clientes como uno. El borde de Railway entrega `X-Forwarded-For: <cliente>, <borde>` (descarta el que envíe el cliente; las direcciones del borde son públicas y cambian) y `X-Forwarded-Proto: https`. Con `ForwardedHeaders__Enabled=true` la API confía en dos saltos (`ForwardedHeaders__Hops`, 2 por defecto): el cliente es la penúltima entrada y cualquier dirección antepuesta a su izquierda no cuenta. Está desactivado por defecto: sin proxy de confianza, esas cabeceras las controla el cliente. Riesgo residual: solo es seguro si la API únicamente es alcanzable a través del borde de Railway (así es en este despliegue: no hay acceso público directo al contenedor); un ataque distribuido no queda cubierto por el límite por IP.
@@ -240,6 +244,19 @@ Cuatro usuarios inventados (dominio `example.test`) que crea la siembra de demos
 | `pablo.empleado@example.test` | Pablo Ejemplo | `Employee` (sin responsable) | `Demo-Fichajes-2026` |
 
 **No active la siembra (`Seed__DemoUsers=true`) en un despliegue real:** la contraseña es pública y cualquiera podría iniciar sesión. Por eso está desactivada por defecto y `.env.example` no la contiene.
+
+## Datos de demostración
+
+Con `Seed__DemoUsers=true` y `Seed__DemoData=true`, la API crea al arrancar (tras las migraciones y la siembra de usuarios) unos 30 días de fichajes inventados, distintos para cada usuario de prueba, con trabajo, pausas y pausas de comida. Solo cuenta los días hasta **ayer**: hoy queda libre para que fiche en vivo. Es determinista (sin azar no controlado) e idempotente por día y empleado: si un empleado ya tiene algún intervalo un día, ese día se omite, de modo que reiniciar la API no duplica nada y cada arranque añade solo los días nuevos. Fines de semana libres y uno o dos días sin fichajes por persona. Los horarios son de la hora local de España, convertidos a UTC con la regla de cambio de hora de la UE. En el registro solo aparecen contadores.
+
+| Usuario | Perfil |
+|---|---|
+| `marta.responsable` | Jornada regular 09:00-17:30 con reuniones (pausas de duración y presencia variables) y comida de unos 45 min. |
+| `luis.empleado` | Madrugador 08:00-17:00, comida de 60 min y una pausa de unos 15 min casi todos los días. |
+| `ana.empleada` | 09:30-18:30, comida larga (~75 min) y alguna pausa de tarde; los miércoles teletrabaja (09:00-17:00) y registra la comida como pausa normal, sin comida. |
+| `pablo.empleado` | Media jornada 08:00-14:00 con una sola pausa corta y sin comida. |
+
+Para apagarla basta con `Seed__DemoData=false` (o quitar la variable): no se borran los intervalos ya creados, que son datos normales. El listado de fichajes devuelve hasta 300 intervalos ([ADR 0015](docs/adr/0015-datos-de-demostracion-de-un-mes.md)). `.env.example` no incluye esta clave a propósito; se documenta solo aquí. Con Compose, añada `Seed__DemoData=true` a su `.env` local (Compose lo pasa a la API junto con el resto del archivo). Si ejecuta varias instancias de la API a la vez, no active la siembra en todas: podrían duplicar días.
 
 ## Estructura
 
@@ -275,6 +292,7 @@ openspec/                     Especificaciones y cambios (Spec Driven Developmen
 12. [Sesión en la Web: token en sessionStorage y riesgo XSS](docs/adr/0012-sesion-web-y-riesgo-xss.md)
 13. [Despliegue de la demostración en Railway](docs/adr/0013-despliegue-en-railway.md)
 14. [Tipos de marcaje: pausas y pausas de comida](docs/adr/0014-tipos-de-marcaje-pausas-y-comida.md)
+15. [Datos de demostración de un mes](docs/adr/0015-datos-de-demostracion-de-un-mes.md)
 
 ## Integración continua
 

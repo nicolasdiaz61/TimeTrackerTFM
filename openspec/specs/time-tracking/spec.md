@@ -154,7 +154,7 @@ Fuera de alcance: tabla `Employee`, atribución por día, saldos, horas extra, t
 
 ### Requirement: Caso de uso GetTimeEntries y total
 
-`GetTimeEntries` DEBE devolver, para el empleado de `ICurrentUser`, sus últimos 50 intervalos ordenados por `ClockInAt` descendente, con `type` y `durationMinutes` por intervalo (nulo si está abierto) y estos totales, siempre de los 50 devueltos y solo de los **cerrados**: `totalWorkedMinutes` (tipo `Work`), `totalBreakMinutes` (tipo `Break`) y `totalMealBreakMinutes` (tipo `MealBreak`). Un intervalo abierto NO DEBE sumar. `status` DEBE reflejar el intervalo abierto: `Idle` si no hay ninguno, `Working` si es `Work`, `OnBreak` si es `Break` y `OnMealBreak` si es `MealBreak`. Sin intervalos, la lista es vacía, los totales son `0` y `status` es `Idle`.
+`GetTimeEntries` DEBE devolver, para el empleado de `ICurrentUser`, sus últimos 300 intervalos (constante `GetTimeEntriesUseCase.MaxEntries`, no controlable por el cliente) ordenados por `ClockInAt` descendente, con `type` y `durationMinutes` por intervalo (nulo si está abierto) y estos totales, siempre de los 300 devueltos y solo de los **cerrados**: `totalWorkedMinutes` (tipo `Work`), `totalBreakMinutes` (tipo `Break`) y `totalMealBreakMinutes` (tipo `MealBreak`). Un intervalo abierto NO DEBE sumar. `status` DEBE reflejar el intervalo abierto: `Idle` si no hay ninguno, `Working` si es `Work`, `OnBreak` si es `Break` y `OnMealBreak` si es `MealBreak`. Sin intervalos, la lista es vacía, los totales son `0` y `status` es `Idle`.
 
 #### Scenario: Totales por tipo
 - DADO un empleado con trabajos cerrados de `60` y `30` minutos, una pausa de `15`, una comida de `45` y un trabajo abierto
@@ -176,15 +176,15 @@ Fuera de alcance: tabla `Employee`, atribución por día, saldos, horas extra, t
 - CUANDO se ejecuta `GetTimeEntries`
 - ENTONCES la lista está vacía, los tres totales son `0` y `status` es `Idle`
 
-#### Scenario: Más de 50 intervalos
-- DADO un empleado con 55 intervalos
+#### Scenario: Más de 300 intervalos
+- DADO un empleado con 305 intervalos
 - CUANDO se ejecuta `GetTimeEntries`
-- ENTONCES se devuelven 50, los más recientes por `ClockInAt`
+- ENTONCES se devuelven 300, los más recientes por `ClockInAt`
 
-#### Scenario: Total limitado a los 50 devueltos
-- DADO un empleado con 55 intervalos `Work` cerrados de 10 minutos cada uno
+#### Scenario: Total limitado a los 300 devueltos
+- DADO un empleado con 305 intervalos `Work` cerrados de 10 minutos cada uno
 - CUANDO se ejecuta `GetTimeEntries`
-- ENTONCES se devuelven 50 y `totalWorkedMinutes` es `500`
+- ENTONCES se devuelven 300 y `totalWorkedMinutes` es `3000`
 
 ### Requirement: Identidad del empleado desde el token
 

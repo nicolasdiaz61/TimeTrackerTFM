@@ -99,10 +99,10 @@ public class GetTeamMemberTimeEntriesUseCaseTests
     }
 
     [Fact]
-    public async Task Get_WithMoreThanFiftyEntries_ReturnsFiftyMostRecentAndTotal500()
+    public async Task Get_WithMoreThanTheLimit_ReturnsTheMostRecentAndTotal500()
     {
         _users.Seed(NewUser(LuisId, "Luis Empleado", UserRole.Employee, MartaId));
-        for (var day = 0; day < 55; day++)
+        for (var day = 0; day < GetTimeEntriesUseCase.MaxEntries + 5; day++)
         {
             SeedClosed(LuisId, EightAm.AddDays(day), 10);
         }
@@ -110,9 +110,9 @@ public class GetTeamMemberTimeEntriesUseCaseTests
         var result = await CreateUseCase().ExecuteAsync(LuisId, CancellationToken.None);
 
         Assert.NotNull(result);
-        Assert.Equal(50, result.Items.Count);
-        Assert.Equal(500, result.TotalWorkedMinutes);
-        Assert.Equal(EightAm.AddDays(54), result.Items[0].ClockInAt);
+        Assert.Equal(GetTimeEntriesUseCase.MaxEntries, result.Items.Count);
+        Assert.Equal(GetTimeEntriesUseCase.MaxEntries * 10, result.TotalWorkedMinutes);
+        Assert.Equal(EightAm.AddDays(GetTimeEntriesUseCase.MaxEntries + 4), result.Items[0].ClockInAt);
     }
 
     [Fact]

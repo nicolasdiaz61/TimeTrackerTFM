@@ -5,7 +5,7 @@ namespace TimeTracker.Application.TimeTracking;
 public sealed class GetTimeEntriesUseCase(ITimeEntryRepository repository, ICurrentUser currentUser)
 {
     // Límite fijo y no controlable por el cliente (evita listados sin cota).
-    public const int MaxEntries = 50;
+    public const int MaxEntries = 300;
 
     public async Task<TimeEntryListResult> ExecuteAsync(CancellationToken cancellationToken)
     {

@@ -2,6 +2,7 @@ using System.Net;
 using System.Text.Json;
 
 using TimeTracker.Api.IntegrationTests.Postgres;
+using TimeTracker.Api.IntegrationTests.Support;
 
 namespace TimeTracker.Api.IntegrationTests.TimeEntries;
 
@@ -135,24 +136,18 @@ public class TimeEntryEndpointsTests(PostgresFixture postgres)
     }
 
     [Fact]
-    public async Task Get_With51Entries_Returns50()
+    public async Task Get_With301Entries_Returns300()
     {
         using var factory = new PostgresApiFactory(postgres.ConnectionString);
         var client = factory.CreateClient();
-        for (var cycle = 0; cycle < 51; cycle++)
-        {
-            await client.PostAsync(ClockIn, content: null, CancellationToken.None);
-            factory.Clock.Advance(TimeSpan.FromMinutes(1));
-            await client.PostAsync(ClockOut, content: null, CancellationToken.None);
-            factory.Clock.Advance(TimeSpan.FromMinutes(1));
-        }
+        await TeamScenario.AddClosedDailyEntriesAsync(postgres, factory.EmployeeId, new DateTimeOffset(2026, 8, 1, 8, 0, 0, TimeSpan.Zero), count: 301, minutes: 1);
 
         var response = await client.GetAsync(TimeEntries, CancellationToken.None);
 
         using var body = JsonDocument.Parse(await response.Content.ReadAsStringAsync(CancellationToken.None));
-        Assert.Equal(50, body.RootElement.GetProperty("items").GetArrayLength());
-        // Cada fichaje dura un minuto: el total solo cuenta los 50 devueltos.
-        Assert.Equal(50, body.RootElement.GetProperty("totalWorkedMinutes").GetInt32());
+        Assert.Equal(300, body.RootElement.GetProperty("items").GetArrayLength());
+        // Cada fichaje dura un minuto: el total solo cuenta los 300 devueltos.
+        Assert.Equal(300, body.RootElement.GetProperty("totalWorkedMinutes").GetInt32());
     }
 
     [Fact]
