@@ -61,7 +61,7 @@ public class JwtStartupTests
         using var factory = new ApiFactory().WithWebHostBuilder(
             builder => builder.UseEnvironment("Production").UseSetting(SigningKeyKey, null));
 
-        var exception = Record.Exception(() => factory.CreateClient());
+        var exception = factory.StartExpectingFailure();
 
         DatabaseStartupTests.AssertStartupFailsNamingKey(exception, SigningKeyKey);
     }

@@ -90,6 +90,6 @@ public class SeedStartupTests(PostgresFixture postgres)
             builder.UseSetting(DemoUsersKey, demoUsers);
             builder.UseSetting(DemoPasswordKey, password);
         });
-        return Record.Exception(() => factory.CreateClient());
+        return factory.StartExpectingFailure();
     }
 }

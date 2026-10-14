@@ -59,9 +59,14 @@ public class DatabaseStartupTests
     internal static Exception? StartWith(string key, string? value)
     {
         using var factory = new ApiFactory().WithWebHostBuilder(builder => builder.UseSetting(key, value));
-        return Record.Exception(() => factory.CreateClient());
+        return factory.StartExpectingFailure();
     }
 
     internal static void AssertStartupFailsNamingKey(Exception? exception, string key)
-        => Assert.Contains(StartupFailure.Validations(exception), validation => validation.Message.Contains(key, StringComparison.Ordinal));
+    {
+        var validations = StartupFailure.Validations(exception);
+        Assert.True(
+            validations.Any(validation => validation.Message.Contains(key, StringComparison.Ordinal)),
+            $"Se esperaba una OptionsValidationException que nombrara «{key}» y hubo {validations.Count}. Excepciones recibidas:{Environment.NewLine}{StartupFailure.Describe(exception)}");
+    }
 }

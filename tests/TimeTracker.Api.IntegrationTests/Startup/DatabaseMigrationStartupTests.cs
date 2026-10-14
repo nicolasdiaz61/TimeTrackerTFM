@@ -44,7 +44,7 @@ public class DatabaseMigrationStartupTests(PostgresFixture postgres)
         // Puerto 1 cerrado y tiempo de espera corto: el arranque falla en lugar de quedarse sin esquema.
         using var factory = CreateFactory("Host=127.0.0.1;Port=1;Database=timetracker;Username=timetracker;Timeout=2", flag: "true");
 
-        var exception = Record.Exception(() => factory.CreateClient());
+        var exception = factory.StartExpectingFailure();
 
         Assert.NotNull(exception);
         Assert.Contains(StartupFailure.Flatten(exception), inner => inner is NpgsqlException);
@@ -56,7 +56,7 @@ public class DatabaseMigrationStartupTests(PostgresFixture postgres)
         // V10: la validación de opciones corre antes que la migración (si no, veríamos un fallo de conexión).
         using var factory = CreateFactory("   ", flag: "true");
 
-        var exception = Record.Exception(() => factory.CreateClient());
+        var exception = factory.StartExpectingFailure();
 
         DatabaseStartupTests.AssertStartupFailsNamingKey(exception, ConnectionStringKey);
         Assert.DoesNotContain(StartupFailure.Flatten(exception), inner => inner is NpgsqlException);

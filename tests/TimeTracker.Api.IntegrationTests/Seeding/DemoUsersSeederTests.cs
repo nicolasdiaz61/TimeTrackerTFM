@@ -154,7 +154,7 @@ public class DemoUsersSeederTests(PostgresFixture postgres)
             builder.UseSetting("Seed:DemoPassword", DemoPassword);
         });
 
-        var exception = Record.Exception(() => factory.CreateClient());
+        var exception = factory.StartExpectingFailure();
 
         Assert.NotNull(exception);
         Assert.Contains(StartupFailure.Flatten(exception), inner => inner is Npgsql.NpgsqlException);
