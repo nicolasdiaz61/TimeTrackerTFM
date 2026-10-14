@@ -25,6 +25,7 @@ builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddAuthorizationCore();
 builder.Services.AddCascadingAuthenticationState();
 builder.Services.AddScoped<TokenStore>();
+builder.Services.AddScoped<SessionNotice>();
 builder.Services.AddScoped<JwtAuthenticationStateProvider>();
 builder.Services.AddScoped<AuthenticationStateProvider>(sp => sp.GetRequiredService<JwtAuthenticationStateProvider>());
 
@@ -42,6 +43,7 @@ static HttpClient CreateAuthorizedClient(IServiceProvider services, Uri apiBaseU
         apiBaseUri,
         services.GetRequiredService<TokenStore>(),
         services.GetRequiredService<JwtAuthenticationStateProvider>(),
+        services.GetRequiredService<SessionNotice>(),
         services.GetRequiredService<NavigationManager>())
     {
         InnerHandler = new HttpClientHandler(),

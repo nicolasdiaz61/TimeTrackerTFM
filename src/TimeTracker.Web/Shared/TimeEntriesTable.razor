@@ -1,4 +1,5 @@
 @using System.Globalization
+@using TimeTracker.Web.Formatting
 @using TimeTracker.Web.TimeEntries
 
 @if (List.Items.Count == 0)
@@ -28,7 +29,7 @@ else
     </table>
 }
 
-<p>Total trabajado: <strong>@List.TotalWorkedMinutes minutos (@FormatHoursMinutes(List.TotalWorkedMinutes))</strong></p>
+<p>Total trabajado: <strong>@WorkedTimeFormatter.FormatTotal(List.TotalWorkedMinutes)</strong></p>
 
 @code {
     [Parameter, EditorRequired]
@@ -36,7 +37,4 @@ else
 
     private static string FormatUtc(DateTimeOffset value)
         => value.UtcDateTime.ToString("yyyy-MM-dd HH:mm 'UTC'", CultureInfo.InvariantCulture);
-
-    private static string FormatHoursMinutes(int totalMinutes)
-        => string.Create(CultureInfo.InvariantCulture, $"{totalMinutes / 60}:{totalMinutes % 60:00}");
 }
