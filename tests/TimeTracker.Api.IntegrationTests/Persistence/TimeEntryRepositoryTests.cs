@@ -1,5 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 
+using Npgsql;
+
 using TimeTracker.Api.IntegrationTests.Postgres;
 using TimeTracker.Application.TimeTracking;
 using TimeTracker.Domain.TimeTracking;
@@ -132,6 +134,111 @@ public class TimeEntryRepositoryTests(PostgresFixture postgres)
         var stored = await new TimeEntryRepository(context).ListLatestAsync(employeeId, 50, CancellationToken.None);
         Assert.Single(stored);
         Assert.Null((await FindOpenAsync(employeeId))!.ClockOutAt);
+    }
+
+    [Theory]
+    [InlineData(TimeEntryType.Work, "Work")]
+    [InlineData(TimeEntryType.Break, "Break")]
+    [InlineData(TimeEntryType.MealBreak, "MealBreak")]
+    public async Task AddAsync_StoresTypeAsReadableText_AndReadsItBack(TimeEntryType type, string stored)
+    {
+        var entry = TimeEntry.Start(Guid.NewGuid(), type, EightAm);
+        await AddAsync(entry);
+
+        var read = await FindOpenAsync(entry.EmployeeId);
+        await using var connection = new NpgsqlConnection(postgres.ConnectionString);
+        await connection.OpenAsync(CancellationToken.None);
+        await using var command = new NpgsqlCommand($"SELECT type FROM time_entries WHERE id = '{entry.Id}'", connection);
+
+        Assert.Equal(type, read!.Type);
+        Assert.Equal(stored, (string?)await command.ExecuteScalarAsync(CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task ReplaceOpenAsync_ClosesWorkAndOpensBreakTogether()
+    {
+        var employeeId = Guid.NewGuid();
+        await AddAsync(TimeEntry.Start(employeeId, TimeEntryType.Work, EightAm));
+
+        await using (var context = postgres.CreateContext(postgres.ConnectionString))
+        {
+            var repository = new TimeEntryRepository(context);
+            var work = (await repository.FindOpenAsync(employeeId, CancellationToken.None))!;
+            var pause = work.Pause(TimeEntryType.Break, EightAm.AddHours(2));
+            await repository.ReplaceOpenAsync(work, pause, CancellationToken.None);
+        }
+
+        await using var reader = postgres.CreateContext(postgres.ConnectionString);
+        var stored = await new TimeEntryRepository(reader).ListLatestAsync(employeeId, 10, CancellationToken.None);
+        Assert.Equal([TimeEntryType.Break, TimeEntryType.Work], stored.Select(entry => entry.Type));
+        Assert.Equal(EightAm.AddHours(2), stored[1].ClockOutAt);
+        Assert.True(stored[0].IsOpen);
+    }
+
+    [Fact]
+    public async Task ReplaceOpenAsync_WhenTheInsertFailsAfterTheClose_RollsBackTheClose()
+    {
+        var employeeId = Guid.NewGuid();
+        var rivalId = Guid.NewGuid();
+        await AddAsync(TimeEntry.Start(employeeId, TimeEntryType.Work, EightAm));
+        await AddAsync(TimeEntry.Start(rivalId, TimeEntryType.Work, EightAm));
+
+        await using (var context = postgres.CreateContext(postgres.ConnectionString))
+        {
+            var repository = new TimeEntryRepository(context);
+            var work = (await repository.FindOpenAsync(employeeId, CancellationToken.None))!;
+            work.Close(EightAm.AddHours(1));
+            // El nuevo intervalo pertenece a otro empleado que ya tiene uno abierto: el índice único rechaza la inserción
+            // después de que el cierre se haya aplicado dentro de la transacción.
+            var conflicting = TimeEntry.Start(rivalId, TimeEntryType.Break, EightAm.AddHours(1));
+
+            await Assert.ThrowsAsync<ConcurrentTimeEntryChangeException>(
+                () => repository.ReplaceOpenAsync(work, conflicting, CancellationToken.None));
+        }
+
+        var stillOpen = await FindOpenAsync(employeeId);
+        Assert.NotNull(stillOpen);
+        Assert.Equal(TimeEntryType.Work, stillOpen.Type);
+    }
+
+    [Fact]
+    public async Task ReplaceOpenAsync_WhenAnotherContextClosedTheEntry_ThrowsConcurrentChangeAndInsertsNothing()
+    {
+        var employeeId = Guid.NewGuid();
+        await AddAsync(TimeEntry.Start(employeeId, TimeEntryType.Work, EightAm));
+        await using var first = postgres.CreateContext(postgres.ConnectionString);
+        await using var second = postgres.CreateContext(postgres.ConnectionString);
+        var firstRepository = new TimeEntryRepository(first);
+        var secondRepository = new TimeEntryRepository(second);
+        var firstCopy = (await firstRepository.FindOpenAsync(employeeId, CancellationToken.None))!;
+        var secondCopy = (await secondRepository.FindOpenAsync(employeeId, CancellationToken.None))!;
+        firstCopy.Close(EightAm.AddHours(1));
+        await firstRepository.UpdateAsync(firstCopy, CancellationToken.None);
+
+        var pause = secondCopy.Pause(TimeEntryType.Break, EightAm.AddHours(2));
+        await Assert.ThrowsAsync<ConcurrentTimeEntryChangeException>(
+            () => secondRepository.ReplaceOpenAsync(secondCopy, pause, CancellationToken.None));
+
+        Assert.Null(await FindOpenAsync(employeeId));
+    }
+
+    [Fact]
+    public async Task UpdateAsync_WhenAnotherContextChangedTheEntry_ThrowsConcurrentChange()
+    {
+        var employeeId = Guid.NewGuid();
+        await AddAsync(TimeEntry.Start(employeeId, TimeEntryType.Work, EightAm));
+        await using var first = postgres.CreateContext(postgres.ConnectionString);
+        await using var second = postgres.CreateContext(postgres.ConnectionString);
+        var firstRepository = new TimeEntryRepository(first);
+        var secondRepository = new TimeEntryRepository(second);
+        var firstCopy = (await firstRepository.FindOpenAsync(employeeId, CancellationToken.None))!;
+        var secondCopy = (await secondRepository.FindOpenAsync(employeeId, CancellationToken.None))!;
+        firstCopy.Close(EightAm.AddHours(1));
+        await firstRepository.UpdateAsync(firstCopy, CancellationToken.None);
+        secondCopy.Close(EightAm.AddHours(2));
+
+        await Assert.ThrowsAsync<ConcurrentTimeEntryChangeException>(
+            () => secondRepository.UpdateAsync(secondCopy, CancellationToken.None));
     }
 
     private static TimeEntry ClosedEntry(Guid employeeId, DateTimeOffset clockInAt)

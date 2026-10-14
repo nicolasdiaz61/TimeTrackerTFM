@@ -40,6 +40,18 @@ namespace TimeTracker.Infrastructure.Persistence.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("employee_id");
 
+                    b.Property<string>("Type")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)")
+                        .HasColumnName("type");
+
+                    b.Property<uint>("xmin")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
+
                     b.HasKey("Id");
 
                     b.HasIndex("EmployeeId")
@@ -54,6 +66,8 @@ namespace TimeTracker.Infrastructure.Persistence.Migrations
                     b.ToTable("time_entries", null, t =>
                         {
                             t.HasCheckConstraint("ck_time_entries_clock_out_after_clock_in", "clock_out_at IS NULL OR clock_out_at >= clock_in_at");
+
+                            t.HasCheckConstraint("ck_time_entries_type", "type IN ('Work', 'Break', 'MealBreak')");
                         });
                 });
 
