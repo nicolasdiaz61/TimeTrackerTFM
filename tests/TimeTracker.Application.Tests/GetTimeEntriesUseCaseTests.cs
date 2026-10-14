@@ -37,17 +37,20 @@ public class GetTimeEntriesUseCaseTests
     }
 
     [Fact]
-    public async Task Get_WithMoreThanFiftyEntries_ReturnsFiftyMostRecent()
+    public void MaxEntries_CoversAMonthOfBreaks() => Assert.Equal(300, GetTimeEntriesUseCase.MaxEntries);
+
+    [Fact]
+    public async Task Get_WithMoreThanTheLimit_ReturnsTheMostRecent()
     {
-        for (var day = 0; day < 55; day++)
+        for (var day = 0; day < GetTimeEntriesUseCase.MaxEntries + 5; day++)
         {
             SeedClosed(EightAm.AddDays(day), 10);
         }
 
         var result = await CreateUseCase().ExecuteAsync(CancellationToken.None);
 
-        Assert.Equal(50, result.Items.Count);
-        Assert.Equal(EightAm.AddDays(54), result.Items[0].ClockInAt);
+        Assert.Equal(GetTimeEntriesUseCase.MaxEntries, result.Items.Count);
+        Assert.Equal(EightAm.AddDays(GetTimeEntriesUseCase.MaxEntries + 4), result.Items[0].ClockInAt);
         Assert.Equal(EightAm.AddDays(5), result.Items[^1].ClockInAt);
     }
 
@@ -75,16 +78,16 @@ public class GetTimeEntriesUseCaseTests
     }
 
     [Fact]
-    public async Task Get_TotalIsLimitedToTheFiftyReturned()
+    public async Task Get_TotalIsLimitedToTheReturned()
     {
-        for (var day = 0; day < 55; day++)
+        for (var day = 0; day < GetTimeEntriesUseCase.MaxEntries + 5; day++)
         {
             SeedClosed(EightAm.AddDays(day), 10);
         }
 
         var result = await CreateUseCase().ExecuteAsync(CancellationToken.None);
 
-        Assert.Equal(50, result.Items.Count);
-        Assert.Equal(500, result.TotalWorkedMinutes);
+        Assert.Equal(GetTimeEntriesUseCase.MaxEntries, result.Items.Count);
+        Assert.Equal(GetTimeEntriesUseCase.MaxEntries * 10, result.TotalWorkedMinutes);
     }
 }
