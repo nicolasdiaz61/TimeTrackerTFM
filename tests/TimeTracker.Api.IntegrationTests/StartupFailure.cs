@@ -1,0 +1,52 @@
+using Microsoft.Extensions.Options;
+
+namespace TimeTracker.Api.IntegrationTests;
+
+/// <summary>Recorre la excepción de arranque, incluidos <c>InnerException</c> y <c>AggregateException</c> (V9).</summary>
+internal static class StartupFailure
+{
+    public static IEnumerable<Exception> Flatten(Exception? exception)
+    {
+        if (exception is null)
+        {
+            yield break;
+        }
+
+        yield return exception;
+
+        IEnumerable<Exception> children = exception is AggregateException aggregate
+            ? aggregate.InnerExceptions
+            : exception.InnerException is null ? [] : [exception.InnerException];
+        foreach (var child in children.SelectMany(Flatten))
+        {
+            yield return child;
+        }
+    }
+
+    /// <summary>Todas las excepciones de validación de opciones encontradas en el árbol.</summary>
+    public static IReadOnlyList<OptionsValidationException> Validations(Exception? exception)
+        => [.. Flatten(exception).OfType<OptionsValidationException>()];
+
+    /// <summary>Texto de todos los mensajes del árbol, para comprobar que un valor no se imprime.</summary>
+    public static string AllMessages(Exception? exception)
+        => string.Join(Environment.NewLine, Flatten(exception).Select(inner => inner.Message));
+
+    /// <summary>
+    /// Tipo y mensaje de cada excepción del árbol, para que un fallo de arranque inesperado (o la ausencia de fallo)
+    /// sea diagnosticable en el informe de pruebas. Los mensajes de opciones nunca incluyen valores secretos.
+    /// </summary>
+    public static string Describe(Exception? exception)
+        => exception is null
+            ? "(el arranque no lanzó ninguna excepción)"
+            : string.Join(Environment.NewLine, Flatten(exception).Select(inner => $"{inner.GetType().FullName}: {inner.Message}"));
+
+    /// <summary>La única excepción de validación de opciones; si no hay exactamente una, falla mostrando lo que se recibió.</summary>
+    public static OptionsValidationException SingleValidation(Exception? exception)
+    {
+        var validations = Validations(exception);
+        Assert.True(
+            validations.Count == 1,
+            $"Se esperaba exactamente una OptionsValidationException y hubo {validations.Count}. Excepciones recibidas:{Environment.NewLine}{Describe(exception)}");
+        return validations[0];
+    }
+}

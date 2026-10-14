@@ -1,0 +1,82 @@
+@page "/fichajes"
+@attribute [Authorize]
+@using System.Net
+@using TimeTracker.Web.Http
+@using TimeTracker.Web.TimeEntries
+@inject TimeEntriesApiClient Api
+
+<PageTitle>Fichajes</PageTitle>
+
+<h1>Fichajes</h1>
+
+<div class="mb-3">
+    <button type="button" class="btn btn-primary me-2" @onclick="ClockInAsync" disabled="@busy">Fichar entrada</button>
+    <button type="button" class="btn btn-secondary" @onclick="ClockOutAsync" disabled="@busy">Fichar salida</button>
+</div>
+
+@if (errorMessage is not null)
+{
+    <div class="alert alert-danger" role="alert">@errorMessage</div>
+}
+
+@if (busy && list is null)
+{
+    <p><em>Cargando fichajes...</em></p>
+}
+
+@if (list is not null)
+{
+    <TimeEntriesTable List="list" />
+}
+
+@code {
+    private TimeEntryListDto? list;
+    private string? errorMessage;
+    private bool busy = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await RefreshAsync();
+        busy = false;
+    }
+
+    private async Task RefreshAsync()
+    {
+        try
+        {
+            list = await Api.GetAsync();
+            errorMessage = null;
+        }
+        catch (ApiRequestException exception)
+        {
+            ShowError(exception);
+        }
+    }
+
+    private Task ClockInAsync() => RunAsync(() => Api.ClockInAsync());
+
+    private Task ClockOutAsync() => RunAsync(() => Api.ClockOutAsync());
+
+    // La Web no decide si la acción es válida: lo hace el servidor y aquí solo se muestra su respuesta.
+    private async Task RunAsync(Func<Task> action)
+    {
+        busy = true;
+        try
+        {
+            await action();
+            await RefreshAsync();
+        }
+        catch (ApiRequestException exception)
+        {
+            ShowError(exception);
+        }
+        finally
+        {
+            busy = false;
+        }
+    }
+
+    // Un 401 lo gestiona el BearerTokenHandler (cierra la sesión y lleva a /login): no se muestra como error de la pantalla.
+    private void ShowError(ApiRequestException exception)
+        => errorMessage = exception.StatusCode == HttpStatusCode.Unauthorized ? null : exception.Message;
+}

@@ -16,9 +16,9 @@ public class StartupConfigurationTests
         using var factory = new ApiFactory()
             .WithWebHostBuilder(builder => builder.UseSetting($"{AllowedOriginsKey}:0", null));
 
-        var exception = Record.Exception(() => factory.CreateClient());
+        var exception = factory.StartExpectingFailure();
 
-        var validation = Assert.Single(StartupFailure.Validations(exception));
+        var validation = StartupFailure.SingleValidation(exception);
         Assert.Contains(AllowedOriginsKey, validation.Message);
     }
 
@@ -45,9 +45,9 @@ public class StartupConfigurationTests
         using var factory = new ApiFactory()
             .WithWebHostBuilder(builder => builder.UseSetting($"{AllowedOriginsKey}:0", origin));
 
-        var exception = Record.Exception(() => factory.CreateClient());
+        var exception = factory.StartExpectingFailure();
 
-        var validation = Assert.Single(StartupFailure.Validations(exception));
+        var validation = StartupFailure.SingleValidation(exception);
         Assert.Contains(AllowedOriginsKey, validation.Message);
         if (!string.IsNullOrWhiteSpace(origin))
         {
