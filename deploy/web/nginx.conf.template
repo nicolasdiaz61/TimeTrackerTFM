@@ -1,0 +1,50 @@
+# Plantilla de nginx para la Web estática. La imagen oficial sustituye ${PORT} al arrancar (envsubst).
+# Las cabeceras de seguridad las genera 40-web-config.sh (la CSP depende de API_BASE_URL).
+# Cada location que añade cabeceras vuelve a incluirlas: add_header no se hereda si el bloque define alguna.
+server {
+    listen ${PORT};
+    server_name _;
+    root /usr/share/nginx/html;
+    index index.html;
+
+    server_tokens off;
+    absolute_redirect off;
+
+    # Compresión: los precomprimidos .gz de la publicación (gzip_static) y compresión al vuelo para el resto.
+    gzip on;
+    gzip_static on;
+    gzip_vary on;
+    gzip_min_length 1024;
+    gzip_types text/css application/javascript text/javascript application/json image/svg+xml application/wasm;
+
+    # Comprobación de salud de la plataforma (no toca la API).
+    location = /health {
+        access_log off;
+        default_type text/plain;
+        include /etc/nginx/conf.d/security-headers.inc;
+        return 200 "ok\n";
+    }
+
+    # Nunca en caché sin revalidar: apuntan a los ficheros con huella y llevan la URL de la API.
+    location = /index.html {
+        include /etc/nginx/conf.d/security-headers.inc;
+        add_header Cache-Control "no-cache" always;
+    }
+
+    location = /appsettings.json {
+        include /etc/nginx/conf.d/security-headers.inc;
+        add_header Cache-Control "no-cache" always;
+    }
+
+    # Los ficheros del framework que no existen son un 404 real, no la página de inicio.
+    location /_framework/ {
+        include /etc/nginx/conf.d/security-headers.inc;
+        try_files $uri =404;
+    }
+
+    # Rutas de la SPA (/login, /fichajes, ...): vuelven a index.html y las resuelve el enrutador de Blazor.
+    location / {
+        include /etc/nginx/conf.d/security-headers.inc;
+        try_files $uri /index.html;
+    }
+}

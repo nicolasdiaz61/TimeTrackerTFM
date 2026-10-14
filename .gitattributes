@@ -4,3 +4,8 @@
 *.png binary
 *.ico binary
 *.woff2 binary
+
+# Scripts y plantillas que se ejecutan en contenedores Linux: siempre LF.
+*.sh text eol=lf
+*.template text eol=lf
+Dockerfile text eol=lf

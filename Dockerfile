@@ -12,7 +12,10 @@ COPY src/TimeTracker.Infrastructure/TimeTracker.Infrastructure.csproj src/TimeTr
 COPY src/TimeTracker.Api/TimeTracker.Api.csproj src/TimeTracker.Api/
 RUN dotnet restore src/TimeTracker.Api/TimeTracker.Api.csproj
 
-COPY src/ src/
+COPY src/TimeTracker.Domain/ src/TimeTracker.Domain/
+COPY src/TimeTracker.Application/ src/TimeTracker.Application/
+COPY src/TimeTracker.Infrastructure/ src/TimeTracker.Infrastructure/
+COPY src/TimeTracker.Api/ src/TimeTracker.Api/
 # No se regenera docs/api/openapi.json dentro de la imagen: ese contrato lo genera y versiona el build local (V6).
 RUN dotnet publish src/TimeTracker.Api/TimeTracker.Api.csproj -c Release -o /app/publish --no-restore \
     -p:UseAppHost=false -p:OpenApiGenerateDocuments=false
@@ -22,6 +25,7 @@ FROM mcr.microsoft.com/dotnet/aspnet:10.0-alpine AS final
 WORKDIR /app
 
 # La configuración (orígenes CORS, etc.) llega por variables de entorno en tiempo de ejecución.
+# Puerto: si la plataforma define PORT (Railway) manda sobre ASPNETCORE_HTTP_PORTS; sin PORT (Compose) se queda 8080.
 ENV ASPNETCORE_HTTP_PORTS=8080
 EXPOSE 8080
 
@@ -32,6 +36,7 @@ USER $APP_UID
 
 # Forma shell para expandir el puerto; admite un único puerto. wget viene en BusyBox (Alpine).
 HEALTHCHECK --interval=30s --timeout=3s --start-period=15s --retries=3 \
-    CMD wget -q -O /dev/null "http://127.0.0.1:${ASPNETCORE_HTTP_PORTS:-8080}/health" || exit 1
+    CMD wget -q -O /dev/null "http://127.0.0.1:${PORT:-${ASPNETCORE_HTTP_PORTS:-8080}}/health" || exit 1
 
-ENTRYPOINT ["dotnet", "TimeTracker.Api.dll"]
+# `exec` para que dotnet reciba las señales de parada (PID 1).
+ENTRYPOINT ["sh", "-c", "export ASPNETCORE_HTTP_PORTS=\"${PORT:-${ASPNETCORE_HTTP_PORTS:-8080}}\"; exec dotnet TimeTracker.Api.dll"]

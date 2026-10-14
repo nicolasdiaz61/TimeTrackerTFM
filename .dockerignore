@@ -9,4 +9,4 @@ openspec/
 .atl/
 .vs/
 .vscode/
-src/TimeTracker.Web/
+.railway/
