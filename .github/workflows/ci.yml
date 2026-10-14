@@ -1,0 +1,62 @@
+name: CI
+
+# Integración continua: compila, formatea, prueba, audita y construye la imagen (sin publicarla).
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      # La auditoría de paquetes busca un texto de la CLI; se fija el idioma para que no dependa del entorno.
+      DOTNET_CLI_UI_LANGUAGE: en
+      DOTNET_NOLOGO: "true"
+    steps:
+      - name: Obtener el código
+        uses: actions/checkout@v7
+
+      - name: Instalar el SDK de .NET indicado en global.json
+        uses: actions/setup-dotnet@v6
+        with:
+          global-json-file: global.json
+
+      - name: Restaurar paquetes
+        run: dotnet restore TimeTracker.sln
+
+      - name: Verificar el formato
+        run: dotnet format TimeTracker.sln --verify-no-changes --no-restore
+
+      - name: Compilar (las advertencias son errores)
+        run: dotnet build TimeTracker.sln -c Release --no-restore -warnaserror
+
+      - name: Ejecutar las pruebas con cobertura
+        run: dotnet test TimeTracker.sln -c Release --no-build --collect:"XPlat Code Coverage" --results-directory TestResults
+
+      - name: Comprobar el umbral de cobertura del dominio
+        shell: pwsh
+        run: ./scripts/check-coverage.ps1 -ResultsDirectory TestResults -Package TimeTracker.Domain -MinimumPercent 100
+
+      - name: Comprobar el umbral de cobertura de la aplicación
+        shell: pwsh
+        run: ./scripts/check-coverage.ps1 -ResultsDirectory TestResults -Package TimeTracker.Application -MinimumPercent 80
+
+      # `dotnet list package --vulnerable` termina con código 0 aunque encuentre vulnerabilidades (V13):
+      # hay que inspeccionar su salida.
+      - name: Auditar paquetes vulnerables
+        run: |
+          dotnet list TimeTracker.sln package --vulnerable --include-transitive | tee audit.txt
+          if grep -q "has the following vulnerable packages" audit.txt; then
+            echo "::error::Hay paquetes con vulnerabilidades conocidas."
+            exit 1
+          fi
+
+      - name: Publicar la API
+        run: dotnet publish src/TimeTracker.Api -c Release --no-build -o artifacts/api
+
+      - name: Construir la imagen Docker (sin publicarla)
+        run: docker build -t timetracker-api:ci .

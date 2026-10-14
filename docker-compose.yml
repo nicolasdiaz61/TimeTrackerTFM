@@ -1,0 +1,43 @@
+# Entorno local: la API y su PostgreSQL. Requiere un archivo .env (copiar .env.example y completarlo).
+# Solo para desarrollo: la siembra de usuarios usa una contraseña de demostración pública, así que ambos puertos se publican únicamente en 127.0.0.1.
+services:
+  postgres:
+    image: postgres:18-alpine
+    # Credenciales solo como referencias obligatorias a .env (nunca literales). No carga el archivo .env completo: así no hereda las claves de la API.
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:?Defina POSTGRES_DB en .env}
+      POSTGRES_USER: ${POSTGRES_USER:?Defina POSTGRES_USER en .env}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Defina POSTGRES_PASSWORD en .env}
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      # PostgreSQL 18 guarda sus datos en una subcarpeta versionada de /var/lib/postgresql.
+      - pgdata:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  api:
+    build: .
+    image: timetracker-api:local
+    env_file: .env
+    # `environment` prevalece sobre `env_file`.
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      Database__ApplyMigrationsOnStartup: "true"
+      ConnectionStrings__Default: Host=postgres;Port=5432;Database=${POSTGRES_DB};Username=${POSTGRES_USER};Password=${POSTGRES_PASSWORD}
+      # Clave de firma y contraseña de demostración: obligatorias y sin literales en este archivo.
+      Jwt__SigningKey: ${Jwt__SigningKey:?Defina Jwt__SigningKey en .env}
+      Seed__DemoUsers: "true"
+      Seed__DemoPassword: ${Seed__DemoPassword:?Defina Seed__DemoPassword en .env (al menos 12 caracteres)}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      # El puerto de host 5274 coincide con ApiBaseUrl de la Web.
+      - "127.0.0.1:5274:8080"
+
+volumes:
+  pgdata:

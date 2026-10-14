@@ -1,0 +1,12 @@
+**/bin/
+**/obj/
+.env
+TestResults/
+artifacts/
+tests/
+docs/
+openspec/
+.atl/
+.vs/
+.vscode/
+src/TimeTracker.Web/
