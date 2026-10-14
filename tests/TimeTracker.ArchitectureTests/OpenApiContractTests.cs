@@ -23,10 +23,26 @@ public class OpenApiContractTests
 
         AssertResponses(paths, $"{TimeEntriesPath}/clock-in", "post", "201", "409");
         AssertResponses(paths, $"{TimeEntriesPath}/clock-out", "post", "200", "409");
+        foreach (var action in new[] { "start-break", "start-meal-break", "end-break" })
+        {
+            AssertResponses(paths, $"{TimeEntriesPath}/{action}", "post", "200", "401", "409");
+        }
+
         AssertResponses(paths, TimeEntriesPath, "get", "200");
 
         var response = document.RootElement.GetProperty("components").GetProperty("schemas")
             .GetProperty("TimeEntryResponse").GetProperty("properties");
+        Assert.False(response.TryGetProperty("workedMinutes", out _));
+        Assert.True(response.TryGetProperty("durationMinutes", out _));
+        var schemas = document.RootElement.GetProperty("components").GetProperty("schemas");
+        Assert.Equal(["Work", "Break", "MealBreak"], schemas.GetProperty("TimeEntryType").GetProperty("enum").EnumerateArray().Select(value => value.GetString()));
+        Assert.Equal(["Idle", "Working", "OnBreak", "OnMealBreak"], schemas.GetProperty("TimeTrackingStatus").GetProperty("enum").EnumerateArray().Select(value => value.GetString()));
+        var list = schemas.GetProperty("TimeEntryListResponse").GetProperty("properties");
+        foreach (var name in new[] { "totalWorkedMinutes", "totalBreakMinutes", "totalMealBreakMinutes", "status" })
+        {
+            Assert.True(list.TryGetProperty(name, out _), $"TimeEntryListResponse no declara {name}.");
+        }
+
         foreach (var name in new[] { "clockInAt", "clockOutAt" })
         {
             Assert.Equal("date-time", response.GetProperty(name).GetProperty("format").GetString());
@@ -43,6 +59,9 @@ public class OpenApiContractTests
         AssertResponses(paths, "/api/auth/me", "get", "200", "401");
         AssertResponses(paths, $"{TimeEntriesPath}/clock-in", "post", "401");
         AssertResponses(paths, $"{TimeEntriesPath}/clock-out", "post", "401");
+        Assert.True(RequiresBearer(document.RootElement, $"{TimeEntriesPath}/start-break", "post"));
+        Assert.True(RequiresBearer(document.RootElement, $"{TimeEntriesPath}/start-meal-break", "post"));
+        Assert.True(RequiresBearer(document.RootElement, $"{TimeEntriesPath}/end-break", "post"));
         AssertResponses(paths, TimeEntriesPath, "get", "401");
     }
 

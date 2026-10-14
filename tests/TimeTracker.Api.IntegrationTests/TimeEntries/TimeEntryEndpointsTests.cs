@@ -25,7 +25,7 @@ public class TimeEntryEndpointsTests(PostgresFixture postgres)
         Assert.Equal("2026-10-12T08:00:00Z", body.RootElement.GetProperty("clockInAt").GetString());
         Assert.True(Guid.TryParse(body.RootElement.GetProperty("id").GetString(), out _));
         Assert.Equal(JsonValueKind.Null, body.RootElement.GetProperty("clockOutAt").ValueKind);
-        Assert.Equal(JsonValueKind.Null, body.RootElement.GetProperty("workedMinutes").ValueKind);
+        Assert.Equal(JsonValueKind.Null, body.RootElement.GetProperty("durationMinutes").ValueKind);
     }
 
     [Fact]
@@ -63,7 +63,7 @@ public class TimeEntryEndpointsTests(PostgresFixture postgres)
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         using var body = JsonDocument.Parse(await response.Content.ReadAsStringAsync(CancellationToken.None));
         Assert.Equal("2026-10-12T16:00:00Z", body.RootElement.GetProperty("clockOutAt").GetString());
-        Assert.Equal(480, body.RootElement.GetProperty("workedMinutes").GetInt32());
+        Assert.Equal(480, body.RootElement.GetProperty("durationMinutes").GetInt32());
     }
 
     [Fact]
@@ -89,7 +89,7 @@ public class TimeEntryEndpointsTests(PostgresFixture postgres)
         var response = await client.PostAsync(ClockOut, content: null, CancellationToken.None);
 
         using var body = JsonDocument.Parse(await response.Content.ReadAsStringAsync(CancellationToken.None));
-        Assert.Equal(90, body.RootElement.GetProperty("workedMinutes").GetInt32());
+        Assert.Equal(90, body.RootElement.GetProperty("durationMinutes").GetInt32());
     }
 
     [Fact]
@@ -110,8 +110,8 @@ public class TimeEntryEndpointsTests(PostgresFixture postgres)
         var items = body.RootElement.GetProperty("items").EnumerateArray().ToList();
         Assert.Equal(2, items.Count);
         // Más reciente primero: la abierta no aporta minutos ni suma al total.
-        Assert.Equal(JsonValueKind.Null, items[0].GetProperty("workedMinutes").ValueKind);
-        Assert.Equal(60, items[1].GetProperty("workedMinutes").GetInt32());
+        Assert.Equal(JsonValueKind.Null, items[0].GetProperty("durationMinutes").ValueKind);
+        Assert.Equal(60, items[1].GetProperty("durationMinutes").GetInt32());
         Assert.Equal(60, body.RootElement.GetProperty("totalWorkedMinutes").GetInt32());
     }
 
@@ -172,8 +172,8 @@ public class TimeEntryEndpointsTests(PostgresFixture postgres)
         Assert.Equal(1, openList.GetProperty("items").GetArrayLength());
         Assert.Equal(0, openList.GetProperty("totalWorkedMinutes").GetInt32());
         var closed = closedList.GetProperty("items")[0];
-        Assert.Equal(135, closed.GetProperty("workedMinutes").GetInt32());
-        Assert.Equal(closed.GetProperty("workedMinutes").GetInt32(), closedList.GetProperty("totalWorkedMinutes").GetInt32());
+        Assert.Equal(135, closed.GetProperty("durationMinutes").GetInt32());
+        Assert.Equal(closed.GetProperty("durationMinutes").GetInt32(), closedList.GetProperty("totalWorkedMinutes").GetInt32());
     }
 
     private static async Task<JsonElement> ReadListAsync(HttpClient client)

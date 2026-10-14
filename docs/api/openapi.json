@@ -198,6 +198,123 @@
         }
       }
     },
+    "/api/time-entries/start-break": {
+      "post": {
+        "tags": [
+          "TimeEntries"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TimeEntryResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/time-entries/start-meal-break": {
+      "post": {
+        "tags": [
+          "TimeEntries"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TimeEntryResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/time-entries/end-break": {
+      "post": {
+        "tags": [
+          "TimeEntries"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TimeEntryResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/time-entries": {
       "get": {
         "tags": [
@@ -452,7 +569,10 @@
       "TimeEntryListResponse": {
         "required": [
           "items",
-          "totalWorkedMinutes"
+          "totalWorkedMinutes",
+          "totalBreakMinutes",
+          "totalMealBreakMinutes",
+          "status"
         ],
         "type": "object",
         "properties": {
@@ -469,21 +589,44 @@
               "string"
             ],
             "format": "int32"
+          },
+          "totalBreakMinutes": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "totalMealBreakMinutes": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "status": {
+            "$ref": "#/components/schemas/TimeTrackingStatus"
           }
         }
       },
       "TimeEntryResponse": {
         "required": [
           "id",
+          "type",
           "clockInAt",
           "clockOutAt",
-          "workedMinutes"
+          "durationMinutes"
         ],
         "type": "object",
         "properties": {
           "id": {
             "type": "string",
             "format": "uuid"
+          },
+          "type": {
+            "$ref": "#/components/schemas/TimeEntryType"
           },
           "clockInAt": {
             "type": "string",
@@ -496,7 +639,7 @@
             ],
             "format": "date-time"
           },
-          "workedMinutes": {
+          "durationMinutes": {
             "pattern": "^-?(?:0|[1-9]\\d*)$",
             "type": [
               "null",
@@ -506,6 +649,21 @@
             "format": "int32"
           }
         }
+      },
+      "TimeEntryType": {
+        "enum": [
+          "Work",
+          "Break",
+          "MealBreak"
+        ]
+      },
+      "TimeTrackingStatus": {
+        "enum": [
+          "Idle",
+          "Working",
+          "OnBreak",
+          "OnMealBreak"
+        ]
       },
       "UserResponse": {
         "required": [

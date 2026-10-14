@@ -66,5 +66,8 @@ public class ErrorHandlingTests(PostgresFixture postgres)
 
         public Task UpdateAsync(TimeEntry entry, CancellationToken cancellationToken)
             => throw new InvalidOperationException(SensitiveText);
+
+        public Task ReplaceOpenAsync(TimeEntry closed, TimeEntry next, CancellationToken cancellationToken)
+            => throw new InvalidOperationException(SensitiveText);
     }
 }
