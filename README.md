@@ -62,6 +62,9 @@ La configuración llega por variables de entorno (nunca en el repositorio). `.en
 | `Database__ApplyMigrationsOnStartup` | No (por defecto `false`) | Con `true`, la API aplica las migraciones al arrancar. |
 | `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD` | Solo con Compose | Base de datos, usuario y contraseña (inventada) del contenedor de PostgreSQL. |
 | `ASPNETCORE_HTTP_PORTS` | No | Puerto de escucha; la imagen Docker lo fija en `8080`. |
+| `PORT` | No | Si la plataforma lo define (Railway), la imagen de la API escucha ahí y prevalece sobre `ASPNETCORE_HTTP_PORTS`. |
+| `ForwardedHeaders__Enabled` | No (por defecto `false`) | Con `true`, la API confía en `X-Forwarded-For`/`X-Forwarded-Proto` de un proxy inverso. Solo tras un proxy que la proteja de accesos directos (véase «Despliegue en Railway»). |
+| `ForwardedHeaders__Hops` | No (por defecto `2`) | Saltos de proxy de confianza, contados desde la derecha de `X-Forwarded-For` (Railway: «cliente, borde»). |
 
 Si falta una clave obligatoria, la API termina al arrancar con un mensaje que nombra la clave (sin imprimir valores). `ASPNETCORE_URLS` y `launchSettings.json` tienen prioridad sobre `ASPNETCORE_HTTP_PORTS`.
 
@@ -137,6 +140,80 @@ docker build -t timetracker-api .
 
 La imagen se ejecuta con un usuario no root, escucha en HTTP (el TLS se termina en el ingreso, [ADR 0007](docs/adr/0007-configuracion-y-validacion-al-arrancar.md)) e incluye un `HEALTHCHECK`. No contiene secretos: las claves (entre ellas `Jwt__SigningKey`) se pasan al ejecutarla.
 
+## Despliegue en Railway
+
+La demostración pública se despliega en [Railway](https://railway.com) como un proyecto (`timetracker-tfm`) con tres servicios en el entorno `production`: `Postgres` (plantilla de base de datos de Railway), `api` (imagen del `Dockerfile` de la raíz) y `web` (imagen de `deploy/web/Dockerfile`). La Web es estática: Blazor WebAssembly publicado y servido por nginx sin privilegios (imagen oficial `nginxinc/nginx-unprivileged`), con respaldo a `index.html` para las rutas de la SPA, tipos MIME de WebAssembly, compresión y cabeceras de seguridad (CSP con `'wasm-unsafe-eval'`, `X-Content-Type-Options`, `Referrer-Policy`, `X-Frame-Options`/`frame-ancestors`, HSTS). `railway.json` (en la raíz) fija el constructor Docker y la comprobación de salud `/health`, que sirven tanto la API como la Web; no contiene secretos.
+
+### Pasos reproducibles (CLI de Railway)
+
+Requiere la [CLI de Railway](https://docs.railway.com/guides/cli) con la sesión iniciada (`railway login`). Desde la raíz del repositorio:
+
+```powershell
+railway init -n timetracker-tfm            # crea el proyecto y lo enlaza (el enlace queda fuera del repositorio)
+railway status                             # compruebe que el proyecto activo es el suyo antes de seguir
+railway add -d postgres                    # servicio PostgreSQL
+railway add -s api                         # servicio de la API
+railway add -s web -v "RAILWAY_DOCKERFILE_PATH=deploy/web/Dockerfile"
+railway domain -s api                      # dominio público de la API (railway domain list -s api)
+railway domain -s web                      # dominio público de la Web
+```
+
+Variables del servicio `api` (`railway variables set -s api --skip-deploys "CLAVE=valor"`; **sin valores en este documento**):
+
+| Variable | Valor |
+|---|---|
+| `ASPNETCORE_ENVIRONMENT` | `Production` (OpenAPI no se sirve; sin páginas de desarrollo). |
+| `ConnectionStrings__Default` | Referencia a las variables del servicio de base de datos: `Host=${{Postgres.PGHOST}};Port=${{Postgres.PGPORT}};Database=${{Postgres.PGDATABASE}};Username=${{Postgres.PGUSER}};Password=${{Postgres.PGPASSWORD}}`. Railway las resuelve en cada servicio; no se copia ningún valor. Escríbala entre comillas simples en PowerShell/Bash. |
+| `Jwt__SigningKey` | Clave aleatoria de al menos 32 bytes (véase «Regenerar la clave JWT»). |
+| `Cors__AllowedOrigins__0` | `https://<dominio de la Web>`, sin barra final. |
+| `Database__ApplyMigrationsOnStartup` | `true`: la API aplica las migraciones al arrancar. |
+| `ForwardedHeaders__Enabled` | `true`: la API está tras el proxy de Railway (véase «Riesgos y decisiones»). |
+| `Seed__DemoUsers` y `Seed__DemoPassword` | `true` y la contraseña de «Usuarios de prueba» (solo para la demostración; véase «Apagar la siembra demo»). |
+
+Variable del servicio `web`: `API_BASE_URL=https://<dominio de la API>` (sin barra final). Al arrancar, el contenedor genera `appsettings.json` con ella y abre la CSP (`connect-src`) solo a ese origen; si falta o no es una URL `http`/`https`, el contenedor no arranca. La URL de la API no se versiona.
+
+Despliegue (sube el código local; la Web y la API van por separado):
+
+```powershell
+railway up --service api --ci
+railway up --service web --ci
+```
+
+Comprobación: `GET <API>/health` responde `200`; inicie sesión en la Web con un usuario de «Usuarios de prueba».
+
+### Regenerar la clave JWT
+
+Genere una clave nueva (véase «Generar la clave de firma») y póngala sin que quede en el historial ni en ningún archivo:
+
+```powershell
+pwsh -NoProfile -Command "[Convert]::ToBase64String([Security.Cryptography.RandomNumberGenerator]::GetBytes(48))" | railway variables set Jwt__SigningKey --stdin -s api
+```
+
+El cambio redespliega la API e invalida los tokens emitidos (las sesiones abiertas piden iniciar sesión de nuevo).
+
+### Activar el autodespliegue desde GitHub
+
+Lo activa una persona con acceso al repositorio, desde el panel de Railway (la CLI no puede autorizar la aplicación de GitHub): en cada servicio, `Settings` → `Source` → `Connect Repo` y elija el repositorio y la rama `main` (autorizando antes la aplicación de GitHub de Railway). Para que `api` y `web` usen su Dockerfile: `api` usa el de la raíz y `web` conserva la variable `RAILWAY_DOCKERFILE_PATH=deploy/web/Dockerfile`.
+
+### Apagar la siembra demo
+
+La contraseña de los usuarios de prueba es pública (está en este README): mientras la siembra esté activa, cualquiera puede iniciar sesión con ellos. Para cerrarla:
+
+```powershell
+railway variables set Seed__DemoUsers=false -s api
+railway variables delete Seed__DemoPassword -s api
+```
+
+Desactivar la siembra **no borra** los usuarios ya creados: cámbieles la contraseña o elimínelos en la base de datos, o cree otro proyecto/base limpia. Los datos de la demostración son inventados.
+
+### Riesgos y decisiones
+
+- **`ForwardedHeaders` (diferido en el ADR 0011, resuelto aquí).** Tras el proxy de Railway, la IP de la conexión es la del proxy y el limitador de login (por IP) vería a todos los clientes como uno. El borde de Railway entrega `X-Forwarded-For: <cliente>, <borde>` (descarta el que envíe el cliente; las direcciones del borde son públicas y cambian) y `X-Forwarded-Proto: https`. Con `ForwardedHeaders__Enabled=true` la API confía en dos saltos (`ForwardedHeaders__Hops`, 2 por defecto): el cliente es la penúltima entrada y cualquier dirección antepuesta a su izquierda no cuenta. Está desactivado por defecto: sin proxy de confianza, esas cabeceras las controla el cliente. Riesgo residual: solo es seguro si la API únicamente es alcanzable a través del borde de Railway (así es en este despliegue: no hay acceso público directo al contenedor); un ataque distribuido no queda cubierto por el límite por IP.
+- **Demostración pública con credenciales públicas:** véase «Apagar la siembra demo». No hay refresh token: la sesión dura 30 minutos.
+- **TLS:** lo termina el borde de Railway; la API y nginx escuchan en HTTP dentro de la plataforma. La Web envía HSTS.
+- **Base de datos:** la API usa la red privada de Railway (`postgres.railway.internal`); el servicio de PostgreSQL no se expone por TCP público.
+- **Imagen de la Web:** la CSP admite el `importmap` en línea que genera la publicación de Blazor por su hash SHA-256 (calculado al construir la imagen), sin `'unsafe-inline'`.
+
 ## Usuarios de prueba
 
 Cuatro usuarios inventados (dominio `example.test`) que crea la siembra de demostración cuando `Seed__DemoUsers` es `true` (Compose la activa). Todos usan la misma contraseña de demostración, **inventada y pública**, que debe escribir también en `Seed__DemoPassword` de su `.env` local:
@@ -182,6 +259,7 @@ openspec/                     Especificaciones y cambios (Spec Driven Developmen
 10. [Tiempo en UTC y minutos truncados](docs/adr/0010-tiempo-utc-y-minutos.md)
 11. [Autenticación con JWT propio, roles y equipo](docs/adr/0011-autenticacion-jwt-roles-y-equipo.md)
 12. [Sesión en la Web: token en sessionStorage y riesgo XSS](docs/adr/0012-sesion-web-y-riesgo-xss.md)
+13. [Despliegue de la demostración en Railway](docs/adr/0013-despliegue-en-railway.md)
 
 ## Integración continua
 
@@ -189,10 +267,11 @@ El flujo `.github/workflows/ci.yml` se ejecuta en GitHub Actions en cada `push` 
 
 ## Enlaces y datos de demostración
 
-- Despliegue: **pendiente** (aún no hay URL publicada).
+- Web (demostración): <https://web-production-a744a.up.railway.app>
+- API (demostración): <https://api-production-0f339.up.railway.app> (comprobación: `/health`). Véase «Despliegue en Railway».
 - Vídeo de demostración: **pendiente**.
 - Presentación (slides): **pendiente**.
-- Usuarios de prueba: véase «Usuarios de prueba» (solo para uso local, con la siembra activada).
+- Usuarios de prueba: véase «Usuarios de prueba» (con la siembra activada, como en la demostración desplegada).
 
 ## Convenciones
 

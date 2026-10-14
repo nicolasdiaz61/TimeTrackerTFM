@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Define la estructura de la solución, la regla de dependencias de Clean Architecture y su comprobación automática (Domain y Application sin paquetes), la puerta de calidad, la cobertura (Domain 100 %, Application ≥ 80 %), el empaquetado Docker, `docker-compose.yml` con la API y PostgreSQL, la CI y la documentación (12 ADR y README). Incluye la Web con las páginas `/fichajes`, `/login` y `/equipo`, su cliente tipado y el manejador del token, la exportación del contrato OpenAPI en build sin base de datos (con `Jwt:SigningKey` ficticia y siembra desactivada), la acotación de los paquetes de autenticación y la ausencia de restos de la identidad provisional. `docker-compose.yml` publica la API en `127.0.0.1:5274` y exige `Jwt__SigningKey` y `Seed__DemoPassword`. Los requisitos se agrupan en Tanda 1 (núcleo compilable) y Tanda 2 (entrega); los actualizados por los cambios `fichaje-extremo-a-extremo` (PostgreSQL, EF Core, fichajes, `/fichajes`) y `autenticacion-y-roles` (JWT, roles, equipo, `/login`, `/equipo`, ADR 0011 y 0012) sustituyen a los de `esqueleto-solucion`.
+Define la estructura de la solución, la regla de dependencias de Clean Architecture y su comprobación automática (Domain y Application sin paquetes), la puerta de calidad, la cobertura (Domain 100 %, Application ≥ 80 %), el empaquetado Docker, `docker-compose.yml` con la API y PostgreSQL, la CI y la documentación (13 ADR y README). Incluye la Web con las páginas `/fichajes`, `/login` y `/equipo`, su cliente tipado y el manejador del token, la exportación del contrato OpenAPI en build sin base de datos (con `Jwt:SigningKey` ficticia y siembra desactivada), la acotación de los paquetes de autenticación y la ausencia de restos de la identidad provisional. `docker-compose.yml` publica la API en `127.0.0.1:5274` y exige `Jwt__SigningKey` y `Seed__DemoPassword`. Los requisitos se agrupan en Tanda 1 (núcleo compilable) y Tanda 2 (entrega); los actualizados por los cambios `fichaje-extremo-a-extremo` (PostgreSQL, EF Core, fichajes, `/fichajes`) y `autenticacion-y-roles` (JWT, roles, equipo, `/login`, `/equipo`, ADR 0011 y 0012) sustituyen a los de `esqueleto-solucion`.
 
 Fuera de alcance: ausencias, IA, despliegue en Railway, hooks de Git, CI ejecutada (sin remoto Git) y el servicio de la Web en compose.
 
@@ -203,7 +203,7 @@ Nota de verificación: versiones de las imágenes base de Docker NO verificadas;
 #### Scenario: ADR completos
 - DADO `docs/adr/`
 - CUANDO se listan los archivos
-- ENTONCES existen doce ADR numerados 0001 a 0012, cada uno con las cuatro secciones
+- ENTONCES existen trece ADR numerados 0001 a 0013, cada uno con las cuatro secciones
 
 #### Scenario: ADR 0009 sustituido
 - DADO `docs/adr/0009*` y `docs/adr/0011*`

@@ -489,3 +489,6 @@ coverage*.xml
 # --- Higiene del repositorio público ---
 .atl/
 *.rollback/
+
+# Enlace local de la CLI de Railway (identifica el proyecto de cada persona)
+.railway/
