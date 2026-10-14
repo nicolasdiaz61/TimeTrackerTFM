@@ -204,20 +204,17 @@ public class TeamEndpointsTests(PostgresFixture postgres)
     }
 
     [Fact]
-    public async Task MemberEntries_With55ClosedOf10Minutes_ReturnsFiftyAndTotal500()
+    public async Task MemberEntries_With305ClosedOf10Minutes_Returns300AndTotal3000()
     {
         var scenario = await TeamScenario.CreateAsync(postgres);
         var start = new DateTimeOffset(2026, 8, 1, 8, 0, 0, TimeSpan.Zero);
-        for (var day = 0; day < 55; day++)
-        {
-            await TeamScenario.AddEntryAsync(postgres, scenario.Luis.Id, start.AddDays(day), minutes: 10);
-        }
+        await TeamScenario.AddClosedDailyEntriesAsync(postgres, scenario.Luis.Id, start, count: 305, minutes: 10);
 
         using var factory = new PostgresApiFactory(postgres.ConnectionString);
         using var body = await GetJsonAsync(factory.CreateClientFor(scenario.Marta.Id, "Manager"), EntriesOf(scenario.Luis.Id));
 
-        Assert.Equal(50, body.RootElement.GetProperty("items").GetArrayLength());
-        Assert.Equal(500, body.RootElement.GetProperty("totalWorkedMinutes").GetInt32());
+        Assert.Equal(300, body.RootElement.GetProperty("items").GetArrayLength());
+        Assert.Equal(3000, body.RootElement.GetProperty("totalWorkedMinutes").GetInt32());
     }
 
     [Fact]

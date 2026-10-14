@@ -14,6 +14,7 @@ public class SeedStartupTests(PostgresFixture postgres)
 {
     private const string DemoUsersKey = "Seed:DemoUsers";
     private const string DemoPasswordKey = "Seed:DemoPassword";
+    private const string DemoDataKey = "Seed:DemoData";
 
     [Fact]
     public async Task SeedOptions_WithoutSetting_DemoUsersIsFalse_AndStartsWithoutPassword()
@@ -81,6 +82,63 @@ public class SeedStartupTests(PostgresFixture postgres)
         var response = await factory.CreateAnonymousClient().GetAsync("/health", CancellationToken.None);
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+    }
+
+    [Fact]
+    public void Startup_WithNonBooleanDemoData_FailsNamingKey()
+    {
+        var exception = DatabaseStartupTests.StartWith(DemoDataKey, "quizas");
+
+        Assert.NotNull(exception);
+        Assert.Contains(DemoDataKey, StartupFailure.AllMessages(exception), StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData("false")]
+    [InlineData(null)]
+    public void Startup_DemoDataWithoutDemoUsers_FailsNamingBothKeys(string? demoUsers)
+    {
+        using var factory = new ApiFactory().WithWebHostBuilder(builder =>
+        {
+            builder.UseSetting(DemoDataKey, "true");
+            if (demoUsers is not null)
+            {
+                builder.UseSetting(DemoUsersKey, demoUsers);
+            }
+        });
+
+        var exception = factory.StartExpectingFailure();
+
+        DatabaseStartupTests.AssertStartupFailsNamingKey(exception, DemoDataKey);
+        Assert.Contains(DemoUsersKey, StartupFailure.AllMessages(exception!), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Startup_DemoDataWithDemoUsers_StartsWithMigratedDatabase()
+    {
+        var connectionString = await postgres.CreateEmptyDatabaseAsync();
+        using var factory = new ApiFactory().WithWebHostBuilder(builder =>
+        {
+            builder.UseSetting("ConnectionStrings:Default", connectionString);
+            builder.UseSetting("Database:ApplyMigrationsOnStartup", "true");
+            builder.UseSetting(DemoUsersKey, "true");
+            builder.UseSetting(DemoPasswordKey, new string('d', 12));
+            builder.UseSetting(DemoDataKey, "true");
+        });
+
+        var response = await factory.CreateAnonymousClient().GetAsync("/health", CancellationToken.None);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task SeedOptions_WithoutSetting_DemoDataIsFalse()
+    {
+        using var factory = new ApiFactory();
+
+        _ = await factory.CreateAnonymousClient().GetAsync("/health", CancellationToken.None);
+
+        Assert.False(factory.Services.GetRequiredService<IOptions<SeedOptions>>().Value.DemoData);
     }
 
     private static Exception? Start(string demoUsers, string? password)

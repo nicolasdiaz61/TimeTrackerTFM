@@ -25,6 +25,20 @@ internal sealed record TeamScenario(UserAccount Marta, UserAccount Luis, UserAcc
         return new TeamScenario(marta, luis, ana, pablo, diego, carmen);
     }
 
+    /// <summary>Inserta de golpe <paramref name="count"/> intervalos <c>Work</c> cerrados, uno por día desde <paramref name="firstStart"/>.</summary>
+    public static async Task AddClosedDailyEntriesAsync(PostgresFixture postgres, Guid employeeId, DateTimeOffset firstStart, int count, int minutes)
+    {
+        await using var context = postgres.CreateContext(postgres.ConnectionString);
+        for (var day = 0; day < count; day++)
+        {
+            var entry = TimeEntry.Start(employeeId, TimeEntryType.Work, firstStart.AddDays(day));
+            entry.Close(entry.ClockInAt.AddMinutes(minutes));
+            context.TimeEntries.Add(entry);
+        }
+
+        await context.SaveChangesAsync(CancellationToken.None);
+    }
+
     /// <summary>Inserta un fichaje; con <paramref name="minutes"/> nulo queda abierto.</summary>
     public static async Task AddEntryAsync(PostgresFixture postgres, Guid employeeId, DateTimeOffset at, int? minutes, TimeEntryType type = TimeEntryType.Work)
     {

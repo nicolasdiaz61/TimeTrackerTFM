@@ -8,6 +8,12 @@ public sealed class SeedOptionsValidator : IValidateOptions<SeedOptions>
 
     public ValidateOptionsResult Validate(string? name, SeedOptions options)
     {
+        // Los fichajes demo pertenecen a los usuarios demo: sin ellos no hay a quién asignarlos.
+        if (options.DemoData && !options.DemoUsers)
+        {
+            return ValidateOptionsResult.Fail("Seed:DemoData: requiere Seed:DemoUsers=true (los fichajes de demostración se asignan a los usuarios de demostración).");
+        }
+
         // Con la siembra desactivada la contraseña no se exige ni se valida (SC-12).
         if (!options.DemoUsers)
         {

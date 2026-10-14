@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 
+using TimeTracker.Application.DemoData;
 using TimeTracker.Application.TimeTracking;
 using TimeTracker.Application.Users;
 
@@ -16,6 +17,7 @@ public static class PersistenceServiceCollectionExtensions
             options.UseNpgsql(provider.GetRequiredService<IOptions<ConnectionStringOptions>>().Value.Default));
         services.AddScoped<ITimeEntryRepository, TimeEntryRepository>();
         services.AddScoped<IUserRepository, UserRepository>();
+        services.AddScoped<IDemoTimeEntryStore, DemoTimeEntryStore>();
 
         return services;
     }
