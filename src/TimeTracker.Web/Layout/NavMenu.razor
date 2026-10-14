@@ -3,31 +3,32 @@
 
 <div class="top-row ps-3 navbar navbar-dark">
     <div class="container-fluid">
-        <a class="navbar-brand" href="">TimeTracker.Web</a>
-        <button title="Navigation menu" class="navbar-toggler" @onclick="ToggleNavMenu">
+        <a class="navbar-brand" href="">TimeTracker</a>
+        <button type="button" title="Menú de navegación" aria-label="Menú de navegación" aria-expanded="@(!collapseNavMenu)" class="navbar-toggler" @onclick="ToggleNavMenu">
             <span class="navbar-toggler-icon"></span>
         </button>
     </div>
 </div>
 
-<div class="@NavMenuCssClass nav-scrollable" @onclick="ToggleNavMenu">
+@* Cualquier clic dentro del menú lo cierra en móvil (navegar, cerrar sesión...); en escritorio siempre está visible. *@
+<div class="@NavMenuCssClass nav-scrollable" @onclick="CollapseNavMenu">
     <nav class="nav flex-column">
         <div class="nav-item px-3">
             <NavLink class="nav-link" href="" Match="NavLinkMatch.All">
-                <span class="bi bi-house-door-fill-nav-menu" aria-hidden="true"></span> Home
+                <svg class="nav-icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M2 8.5 8 3l6 5.5M3.5 7.5V13.5h3.5V10h2v3.5h3.5V7.5" /></svg> Inicio
             </NavLink>
         </div>
         <AuthorizeView>
             <Authorized Context="auth">
                 <div class="nav-item px-3">
                     <NavLink class="nav-link" href="fichajes">
-                        <span class="bi bi-list-nested-nav-menu" aria-hidden="true"></span> Fichajes
+                        <svg class="nav-icon" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6" /><path d="M8 4.5V8l2.5 1.5" /></svg> Fichajes
                     </NavLink>
                 </div>
                 <AuthorizeView Roles="Manager" Context="manager">
                     <div class="nav-item px-3">
                         <NavLink class="nav-link" href="equipo">
-                            <span class="bi bi-list-nested-nav-menu" aria-hidden="true"></span> Equipo
+                            <svg class="nav-icon" viewBox="0 0 16 16" aria-hidden="true"><circle cx="6" cy="5.5" r="2.2" /><path d="M1.8 13c0-2.3 1.9-4 4.2-4s4.2 1.7 4.2 4" /><path d="M10.6 3.6a2 2 0 0 1 0 3.8M12 9.3c1.5.5 2.4 1.7 2.4 3.7" /></svg> Equipo
                         </NavLink>
                     </div>
                 </AuthorizeView>
@@ -35,28 +36,23 @@
             <NotAuthorized>
                 <div class="nav-item px-3">
                     <NavLink class="nav-link" href="login">
-                        <span class="bi bi-list-nested-nav-menu" aria-hidden="true"></span> Iniciar sesión
+                        <svg class="nav-icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M6.5 3H12a1 1 0 0 1 1 1v8a1 1 0 0 1-1 1H6.5M2 8h7M6.5 5.5 9 8l-2.5 2.5" /></svg> Iniciar sesión
                     </NavLink>
                 </div>
             </NotAuthorized>
         </AuthorizeView>
-        <div class="nav-item px-3">
-            <NavLink class="nav-link" href="counter">
-                <span class="bi bi-plus-square-fill-nav-menu" aria-hidden="true"></span> Counter
-            </NavLink>
-        </div>
-        <div class="nav-item px-3">
-            <NavLink class="nav-link" href="weather">
-                <span class="bi bi-list-nested-nav-menu" aria-hidden="true"></span> Weather
-            </NavLink>
-        </div>
         <AuthorizeView>
             <Authorized Context="auth">
                 <div class="nav-item px-3 session-info">
-                    <span id="session-user">@auth.User.Identity?.Name (@RoleLabel(auth.User))</span>
+                    <div class="nav-link session-user-row">
+                        <svg class="nav-icon" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="5.5" r="2.5" /><path d="M3 13.5c0-2.5 2.2-4.2 5-4.2s5 1.7 5 4.2" /></svg>
+                        <span id="session-user">@auth.User.Identity?.Name (@RoleLabel(auth.User))</span>
+                    </div>
                 </div>
                 <div class="nav-item px-3">
-                    <button type="button" class="nav-link" @onclick="SignOutAsync">Cerrar sesión</button>
+                    <button type="button" class="nav-link" @onclick="SignOutAsync">
+                        <svg class="nav-icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M9.5 3H4a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h5.5M7 8h7M11.5 5.5 14 8l-2.5 2.5" /></svg> Cerrar sesión
+                    </button>
                 </div>
             </Authorized>
         </AuthorizeView>
@@ -71,6 +67,11 @@
     private void ToggleNavMenu()
     {
         collapseNavMenu = !collapseNavMenu;
+    }
+
+    private void CollapseNavMenu()
+    {
+        collapseNavMenu = true;
     }
 
     // El rol llega del token en inglés; en la interfaz se muestra en español.

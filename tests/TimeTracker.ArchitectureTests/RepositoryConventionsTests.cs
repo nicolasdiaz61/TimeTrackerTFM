@@ -14,6 +14,7 @@ public class RepositoryConventionsTests
         "src/TimeTracker.Web/TimeTracker.Web.csproj",
         "tests/TimeTracker.Domain.Tests/TimeTracker.Domain.Tests.csproj",
         "tests/TimeTracker.Application.Tests/TimeTracker.Application.Tests.csproj",
+        "tests/TimeTracker.Web.Tests/TimeTracker.Web.Tests.csproj",
         "tests/TimeTracker.Api.IntegrationTests/TimeTracker.Api.IntegrationTests.csproj",
         "tests/TimeTracker.ArchitectureTests/TimeTracker.ArchitectureTests.csproj",
     ];
@@ -57,6 +58,23 @@ public class RepositoryConventionsTests
         using var settings = JsonDocument.Parse(File.ReadAllText(Path.Combine(RepositoryRoot.Path, required[^1])));
         var apiBaseUrl = settings.RootElement.GetProperty("ApiBaseUrl").GetString();
         Assert.True(Uri.TryCreate(apiBaseUrl, UriKind.Absolute, out var uri) && uri.Scheme is "http" or "https", "ApiBaseUrl debe ser una URI absoluta http/https.");
+    }
+
+    [Fact]
+    public void Web_HasNoTemplateLeftoversAndIsBrandedInSpanish()
+    {
+        string[] removed = ["Pages/Counter.razor", "Pages/Weather.razor", "wwwroot/sample-data/weather.json"];
+        Assert.DoesNotContain(removed, path => File.Exists(Path.Combine(RepositoryRoot.Path, "src", "TimeTracker.Web", path)));
+
+        var index = ReadWeb("wwwroot/index.html");
+        Assert.Contains("<html lang=\"es\">", index, StringComparison.Ordinal);
+        Assert.Contains("<title>TimeTracker</title>", index, StringComparison.Ordinal);
+
+        // Ningún enlace externo heredado de la plantilla ni texto de plantilla en inglés en el diseño.
+        var layout = ReadWeb("Layout/MainLayout.razor") + ReadWeb("Layout/NavMenu.razor");
+        Assert.DoesNotContain("learn.microsoft.com", layout, StringComparison.Ordinal);
+        Assert.DoesNotContain("Navigation menu", layout, StringComparison.Ordinal);
+        Assert.DoesNotContain("TimeTracker.Web</a>", layout, StringComparison.Ordinal);
     }
 
     [Fact]
