@@ -1,0 +1,82 @@
+@page "/login"
+@using System.Net
+@using TimeTracker.Web.Http
+@inject AuthApiClient Api
+@inject JwtAuthenticationStateProvider Authentication
+@inject NavigationManager Navigation
+
+<PageTitle>Iniciar sesión</PageTitle>
+
+<h1>Iniciar sesión</h1>
+
+<EditForm Model="form" OnSubmit="SubmitAsync" FormName="login">
+    <div class="mb-3">
+        <label for="email" class="form-label">Correo electrónico</label>
+        <InputText id="email" class="form-control" type="email" autocomplete="username" @bind-Value="form.Email" />
+    </div>
+    <div class="mb-3">
+        <label for="password" class="form-label">Contraseña</label>
+        <InputText id="password" class="form-control" type="password" autocomplete="current-password" @bind-Value="form.Password" />
+    </div>
+
+    @if (errorMessage is not null)
+    {
+        <div class="alert alert-danger" role="alert">@errorMessage</div>
+    }
+
+    <button type="submit" class="btn btn-primary" disabled="@busy">Entrar</button>
+</EditForm>
+
+@code {
+    private readonly LoginForm form = new();
+    private string? errorMessage;
+    private bool busy;
+
+    [SupplyParameterFromQuery(Name = "returnUrl")]
+    public string? ReturnUrlParameter { get; set; }
+
+    private async Task SubmitAsync()
+    {
+        if (busy)
+        {
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(form.Email) || string.IsNullOrEmpty(form.Password))
+        {
+            errorMessage = "Introduzca el correo electrónico y la contraseña.";
+            return;
+        }
+
+        busy = true;
+        errorMessage = null;
+        try
+        {
+            var response = await Api.LoginAsync(form.Email.Trim(), form.Password);
+            await Authentication.SignInAsync(response.AccessToken);
+            form.Password = string.Empty;
+            Navigation.NavigateTo(ReturnUrl.IsSafe(ReturnUrlParameter) ? ReturnUrlParameter! : ReturnUrl.DefaultTarget);
+        }
+        catch (ApiRequestException exception)
+        {
+            form.Password = string.Empty;
+            errorMessage = exception.StatusCode switch
+            {
+                HttpStatusCode.Unauthorized => "Correo o contraseña incorrectos.",
+                HttpStatusCode.TooManyRequests => "Demasiados intentos. Espere un minuto e inténtelo de nuevo.",
+                _ => ApiRequest.GenericErrorMessage,
+            };
+        }
+        finally
+        {
+            busy = false;
+        }
+    }
+
+    private sealed class LoginForm
+    {
+        public string Email { get; set; } = string.Empty;
+
+        public string Password { get; set; } = string.Empty;
+    }
+}
