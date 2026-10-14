@@ -2,7 +2,7 @@
 
 Aplicación de control de tiempos y ausencias para empresas: fichajes, ausencias, saldo de horas y horas extra, con un asistente de IA que responderá consultas en lenguaje natural sobre esos datos.
 
-> **Estado actual:** la aplicación tiene **autenticación real y roles**. Se inicia sesión en `/login` con un correo y una contraseña; un **empleado** ficha su entrada y salida en `/fichajes` y un **responsable** (rol `Manager`) además consulta los fichajes de sus reportes directos en `/equipo`. La API emite un JWT propio de 30 minutos (sin renovación) y guarda los usuarios y los fichajes en PostgreSQL con EF Core. La Web tiene una página de inicio en español con enlaces según la sesión y avisa en `/login` cuando la sesión ha caducado. Todavía **no** hay ausencias ni asistente de IA.
+> **Estado actual:** la aplicación tiene **autenticación real y roles**. Se inicia sesión en `/login` con un correo y una contraseña; un **empleado** ficha su entrada, sus pausas, sus pausas de comida y su salida en `/fichajes` y un **responsable** (rol `Manager`) además consulta los fichajes (con sus pausas) de sus reportes directos en `/equipo`. La API emite un JWT propio de 30 minutos (sin renovación) y guarda los usuarios y los fichajes en PostgreSQL con EF Core. La Web tiene una página de inicio en español con enlaces según la sesión y avisa en `/login` cuando la sesión ha caducado. Todavía **no** hay ausencias ni asistente de IA.
 >
 > **Aviso: usuarios de demostración.** La siembra de cuatro usuarios de prueba (contraseña pública, ver «Usuarios de prueba») está **desactivada por defecto**. No la active en un despliegue real. Ver los [ADR 0011](docs/adr/0011-autenticacion-jwt-roles-y-equipo.md) y [0012](docs/adr/0012-sesion-web-y-riesgo-xss.md). Todos los datos de ejemplo son inventados.
 
@@ -103,7 +103,7 @@ Comprobación: `Invoke-WebRequest http://localhost:5274/health` responde `200` c
 dotnet run --project src/TimeTracker.Web --launch-profile http
 ```
 
-5. Abra `http://localhost:5172/login` e inicie sesión con un usuario de prueba. Un empleado va a `/fichajes`: pulse «Fichar entrada» y «Fichar salida»; la tabla muestra las horas en UTC, «en curso» para el fichaje abierto y el total de minutos. Un responsable ve además `/equipo`, con la lista de sus reportes directos y los fichajes de cada uno. La sesión caduca a los 30 minutos: la Web lo indica en `/login` («Su sesión ha caducado. Inicie sesión de nuevo.») y hay que volver a iniciarla. La Web toma la URL de la API de `ApiBaseUrl` en `src/TimeTracker.Web/wwwroot/appsettings.json` (por defecto `http://localhost:5274`); si falta o no es válida, la Web no arranca y lo indica.
+5. Abra `http://localhost:5172/login` e inicie sesión con un usuario de prueba. Un empleado va a `/fichajes`: pulse «Fichar entrada»; la pantalla muestra el estado actual y solo los botones válidos («Iniciar pausa», «Pausa de comida», «Terminar pausa», «Fichar salida»). La tabla indica el tipo de cada intervalo («Trabajo», «Pausa», «Comida»), las horas en UTC, «en curso» para el intervalo abierto y los totales de trabajo, pausas y comidas. Un responsable ve además `/equipo`, con la lista de sus reportes directos y los fichajes de cada uno. La sesión caduca a los 30 minutos: la Web lo indica en `/login` («Su sesión ha caducado. Inicie sesión de nuevo.») y hay que volver a iniciarla. La Web toma la URL de la API de `ApiBaseUrl` en `src/TimeTracker.Web/wwwroot/appsettings.json` (por defecto `http://localhost:5274`); si falta o no es válida, la Web no arranca y lo indica.
 
 Al terminar, borre las variables de la sesión (`Remove-Item Env:ASPNETCORE_ENVIRONMENT, Env:ConnectionStrings__Default, Env:Jwt__SigningKey, Env:Database__ApplyMigrationsOnStartup, Env:Cors__AllowedOrigins__0, Env:Seed__DemoUsers, Env:Seed__DemoPassword`) y pare la base de datos con `docker compose down`.
 
@@ -116,6 +116,20 @@ dotnet tool run dotnet-ef migrations add <Nombre> --project src/TimeTracker.Infr
 ```
 
 Las migraciones se aplican al arrancar la API con `Database__ApplyMigrationsOnStartup=true`.
+
+### Tipos de marcaje: pausas y pausas de comida
+
+Cada intervalo tiene un tipo (`Work`, `Break`, `MealBreak`) y el empleado tiene como máximo uno abierto. La API lo expone sin cuerpo y con el empleado del token:
+
+| Endpoint | Efecto |
+| --- | --- |
+| `POST /api/time-entries/clock-in` | Abre un intervalo de trabajo. |
+| `POST /api/time-entries/start-break` / `start-meal-break` | Cierra el trabajo y abre una pausa o una pausa de comida. `409` si no se está trabajando. |
+| `POST /api/time-entries/end-break` | Cierra la pausa y reanuda el trabajo. `409` si no hay pausa abierta. |
+| `POST /api/time-entries/clock-out` | Cierra el intervalo abierto, sea del tipo que sea. |
+| `GET /api/time-entries` | Intervalos con `type` y `durationMinutes`, totales de trabajo, pausas y comidas, y el `status` actual. |
+
+La migración `AddTimeEntryType` deja los fichajes existentes como `Work` (columna `type` con valor por defecto `Work`) y es reversible; la decisión está en el [ADR 0014](docs/adr/0014-tipos-de-marcaje-pausas-y-comida.md).
 
 ## Docker y Docker Compose
 
@@ -260,6 +274,7 @@ openspec/                     Especificaciones y cambios (Spec Driven Developmen
 11. [Autenticación con JWT propio, roles y equipo](docs/adr/0011-autenticacion-jwt-roles-y-equipo.md)
 12. [Sesión en la Web: token en sessionStorage y riesgo XSS](docs/adr/0012-sesion-web-y-riesgo-xss.md)
 13. [Despliegue de la demostración en Railway](docs/adr/0013-despliegue-en-railway.md)
+14. [Tipos de marcaje: pausas y pausas de comida](docs/adr/0014-tipos-de-marcaje-pausas-y-comida.md)
 
 ## Integración continua
 
