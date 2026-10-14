@@ -8,28 +8,36 @@
 }
 else
 {
-    <table class="table">
-        <thead>
-            <tr>
-                <th>Entrada</th>
-                <th>Salida</th>
-                <th>Minutos</th>
-            </tr>
-        </thead>
-        <tbody>
-            @foreach (var entry in List.Items)
-            {
+    <div class="table-responsive">
+        <table class="table">
+            <thead>
                 <tr>
-                    <td>@FormatUtc(entry.ClockInAt)</td>
-                    <td>@(entry.ClockOutAt is { } clockOut ? FormatUtc(clockOut) : "en curso")</td>
-                    <td>@(entry.WorkedMinutes?.ToString(CultureInfo.InvariantCulture))</td>
+                    <th>Tipo</th>
+                    <th>Entrada</th>
+                    <th>Salida</th>
+                    <th>Minutos</th>
                 </tr>
-            }
-        </tbody>
-    </table>
+            </thead>
+            <tbody>
+                @foreach (var entry in List.Items)
+                {
+                    <tr>
+                        <td>@TimeEntryPresentation.TypeLabel(entry.Type)</td>
+                        <td>@FormatUtc(entry.ClockInAt)</td>
+                        <td>@(entry.ClockOutAt is { } clockOut ? FormatUtc(clockOut) : "en curso")</td>
+                        <td>@(entry.DurationMinutes?.ToString(CultureInfo.InvariantCulture))</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
 }
 
-<p>Total trabajado: <strong>@WorkedTimeFormatter.FormatTotal(List.TotalWorkedMinutes)</strong></p>
+<ul class="list-unstyled totals">
+    <li>Total trabajado: <strong>@WorkedTimeFormatter.FormatTotal(List.TotalWorkedMinutes)</strong></li>
+    <li>Total en pausas: <strong>@WorkedTimeFormatter.FormatTotal(List.TotalBreakMinutes)</strong></li>
+    <li>Total en comidas: <strong>@WorkedTimeFormatter.FormatTotal(List.TotalMealBreakMinutes)</strong></li>
+</ul>
 
 @code {
     [Parameter, EditorRequired]

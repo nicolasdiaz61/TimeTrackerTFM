@@ -1,3 +1,9 @@
 namespace TimeTracker.Web.TimeEntries;
 
-public sealed record TimeEntryListDto(IReadOnlyList<TimeEntryDto> Items, int TotalWorkedMinutes);
+// Status es el texto de la API (Idle, Working, OnBreak, OnMealBreak).
+public sealed record TimeEntryListDto(
+    IReadOnlyList<TimeEntryDto> Items,
+    int TotalWorkedMinutes,
+    int TotalBreakMinutes,
+    int TotalMealBreakMinutes,
+    string Status);
