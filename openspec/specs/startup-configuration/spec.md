@@ -243,3 +243,22 @@ La API DEBE leer `Database:ApplyMigrationsOnStartup` (variable `Database__ApplyM
 - DADO `Database__ApplyMigrationsOnStartup` = `quizas`
 - CUANDO la API intenta arrancar
 - ENTONCES el arranque falla con un mensaje que contiene `Database:ApplyMigrationsOnStartup`
+
+### Requirement: Cabeceras de proxy opcionales (despliegue tras un proxy)
+
+La API DEBE leer `ForwardedHeaders:Enabled` (variable `ForwardedHeaders__Enabled`) como booleano con valor `false` si no se define. Con `false`, `X-Forwarded-For` y `X-Forwarded-Proto` NO DEBEN alterar la dirección ni el esquema de la petición. Con `true`, la API DEBE tratarlos como añadidos por proxies de confianza, en el número de saltos de `ForwardedHeaders:Hops` (por defecto `2`; debe ser al menos `1`), de modo que el límite de intentos de login use la dirección del cliente y no la del proxy, y lo que el cliente anteponga a la izquierda NO DEBE contar. Solo debe activarse cuando la API únicamente es alcanzable a través de ese proxy (véase el ADR 0013).
+
+#### Scenario: Desactivado por defecto
+- DADO `ForwardedHeaders:Enabled` sin definir
+- CUANDO once peticiones de login llegan con `X-Forwarded-For` distintos
+- ENTONCES la undécima recibe `429` (todas comparten la dirección de la conexión)
+
+#### Scenario: Clientes distintos tras el proxy
+- DADO `ForwardedHeaders:Enabled` = `true`
+- CUANDO once peticiones de login llegan con `X-Forwarded-For: <cliente distinto>, <borde>`
+- ENTONCES ninguna recibe `429`
+
+#### Scenario: Dirección antepuesta por el cliente
+- DADO `ForwardedHeaders:Enabled` = `true`
+- CUANDO once peticiones llegan con `X-Forwarded-For: <inventada distinta>, <mismo cliente>, <borde>`
+- ENTONCES la undécima recibe `429`
