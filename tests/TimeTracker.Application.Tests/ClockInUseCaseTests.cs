@@ -25,13 +25,13 @@ public class ClockInUseCaseTests
         Assert.Equal(EmployeeId, saved.EmployeeId);
         Assert.Equal(EightAm, saved.ClockInAt);
         Assert.True(saved.IsOpen);
-        Assert.Equal(new TimeEntryResult(saved.Id, EightAm, null, null), result);
+        Assert.Equal(new TimeEntryResult(saved.Id, TimeEntryType.Work, EightAm, null, null), result);
     }
 
     [Fact]
     public async Task ClockIn_WithOpenEntry_ThrowsAndDoesNotSave()
     {
-        _repository.Seed(TimeEntry.Start(EmployeeId, EightAm.AddHours(-1)));
+        _repository.Seed(TimeEntry.Start(EmployeeId, TimeEntryType.Work, EightAm.AddHours(-1)));
 
         var exception = await Assert.ThrowsAsync<OpenTimeEntryAlreadyExistsException>(
             () => CreateUseCase().ExecuteAsync(CancellationToken.None));
@@ -43,7 +43,7 @@ public class ClockInUseCaseTests
     [Fact]
     public async Task ClockIn_AfterClosingPrevious_CreatesNewEntry()
     {
-        var previous = TimeEntry.Start(EmployeeId, EightAm.AddDays(-1));
+        var previous = TimeEntry.Start(EmployeeId, TimeEntryType.Work, EightAm.AddDays(-1));
         previous.Close(EightAm.AddDays(-1).AddHours(8));
         _repository.Seed(previous);
 
@@ -58,11 +58,24 @@ public class ClockInUseCaseTests
     public async Task ClockIn_WithOtherEmployeeOpenEntry_Succeeds()
     {
         var otherEmployee = Guid.Parse("9a7c1e52-0b3d-4f68-8a14-2e5d7b9c4f10");
-        _repository.Seed(TimeEntry.Start(otherEmployee, EightAm.AddHours(-1)));
+        _repository.Seed(TimeEntry.Start(otherEmployee, TimeEntryType.Work, EightAm.AddHours(-1)));
 
         await CreateUseCase().ExecuteAsync(CancellationToken.None);
 
         var saved = Assert.Single(_repository.Added);
         Assert.Equal(EmployeeId, saved.EmployeeId);
+    }
+
+    [Theory]
+    [InlineData(TimeEntryType.Break)]
+    [InlineData(TimeEntryType.MealBreak)]
+    public async Task ClockIn_WithOpenBreak_ThrowsAndDoesNotSave(TimeEntryType breakType)
+    {
+        _repository.Seed(TimeEntry.Start(EmployeeId, breakType, EightAm.AddHours(-1)));
+
+        await Assert.ThrowsAsync<OpenTimeEntryAlreadyExistsException>(
+            () => CreateUseCase().ExecuteAsync(CancellationToken.None));
+
+        Assert.Empty(_repository.Added);
     }
 }

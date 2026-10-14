@@ -15,7 +15,7 @@ public class GetTimeEntriesUseCaseTests
 
     private TimeEntry SeedClosed(DateTimeOffset clockIn, int minutes)
     {
-        var entry = TimeEntry.Start(EmployeeId, clockIn);
+        var entry = TimeEntry.Start(EmployeeId, TimeEntryType.Work, clockIn);
         entry.Close(clockIn.AddMinutes(minutes));
         _repository.Seed(entry);
         return entry;
@@ -26,14 +26,14 @@ public class GetTimeEntriesUseCaseTests
     {
         SeedClosed(EightAm, 60);
         SeedClosed(EightAm.AddHours(2), 30);
-        var open = TimeEntry.Start(EmployeeId, EightAm.AddHours(4));
+        var open = TimeEntry.Start(EmployeeId, TimeEntryType.Work, EightAm.AddHours(4));
         _repository.Seed(open);
 
         var result = await CreateUseCase().ExecuteAsync(CancellationToken.None);
 
         Assert.Equal(90, result.TotalWorkedMinutes);
         Assert.Equal(3, result.Items.Count);
-        Assert.Null(result.Items.Single(item => item.Id == open.Id).WorkedMinutes);
+        Assert.Null(result.Items.Single(item => item.Id == open.Id).DurationMinutes);
     }
 
     [Fact]

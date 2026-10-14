@@ -198,7 +198,7 @@ public class TeamEndpointsTests(PostgresFixture postgres)
         Assert.Equal(3, items.Count);
         // El más reciente primero: el abierto no tiene salida ni minutos trabajados.
         Assert.Equal(JsonValueKind.Null, items[0].GetProperty("clockOutAt").ValueKind);
-        Assert.Equal(JsonValueKind.Null, items[0].GetProperty("workedMinutes").ValueKind);
+        Assert.Equal(JsonValueKind.Null, items[0].GetProperty("durationMinutes").ValueKind);
         Assert.EndsWith("Z", items[0].GetProperty("clockInAt").GetString(), StringComparison.Ordinal);
         Assert.EndsWith("Z", items[1].GetProperty("clockOutAt").GetString(), StringComparison.Ordinal);
     }
@@ -245,8 +245,42 @@ public class TeamEndpointsTests(PostgresFixture postgres)
         using var body = await GetJsonAsync(factory.CreateClientFor(scenario.Marta.Id, "Manager"), EntriesOf(scenario.Luis.Id));
 
         var item = Assert.Single(body.RootElement.GetProperty("items").EnumerateArray());
-        Assert.Equal(15, item.GetProperty("workedMinutes").GetInt32());
+        Assert.Equal(15, item.GetProperty("durationMinutes").GetInt32());
         Assert.Equal(15, body.RootElement.GetProperty("totalWorkedMinutes").GetInt32());
+    }
+
+    [Fact]
+    public async Task MemberEntries_IncludeBreaksWithTypeTotalsAndStatus()
+    {
+        var scenario = await TeamScenario.CreateAsync(postgres);
+        var start = new DateTimeOffset(2026, 10, 12, 8, 0, 0, TimeSpan.Zero);
+        await TeamScenario.AddEntryAsync(postgres, scenario.Luis.Id, start, minutes: 60);
+        await TeamScenario.AddEntryAsync(postgres, scenario.Luis.Id, start.AddHours(1), minutes: 15, TimeEntryType.Break);
+        await TeamScenario.AddEntryAsync(postgres, scenario.Luis.Id, start.AddHours(2), minutes: 45, TimeEntryType.MealBreak);
+        await TeamScenario.AddEntryAsync(postgres, scenario.Luis.Id, start.AddHours(3), minutes: null, TimeEntryType.Break);
+        using var factory = new PostgresApiFactory(postgres.ConnectionString);
+
+        using var body = await GetJsonAsync(factory.CreateClientFor(scenario.Marta.Id, "Manager"), EntriesOf(scenario.Luis.Id));
+
+        var items = body.RootElement.GetProperty("items").EnumerateArray().ToList();
+        Assert.Equal(["Break", "MealBreak", "Break", "Work"], items.Select(item => item.GetProperty("type").GetString()));
+        Assert.Equal(60, body.RootElement.GetProperty("totalWorkedMinutes").GetInt32());
+        Assert.Equal(15, body.RootElement.GetProperty("totalBreakMinutes").GetInt32());
+        Assert.Equal(45, body.RootElement.GetProperty("totalMealBreakMinutes").GetInt32());
+        Assert.Equal("OnBreak", body.RootElement.GetProperty("status").GetString());
+    }
+
+    [Fact]
+    public async Task MemberEntries_BreaksOfAForeignMember_Return404()
+    {
+        var scenario = await TeamScenario.CreateAsync(postgres);
+        var at = new DateTimeOffset(2026, 10, 12, 8, 0, 0, TimeSpan.Zero);
+        await TeamScenario.AddEntryAsync(postgres, scenario.Carmen.Id, at, minutes: null, TimeEntryType.MealBreak);
+        using var factory = new PostgresApiFactory(postgres.ConnectionString);
+
+        var response = await factory.CreateClientFor(scenario.Marta.Id, "Manager").GetAsync(EntriesOf(scenario.Carmen.Id), CancellationToken.None);
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
     }
 
     // --- 15.6 Solo lectura ---
@@ -277,6 +311,26 @@ public class TeamEndpointsTests(PostgresFixture postgres)
 
         Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
         Assert.True(Assert.Single(await LoadEntriesAsync(scenario.Luis.Id)).IsOpen);
+    }
+
+    [Theory]
+    [InlineData("start-break")]
+    [InlineData("start-meal-break")]
+    [InlineData("end-break")]
+    [InlineData("clock-out")]
+    public async Task Team_HasNoWriteEndpointsForBreaks_AndLeavesTheMemberUntouched(string action)
+    {
+        var scenario = await TeamScenario.CreateAsync(postgres);
+        await TeamScenario.AddEntryAsync(postgres, scenario.Luis.Id, new DateTimeOffset(2026, 10, 12, 8, 0, 0, TimeSpan.Zero), minutes: null);
+        using var factory = new PostgresApiFactory(postgres.ConnectionString);
+
+        var response = await factory.CreateClientFor(scenario.Marta.Id, "Manager")
+            .PostAsync($"/api/team/members/{scenario.Luis.Id}/{action}", content: null, CancellationToken.None);
+
+        Assert.True(response.StatusCode is HttpStatusCode.NotFound or HttpStatusCode.MethodNotAllowed);
+        var entry = Assert.Single(await LoadEntriesAsync(scenario.Luis.Id));
+        Assert.True(entry.IsOpen);
+        Assert.Equal(TimeEntryType.Work, entry.Type);
     }
 
     private async Task<List<TimeEntry>> LoadEntriesAsync(Guid employeeId)
@@ -387,7 +441,7 @@ public class TeamEndpointsTests(PostgresFixture postgres)
         using var body = await GetJsonAsync(factory.CreateClientFor(scenario.Luis.Id, "Employee"), TimeEntries);
 
         var item = Assert.Single(body.RootElement.GetProperty("items").EnumerateArray());
-        Assert.Equal(10, item.GetProperty("workedMinutes").GetInt32());
+        Assert.Equal(10, item.GetProperty("durationMinutes").GetInt32());
     }
 
     [Fact]
@@ -402,7 +456,7 @@ public class TeamEndpointsTests(PostgresFixture postgres)
         using var body = await GetJsonAsync(factory.CreateClientFor(scenario.Marta.Id, "Manager"), TimeEntries);
 
         var item = Assert.Single(body.RootElement.GetProperty("items").EnumerateArray());
-        Assert.Equal(40, item.GetProperty("workedMinutes").GetInt32());
+        Assert.Equal(40, item.GetProperty("durationMinutes").GetInt32());
     }
 
     [Fact]
@@ -419,7 +473,7 @@ public class TeamEndpointsTests(PostgresFixture postgres)
             $"{TimeEntries}?memberId={scenario.Ana.Id}&employeeId={scenario.Ana.Id}");
 
         var item = Assert.Single(body.RootElement.GetProperty("items").EnumerateArray());
-        Assert.Equal(10, item.GetProperty("workedMinutes").GetInt32());
+        Assert.Equal(10, item.GetProperty("durationMinutes").GetInt32());
     }
 
     [Fact]

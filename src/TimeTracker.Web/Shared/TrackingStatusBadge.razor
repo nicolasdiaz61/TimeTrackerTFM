@@ -1,0 +1,19 @@
+@using TimeTracker.Web.Formatting
+
+<p class="tracking-status mb-3">
+    Estado actual:
+    <span class="badge fs-6 @CssClass" data-testid="tracking-status">@TimeEntryPresentation.StatusLabel(Status)</span>
+</p>
+
+@code {
+    [Parameter, EditorRequired]
+    public string Status { get; set; } = default!;
+
+    private string CssClass => Status switch
+    {
+        "Working" => "text-bg-success",
+        "OnBreak" => "text-bg-warning",
+        "OnMealBreak" => "text-bg-info",
+        _ => "text-bg-secondary",
+    };
+}

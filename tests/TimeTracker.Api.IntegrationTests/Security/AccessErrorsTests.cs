@@ -149,5 +149,8 @@ public class AccessErrorsTests(PostgresFixture postgres)
 
         public Task UpdateAsync(TimeEntry entry, CancellationToken cancellationToken)
             => throw new InvalidOperationException("texto-sensible");
+
+        public Task ReplaceOpenAsync(TimeEntry closed, TimeEntry next, CancellationToken cancellationToken)
+            => throw new InvalidOperationException("texto-sensible");
     }
 }

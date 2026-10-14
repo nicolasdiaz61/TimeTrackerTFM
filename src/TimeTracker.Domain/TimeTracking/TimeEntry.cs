@@ -1,18 +1,20 @@
 namespace TimeTracker.Domain.TimeTracking;
 
 /// <summary>
-/// Fichaje de un empleado: una entrada y, cuando se cierra, una salida.
+/// Intervalo de un empleado: un inicio y, cuando se cierra, un fin, de un tipo (<see cref="TimeEntryType"/>).
 /// </summary>
 /// <remarks>
 /// Recibe instantes y nunca lee el reloj. El constructor privado con parámetros lo usan tanto
-/// <see cref="Start"/> como EF Core (enlace por constructor).
+/// <see cref="Start"/> como EF Core (enlace por constructor). Un empleado tiene como máximo un intervalo
+/// abierto: <see cref="Pause"/> y <see cref="Resume"/> cierran el actual y devuelven el siguiente.
 /// </remarks>
 public sealed class TimeEntry
 {
-    private TimeEntry(Guid id, Guid employeeId, DateTimeOffset clockInAt, DateTimeOffset? clockOutAt)
+    private TimeEntry(Guid id, Guid employeeId, TimeEntryType type, DateTimeOffset clockInAt, DateTimeOffset? clockOutAt)
     {
         Id = id;
         EmployeeId = employeeId;
+        Type = type;
         ClockInAt = clockInAt;
         ClockOutAt = clockOutAt;
     }
@@ -20,6 +22,8 @@ public sealed class TimeEntry
     public Guid Id { get; }
 
     public Guid EmployeeId { get; }
+
+    public TimeEntryType Type { get; }
 
     public DateTimeOffset ClockInAt { get; }
 
@@ -43,19 +47,59 @@ public sealed class TimeEntry
         ClockOutAt = truncated;
     }
 
+    /// <summary>Cierra un intervalo de trabajo y devuelve la pausa (<c>Break</c> o <c>MealBreak</c>) que empieza en <paramref name="at"/>.</summary>
+    public TimeEntry Pause(TimeEntryType breakType, DateTimeOffset at)
+    {
+        if (Type != TimeEntryType.Work)
+        {
+            throw new NotWorkingException();
+        }
+
+        if (breakType is not (TimeEntryType.Break or TimeEntryType.MealBreak))
+        {
+            throw new ArgumentOutOfRangeException(nameof(breakType), breakType, "El tipo de pausa debe ser Break o MealBreak.");
+        }
+
+        return CloseAndStartNext(breakType, at);
+    }
+
+    /// <summary>Cierra una pausa y devuelve el intervalo de trabajo que empieza en <paramref name="at"/>.</summary>
+    public TimeEntry Resume(DateTimeOffset at)
+    {
+        if (Type == TimeEntryType.Work)
+        {
+            throw new NoOpenBreakException();
+        }
+
+        return CloseAndStartNext(TimeEntryType.Work, at);
+    }
+
+    // Duración de cualquier tipo; que cuente como trabajo o como pausa lo decide el tipo.
     // El cast a int trunca (nunca redondea); `checked` evita desbordes silenciosos.
-    public WorkedHours? CalculateWorked()
+    public WorkedHours? CalculateDuration()
         => IsOpen ? null : WorkedHours.FromMinutes(checked((int)(ClockOutAt!.Value - ClockInAt).TotalMinutes));
 
-    public static TimeEntry Start(Guid employeeId, DateTimeOffset at)
+    public static TimeEntry Start(Guid employeeId, TimeEntryType type, DateTimeOffset at)
     {
         if (employeeId == Guid.Empty)
         {
             throw new ArgumentException("El identificador del empleado no puede estar vacío.", nameof(employeeId));
         }
 
+        if (!Enum.IsDefined(type))
+        {
+            throw new ArgumentOutOfRangeException(nameof(type), type, "El tipo de intervalo no está definido.");
+        }
+
         var truncated = ToUtcSeconds(at, nameof(at));
-        return new(Guid.CreateVersion7(truncated), employeeId, truncated, null);
+        return new(Guid.CreateVersion7(truncated), employeeId, type, truncated, null);
+    }
+
+    // El siguiente intervalo empieza justo donde acaba este (ya truncado), sin hueco ni solape.
+    private TimeEntry CloseAndStartNext(TimeEntryType nextType, DateTimeOffset at)
+    {
+        Close(at);
+        return Start(EmployeeId, nextType, ClockOutAt!.Value);
     }
 
     // `timestamptz` guarda microsegundos: truncar a segundos enteros evita que el valor en memoria

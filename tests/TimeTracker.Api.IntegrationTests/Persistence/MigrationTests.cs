@@ -33,7 +33,7 @@ public class MigrationTests(PostgresFixture postgres)
     }
 
     [Fact]
-    public async Task Migrate_OnEmptyDatabase_AppliesInitialAndAddUsersInOrder()
+    public async Task Migrate_OnEmptyDatabase_AppliesMigrationsInOrder()
     {
         var connectionString = await postgres.CreateEmptyDatabaseAsync();
         await using (var context = postgres.CreateContext(connectionString))
@@ -44,9 +44,10 @@ public class MigrationTests(PostgresFixture postgres)
         var migrations = await QueryAsync(connectionString, "SELECT \"MigrationId\" FROM \"__EFMigrationsHistory\" ORDER BY \"MigrationId\"");
         var tables = await QueryAsync(connectionString, "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public'");
 
-        Assert.Equal(2, migrations.Count);
+        Assert.Equal(3, migrations.Count);
         Assert.Contains(migrations, migration => migration.EndsWith("_InitialTimeEntries", StringComparison.Ordinal));
         Assert.EndsWith("_AddUsers", migrations[1], StringComparison.Ordinal);
+        Assert.EndsWith("_AddTimeEntryType", migrations[2], StringComparison.Ordinal);
         Assert.Contains("time_entries", tables);
         Assert.Contains("users", tables);
     }
@@ -77,6 +78,85 @@ public class MigrationTests(PostgresFixture postgres)
     }
 
     [Fact]
+    public async Task AddTimeEntryType_OnDatabaseWithOldEntries_KeepsThemAsWork()
+    {
+        var connectionString = await postgres.CreateEmptyDatabaseAsync();
+        var employeeId = Guid.NewGuid();
+        var closedId = Guid.NewGuid();
+        var openId = Guid.NewGuid();
+        await using (var context = postgres.CreateContext(connectionString))
+        {
+            await MigrateToAsync(context, "_AddUsers");
+            await ExecuteAsync(
+                connectionString,
+                $"INSERT INTO time_entries (id, employee_id, clock_in_at, clock_out_at) VALUES ('{closedId}', '{employeeId}', '2026-10-12T08:00:00Z', '2026-10-12T16:00:00Z'), ('{openId}', '{employeeId}', '2026-10-13T08:00:00Z', NULL)");
+
+            await context.Database.MigrateAsync(CancellationToken.None);
+        }
+
+        var rows = await QueryAsync(
+            connectionString,
+            "SELECT id || '|' || employee_id || '|' || to_char(clock_in_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS') || '|' || COALESCE(to_char(clock_out_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS'), 'null') || '|' || type FROM time_entries ORDER BY clock_in_at");
+
+        Assert.Equal(
+            [
+                $"{closedId}|{employeeId}|2026-10-12T08:00:00|2026-10-12T16:00:00|Work",
+                $"{openId}|{employeeId}|2026-10-13T08:00:00|null|Work",
+            ],
+            rows);
+    }
+
+    [Fact]
+    public async Task AddTimeEntryType_Down_RemovesColumnAndConstraintKeepingRows()
+    {
+        var connectionString = await postgres.CreateEmptyDatabaseAsync();
+        var entryId = Guid.NewGuid();
+        await using (var context = postgres.CreateContext(connectionString))
+        {
+            await context.Database.MigrateAsync(CancellationToken.None);
+            await ExecuteAsync(
+                connectionString,
+                $"INSERT INTO time_entries (id, employee_id, clock_in_at, clock_out_at, type) VALUES ('{entryId}', '{Guid.NewGuid()}', '2026-10-12T08:00:00Z', '2026-10-12T09:00:00Z', 'Break')");
+
+            await MigrateToAsync(context, "_AddUsers");
+        }
+
+        var columns = await QueryAsync(connectionString, "SELECT column_name FROM information_schema.columns WHERE table_name = 'time_entries'");
+        var checks = await QueryAsync(connectionString, "SELECT conname FROM pg_constraint WHERE contype = 'c'");
+        var ids = await QueryAsync(connectionString, "SELECT id::text FROM time_entries");
+
+        Assert.DoesNotContain("type", columns);
+        Assert.DoesNotContain("ck_time_entries_type", checks);
+        Assert.Equal([entryId.ToString()], ids);
+    }
+
+    [Fact]
+    public async Task Check_RejectsUnknownType()
+    {
+        var error = await Assert.ThrowsAsync<PostgresException>(() => InsertAsync(Guid.NewGuid(), "2026-10-12T08:00:00Z", "2026-10-12T09:00:00Z", "Vacaciones"));
+
+        Assert.Equal("ck_time_entries_type", error.ConstraintName);
+    }
+
+    [Theory]
+    [InlineData("Work")]
+    [InlineData("Break")]
+    [InlineData("MealBreak")]
+    public async Task Check_AcceptsEachKnownType(string type)
+        => await InsertAsync(Guid.NewGuid(), "2026-10-12T08:00:00Z", "2026-10-12T09:00:00Z", type);
+
+    [Fact]
+    public async Task Insert_WithoutType_DefaultsToWork()
+    {
+        var employeeId = Guid.NewGuid();
+        await InsertAsync(employeeId, "2026-10-12T08:00:00Z", "2026-10-12T09:00:00Z");
+
+        var types = await QueryAsync(postgres.ConnectionString, $"SELECT type FROM time_entries WHERE employee_id = '{employeeId}'");
+
+        Assert.Equal(["Work"], types);
+    }
+
+    [Fact]
     public async Task Model_HasNoPendingChanges()
     {
         await using var context = postgres.CreateContext(postgres.ConnectionString);
@@ -96,15 +176,16 @@ public class MigrationTests(PostgresFixture postgres)
         Assert.Contains("employee_id:uuid:NO", columns);
         Assert.Contains("clock_in_at:timestamp with time zone:NO", columns);
         Assert.Contains("clock_out_at:timestamp with time zone:YES", columns);
+        Assert.Contains("type:character varying:NO", columns);
     }
 
     [Fact]
-    public async Task Columns_AreExactlyFour()
+    public async Task Columns_AreExactlyFive()
     {
         var columns = await QueryAsync(postgres.ConnectionString, "SELECT column_name FROM information_schema.columns WHERE table_name = 'time_entries'");
 
-        // Sin columnas de concurrencia (xmin diferida, DD-9): el modelo no añade nada más.
-        Assert.Equal(["clock_in_at", "clock_out_at", "employee_id", "id"], columns.Order(StringComparer.Ordinal));
+        // El token de concurrencia es la columna de sistema xmin: no aparece entre las columnas del esquema.
+        Assert.Equal(["clock_in_at", "clock_out_at", "employee_id", "id", "type"], columns.Order(StringComparer.Ordinal));
     }
 
     [Fact]
@@ -148,18 +229,31 @@ public class MigrationTests(PostgresFixture postgres)
         await InsertAsync(employeeId, "2026-10-13T08:00:00Z", null);
     }
 
-    private async Task InsertAsync(Guid employeeId, string clockInAt, string? clockOutAt)
+    private async Task InsertAsync(Guid employeeId, string clockInAt, string? clockOutAt, string? type = null)
     {
         await using var connection = new NpgsqlConnection(postgres.ConnectionString);
         await connection.OpenAsync(CancellationToken.None);
         await using var command = new NpgsqlCommand(
-            "INSERT INTO time_entries (id, employee_id, clock_in_at, clock_out_at) VALUES (@id, @employee, @in, @out)",
+            type is null
+                ? "INSERT INTO time_entries (id, employee_id, clock_in_at, clock_out_at) VALUES (@id, @employee, @in, @out)"
+                : "INSERT INTO time_entries (id, employee_id, clock_in_at, clock_out_at, type) VALUES (@id, @employee, @in, @out, @type)",
             connection);
         command.Parameters.AddWithValue("id", Guid.NewGuid());
         command.Parameters.AddWithValue("employee", employeeId);
         command.Parameters.AddWithValue("in", DateTimeOffset.Parse(clockInAt, System.Globalization.CultureInfo.InvariantCulture));
         command.Parameters.AddWithValue("out", clockOutAt is null ? DBNull.Value : DateTimeOffset.Parse(clockOutAt, System.Globalization.CultureInfo.InvariantCulture));
+        if (type is not null)
+        {
+            command.Parameters.AddWithValue("type", type);
+        }
+
         await command.ExecuteNonQueryAsync(CancellationToken.None);
+    }
+
+    private static Task MigrateToAsync(DbContext context, string migrationSuffix)
+    {
+        var target = context.GetService<IMigrationsAssembly>().Migrations.Keys.Single(id => id.EndsWith(migrationSuffix, StringComparison.Ordinal));
+        return context.GetService<IMigrator>().MigrateAsync(target, CancellationToken.None);
     }
 
     private static async Task ExecuteAsync(string connectionString, string sql)

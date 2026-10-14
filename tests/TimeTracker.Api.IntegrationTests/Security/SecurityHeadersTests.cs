@@ -115,5 +115,8 @@ public class SecurityHeadersTests
 
         public Task UpdateAsync(TimeEntry entry, CancellationToken cancellationToken)
             => throw new InvalidOperationException("texto-sensible");
+
+        public Task ReplaceOpenAsync(TimeEntry closed, TimeEntry next, CancellationToken cancellationToken)
+            => throw new InvalidOperationException("texto-sensible");
     }
 }

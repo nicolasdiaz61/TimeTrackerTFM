@@ -1,5 +1,6 @@
 using TimeTracker.Application.Team;
 using TimeTracker.Application.Tests.Fakes;
+using TimeTracker.Application.TimeTracking;
 using TimeTracker.Domain.TimeTracking;
 using TimeTracker.Domain.Users;
 
@@ -22,7 +23,7 @@ public class GetTeamMemberTimeEntriesUseCaseTests
 
     private TimeEntry SeedClosed(Guid employeeId, DateTimeOffset clockIn, int minutes)
     {
-        var entry = TimeEntry.Start(employeeId, clockIn);
+        var entry = TimeEntry.Start(employeeId, TimeEntryType.Work, clockIn);
         entry.Close(clockIn.AddMinutes(minutes));
         _entries.Seed(entry);
         return entry;
@@ -34,7 +35,7 @@ public class GetTeamMemberTimeEntriesUseCaseTests
         _users.Seed(NewUser(LuisId, "Luis Empleado", UserRole.Employee, MartaId));
         SeedClosed(LuisId, EightAm, 60);
         SeedClosed(LuisId, EightAm.AddHours(2), 30);
-        var open = TimeEntry.Start(LuisId, EightAm.AddHours(4));
+        var open = TimeEntry.Start(LuisId, TimeEntryType.Work, EightAm.AddHours(4));
         _entries.Seed(open);
 
         var result = await CreateUseCase().ExecuteAsync(LuisId, CancellationToken.None);
@@ -42,7 +43,27 @@ public class GetTeamMemberTimeEntriesUseCaseTests
         Assert.NotNull(result);
         Assert.Equal(90, result.TotalWorkedMinutes);
         Assert.Equal(3, result.Items.Count);
-        Assert.Null(result.Items.Single(item => item.Id == open.Id).WorkedMinutes);
+        Assert.Null(result.Items.Single(item => item.Id == open.Id).DurationMinutes);
+    }
+
+    [Fact]
+    public async Task Get_ForADirectReport_IncludesBreaksTotalsAndStatus()
+    {
+        _users.Seed(NewUser(LuisId, "Luis Empleado", UserRole.Employee, MartaId));
+        SeedClosed(LuisId, EightAm, 60);
+        var pause = TimeEntry.Start(LuisId, TimeEntryType.Break, EightAm.AddHours(1));
+        pause.Close(EightAm.AddHours(1).AddMinutes(15));
+        _entries.Seed(pause);
+        _entries.Seed(TimeEntry.Start(LuisId, TimeEntryType.MealBreak, EightAm.AddHours(2)));
+
+        var result = await CreateUseCase().ExecuteAsync(LuisId, CancellationToken.None);
+
+        Assert.NotNull(result);
+        Assert.Equal(60, result.TotalWorkedMinutes);
+        Assert.Equal(15, result.TotalBreakMinutes);
+        Assert.Equal(0, result.TotalMealBreakMinutes);
+        Assert.Equal(TimeTrackingStatus.OnMealBreak, result.Status);
+        Assert.Equal([TimeEntryType.MealBreak, TimeEntryType.Break, TimeEntryType.Work], result.Items.Select(item => item.Type));
     }
 
     private static readonly Guid OtherManagerId = Guid.Parse("0197a1b2-9c3d-7e4f-8a5b-6c7d8e9f0a93");
