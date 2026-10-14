@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Define la pantalla `/fichajes` de `TimeTracker.Web` (Blazor WebAssembly), protegida por sesión, su cliente HTTP tipado (que envía el token de sesión como `Authorization: Bearer`) y el modo de presentar tiempos y errores, incluida la gestión del `401`. La sesión, el manejador del token, `/login` y `/equipo` se especifican en `web-session`. La Web solo presenta y llama a la API: no contiene reglas de negocio ni referencia a proyectos de `src/`.
+Define la pantalla `/fichajes` de `TimeTracker.Web` (Blazor WebAssembly), protegida por sesión, con el estado actual, las acciones de entrada, pausa, pausa de comida, fin de pausa y salida, el tipo de cada intervalo y los totales de trabajo, pausas y comidas, su cliente HTTP tipado (que envía el token de sesión como `Authorization: Bearer`) y el modo de presentar tiempos y errores, incluida la gestión del `401`. La sesión, el manejador del token, `/login` y `/equipo` se especifican en `web-session`. La Web solo presenta y llama a la API: no contiene reglas de negocio ni referencia a proyectos de `src/`.
 
 Verificación: sin bUnit ni E2E; los escenarios de esta capacidad se verifican manualmente en el navegador y la evidencia se registra en `verify-report.md`. Compilación y formato sí son automáticos.
 
@@ -12,17 +12,17 @@ Fuera de alcance: paginación, edición de fichajes y hora local.
 
 ### Requirement: Página /fichajes con listado y total
 
-La ruta `/fichajes` DEBE exigir una sesión iniciada; sin sesión DEBE navegar a `/login`. Con sesión, DEBE mostrar una tabla con los fichajes devueltos por `GET /api/time-entries` (entrada, salida, minutos trabajados) en el orden recibido y el total `totalWorkedMinutes` (en minutos y en formato h:mm, con «1 minuto» en singular). Sin fichajes DEBE mostrar un mensaje indicando que no hay fichajes y total `0`. La página DEBERÍA enlazarse desde el menú de navegación.
+La ruta `/fichajes` DEBE exigir una sesión iniciada; sin sesión DEBE navegar a `/login`. Con sesión, DEBE mostrar el estado actual, una tabla con los intervalos devueltos por `GET /api/time-entries` (tipo, entrada, salida, minutos) en el orden recibido y los totales `totalWorkedMinutes`, `totalBreakMinutes` y `totalMealBreakMinutes` (cada uno en minutos y en formato h:mm, con «1 minuto» en singular). Sin intervalos DEBE mostrar un mensaje indicando que no hay fichajes y totales `0`. La página DEBERÍA enlazarse desde el menú de navegación.
 
 #### Scenario: Carga inicial con datos
-- DADO una sesión de un empleado con dos fichajes cerrados y uno abierto
+- DADO una sesión de un empleado con intervalos cerrados de trabajo, pausa y comida y uno abierto
 - CUANDO se abre `/fichajes`
-- ENTONCES la tabla muestra los tres en el orden de la API y el total coincide con el valor de la API
+- ENTONCES la tabla muestra todos en el orden de la API y los tres totales coinciden con los de la API
 
 #### Scenario: Sin fichajes
-- DADO una sesión de un empleado sin fichajes
+- DADO una sesión de un empleado sin intervalos
 - CUANDO se abre `/fichajes`
-- ENTONCES aparece un mensaje de que no hay fichajes y el total es `0`
+- ENTONCES aparece un mensaje de que no hay fichajes, los totales son `0` y el estado es «Sin fichar»
 
 #### Scenario: Sin sesión
 - DADO ninguna sesión iniciada
@@ -30,37 +30,62 @@ La ruta `/fichajes` DEBE exigir una sesión iniciada; sin sesión DEBE navegar a
 - ENTONCES se navega a `/login` y no se observa ninguna petición a `/api/time-entries`
 
 #### Scenario: Solo los fichajes propios
-- DADO las sesiones de `luis` y de `ana`, cada una con sus fichajes
+- DADO las sesiones de `luis` y de `ana`, cada una con sus intervalos
 - CUANDO cada una abre `/fichajes`
-- ENTONCES cada tabla contiene únicamente los fichajes de su titular
+- ENTONCES cada tabla contiene únicamente los intervalos de su titular
 
 ### Requirement: Botones de fichaje
 
-La página DEBE ofrecer los botones «Fichar entrada» y «Fichar salida», que invocan `clock-in` y `clock-out`, y tras una respuesta correcta DEBE recargar el listado. Mientras haya una petición en curso, los botones DEBERÍAN estar deshabilitados; fuera de ese caso permanecen siempre activos, porque la decisión de si la acción es válida la toma el servidor (la Web no aplica reglas de negocio, p. ej. no oculta «Fichar entrada» si hay un fichaje abierto).
+La página DEBE mostrar únicamente las acciones válidas para el `status` recibido: `Idle` → «Fichar entrada»; `Working` → «Iniciar pausa», «Pausa de comida» y «Fichar salida»; `OnBreak` y `OnMealBreak` → «Terminar pausa» y «Fichar salida». Cada botón invoca su endpoint (`clock-in`, `start-break`, `start-meal-break`, `end-break`, `clock-out`) y tras una respuesta correcta DEBE recargar el listado y con él el estado y los botones. Mientras haya una petición en curso, los botones DEBEN estar deshabilitados. Un `409` DEBE mostrarse con el mensaje de la API y recargar el listado (el estado pudo cambiar en otra pestaña).
 
 #### Scenario: Fichar entrada
-- DADO un empleado sin fichaje abierto
-- CUANDO pulsa «Fichar entrada»
-- ENTONCES aparece una fila nueva con salida «en curso»
+- DADO un empleado sin intervalo abierto
+- CUANDO se abre `/fichajes`
+- ENTONCES solo se ve «Fichar entrada» y, al pulsarlo, aparece una fila «Trabajo» con salida «en curso» y el estado es «Trabajando»
+
+#### Scenario: Iniciar pausa
+- DADO un empleado trabajando
+- CUANDO pulsa «Iniciar pausa»
+- ENTONCES el estado es «En pausa», solo se ven «Terminar pausa» y «Fichar salida», y hay una fila «Pausa» en curso encima de una fila «Trabajo» cerrada
+
+#### Scenario: Pausa de comida
+- DADO un empleado trabajando
+- CUANDO pulsa «Pausa de comida»
+- ENTONCES el estado es «En pausa de comida» y hay una fila «Comida» en curso
+
+#### Scenario: Terminar pausa
+- DADO un empleado en pausa
+- CUANDO pulsa «Terminar pausa»
+- ENTONCES el estado vuelve a «Trabajando» y hay una fila «Trabajo» en curso
 
 #### Scenario: Fichar salida
-- DADO un empleado con un fichaje abierto
+- DADO un empleado con un intervalo abierto de cualquier tipo
 - CUANDO pulsa «Fichar salida»
-- ENTONCES la fila muestra la hora de salida y los minutos trabajados, y el total se actualiza
+- ENTONCES el intervalo muestra su hora de salida y sus minutos, el estado es «Sin fichar» y solo se ve «Fichar entrada»
+
+#### Scenario: Estado obsoleto
+- DADO un empleado que pulsa «Terminar pausa» cuando otra pestaña ya la terminó
+- CUANDO el servidor responde `409`
+- ENTONCES se muestra el mensaje en español de la API y el listado se recarga con el estado real
 
 ### Requirement: Presentación de tiempos en UTC y «en curso»
 
-Las horas DEBEN mostrarse en UTC con el formato `yyyy-MM-dd HH:mm 'UTC'` con cultura invariante, es decir, con la etiqueta «UTC» junto a cada valor; NO DEBEN convertirse a hora local. Un fichaje abierto DEBE mostrar «en curso» en la salida y NO DEBE mostrar minutos trabajados ni sumar al total. Los minutos se muestran tal como los devuelve la API (truncados).
+Las horas DEBEN mostrarse en UTC con el formato `yyyy-MM-dd HH:mm 'UTC'` con cultura invariante, es decir, con la etiqueta «UTC» junto a cada valor; NO DEBEN convertirse a hora local. Un intervalo abierto DEBE mostrar «en curso» en la salida y NO DEBE mostrar minutos ni sumar a ningún total. Los minutos se muestran tal como los devuelve la API (truncados). La columna «Tipo» DEBE mostrar «Trabajo» para `Work`, «Pausa» para `Break` y «Comida» para `MealBreak`; un valor desconocido se muestra tal cual, sin romper la tabla.
 
 #### Scenario: Hora etiquetada
-- DADO un fichaje con `clockInAt` = `2026-10-12T08:00:00Z`
+- DADO un intervalo con `clockInAt` = `2026-10-12T08:00:00Z`
 - CUANDO se muestra en la tabla
 - ENTONCES se lee `2026-10-12 08:00 UTC`, sin desplazamiento de zona
 
-#### Scenario: Fichaje en curso
-- DADO un fichaje abierto
+#### Scenario: Intervalo en curso
+- DADO un intervalo abierto
 - CUANDO se muestra en la tabla
-- ENTONCES su salida dice «en curso», sin minutos, y el total no lo incluye
+- ENTONCES su salida dice «en curso», sin minutos, y ningún total lo incluye
+
+#### Scenario: Etiquetas de tipo
+- DADO intervalos de tipo `Work`, `Break` y `MealBreak`
+- CUANDO se muestran en la tabla
+- ENTONCES la columna «Tipo» dice «Trabajo», «Pausa» y «Comida»
 
 ### Requirement: Mensajes de error en español
 
@@ -114,3 +139,12 @@ La Web DEBE acceder a la API mediante `TimeEntriesApiClient` tipado, con la URL 
 - DADO la API (en `Development`, con `ConnectionStrings__Default`, `Jwt__SigningKey`, `Seed__DemoUsers=true`, `Seed__DemoPassword` y `Database__ApplyMigrationsOnStartup=true`, o con `docker compose up`) y la Web en marcha, y el origen de la Web (p. ej. `Cors__AllowedOrigins__0=http://localhost:5172`) permitido en `Cors:AllowedOrigins`
 - CUANDO se inicia sesión con un usuario de demostración y se ficha entrada, salida y se revisa el total en `/fichajes`
 - ENTONCES el flujo funciona sin errores de CORS (incluidos los POST, ahora con cabecera `Authorization`) y se registra en `verify-report.md`
+
+### Requirement: Totales de trabajo y de pausas
+
+Bajo la tabla DEBE mostrarse «Total trabajado», «Total en pausas» y «Total en comidas», cada uno con el formato `WorkedTimeFormatter.FormatTotal` («1 minuto (0:01)», «90 minutos (1:30)»). El estado se muestra con texto en español («Sin fichar», «Trabajando», «En pausa», «En pausa de comida»).
+
+#### Scenario: Plurales correctos
+- DADO totales de `1`, `0` y `90` minutos
+- CUANDO se muestran
+- ENTONCES se leen «1 minuto (0:01)», «0 minutos (0:00)» y «90 minutos (1:30)»

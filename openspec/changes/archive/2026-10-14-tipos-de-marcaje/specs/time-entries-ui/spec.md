@@ -83,6 +83,8 @@ Las horas DEBEN mostrarse en UTC con el formato `yyyy-MM-dd HH:mm 'UTC'` con cul
 - CUANDO se muestran en la tabla
 - ENTONCES la columna «Tipo» dice «Trabajo», «Pausa» y «Comida»
 
+## ADDED Requirements
+
 ### Requirement: Totales de trabajo y de pausas
 
 Bajo la tabla DEBE mostrarse «Total trabajado», «Total en pausas» y «Total en comidas», cada uno con el formato `WorkedTimeFormatter.FormatTotal` («1 minuto (0:01)», «90 minutos (1:30)»). El estado se muestra con texto en español («Sin fichar», «Trabajando», «En pausa», «En pausa de comida»).
