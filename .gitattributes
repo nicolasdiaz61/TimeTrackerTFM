@@ -1,0 +1,6 @@
+* text=auto
+
+# Binarios
+*.png binary
+*.ico binary
+*.woff2 binary

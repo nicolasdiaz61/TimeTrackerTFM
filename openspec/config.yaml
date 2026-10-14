@@ -1,0 +1,83 @@
+# openspec/config.yaml — TimeTracker
+schema: spec-driven
+language: es   # Todos los artefactos SDD se redactan en español (registro neutro y profesional)
+strict_tdd: true
+
+context: |
+  Proyecto: TimeTracker, control de tiempos y ausencias (fichajes, ausencias, saldo de horas, horas extra) con asistente de IA en lenguaje natural. Proyecto nuevo (greenfield).
+  Stack previsto: Blazor WebAssembly (proyecto independiente) + ASP.NET Core Web API (.NET 10 SDK 10.0.302 disponible; también 8.0.425), PostgreSQL + EF Core.
+  Arquitectura: monolito modular con Clean Architecture (Domain, Application, Infrastructure, Api); Api es el composition root; el frontend no contiene reglas de negocio.
+  IA: IChatClient (Microsoft.Extensions.AI); proveedor y modelo por configuración (Ai:Provider, Ai:Model, Ai:Endpoint); solo herramientas de solo lectura por defecto.
+  Pruebas: xUnit, TDD rojo-verde-refactor; dobles falsos de IChatClient; cobertura dominio 100 %, aplicación >= 80 %, infraestructura sin umbral. Las pruebas de integración usan PostgreSQL real con Testcontainers (postgres:18-alpine) y requieren Docker en marcha.
+  Estilo: analizadores con TreatWarningsAsErrors y dotnet format; OpenAPI como contrato; ADR en docs/adr/; Docker y GitHub Actions.
+  Idioma: documentación, commits y textos de usuario en español; identificadores de código en inglés. Convenciones completas en AGENTS.md.
+  Estado: esqueleto de la solución creado (cambio esqueleto-solucion), primer flujo de negocio implementado (cambio fichaje-extremo-a-extremo: fichar entrada y salida, PostgreSQL con EF Core, página /fichajes en la Web; ADR 0008-0010) y autenticación implementada (cambio autenticacion-y-roles: JWT propio de 30 min sin refresh token, roles Employee/Manager, equipo = reportes directos vía ManagerId, páginas /login y /equipo, siembra de usuarios de demostración desactivada por defecto; sin identidad provisional; ADR 0011-0012 y el 0009 sustituido; compose en el puerto 5274). Hasta aquí: ADR 0008-0012 vigentes. Control de concurrencia de la salida diferido (riesgo residual aceptado). La CI no se ha ejecutado: aún no hay repositorio Git ni remoto. Pruebas con xUnit v2 sobre VSTest.
+
+rules:
+  proposal:
+    - Redactar en español (registro neutro y profesional); los identificadores de código permanecen en inglés
+    - Incluir plan de reversión (rollback) en los cambios riesgosos
+    - Registrar en un ADR (docs/adr/) toda decisión arquitectónica relevante
+  specs:
+    - Redactar en español (registro neutro y profesional); los identificadores de código permanecen en inglés
+    - Usar Dado/Cuando/Entonces (Given/When/Then) para los escenarios
+    - Usar palabras clave RFC 2119 (DEBE, NO DEBE, DEBERÍA, PUEDE)
+    - Las reglas de cálculo de horas, ausencias y permisos deben ser verificables con criterios de aceptación
+  design:
+    - Redactar en español (registro neutro y profesional); los identificadores de código permanecen en inglés
+    - Respetar la regla de dependencias de Clean Architecture (hacia Domain)
+    - Documentar decisiones de arquitectura con su justificación y alternativas
+    - Incluir diagramas de secuencia en los flujos complejos
+    - Cualquier cambio de endpoint actualiza el contrato OpenAPI
+  tasks:
+    - Redactar en español (registro neutro y profesional); los identificadores de código permanecen en inglés
+    - Agrupar por fases con numeración jerárquica
+    - Cada tarea debe poder completarse en una sesión
+    - Cada tarea de implementación incluye primero su test (rojo), luego el código mínimo (verde) y el refactor
+  apply:
+    guidelines:
+      - Seguir AGENTS.md y los patrones existentes
+      - Un cambio pequeño y verificable por unidad de trabajo, con sus tests y su documentación
+      - Las pruebas unitarias nunca llaman a un modelo de IA real; usar un IChatClient falso
+    tdd: true
+    test_command: "dotnet test TimeTracker.sln -c Release --no-build --collect:\"XPlat Code Coverage\" --results-directory TestResults"   # Requiere compilar antes (build_command)
+  verify:
+    language: es
+    test_command: "dotnet test TimeTracker.sln -c Release --no-build --collect:\"XPlat Code Coverage\" --results-directory TestResults"
+    build_command: "dotnet build TimeTracker.sln -c Release --no-restore -warnaserror"   # Antes: dotnet restore TimeTracker.sln
+    coverage_threshold: 0   # Por niveles: dominio 100, aplicación 80, infraestructura sin umbral (ver testing.coverage.tiers)
+    notes:
+      - Redactar el informe de verificación en español
+      - Las pruebas de integración requieren Docker en marcha (PostgreSQL 18 con Testcontainers); sin Docker fallan, no se omiten
+      - Cobertura por niveles con dos comprobaciones tras el test: Domain 100 y Application 80 (scripts/check-coverage.ps1)
+      - La Web no tiene pruebas automáticas de interfaz (sin bUnit ni E2E); su verificación es manual y se registra en verify-report.md
+  archive:
+    - Redactar el informe de archivo en español (registro neutro y profesional)
+    - Advertir antes de fusionar deltas destructivos
+
+testing:
+  detected: 2026-10-10
+  status: available   # Actualizado al cerrar el cambio esqueleto-solucion (2026-10-11)
+  strict_tdd: true
+  runner:
+    available: true
+    command: "dotnet test TimeTracker.sln -c Release --no-build --collect:\"XPlat Code Coverage\" --results-directory TestResults"
+    framework: "xUnit v2 sobre VSTest (xUnit v3 es incompatible con VSTest en el SDK 10; ver ADR 0006)"
+  layers:
+    unit: { available: true, tool: "xUnit v2 (Domain.Tests, Application.Tests)" }
+    integration: { available: true, tool: "WebApplicationFactory + PostgreSQL real con Testcontainers.PostgreSql, imagen postgres:18-alpine (Api.IntegrationTests); requiere Docker en marcha" }
+    e2e: { available: false, tool: "por definir (pocas pruebas, solo flujos críticos)" }
+  coverage:
+    available: true
+    tool: "coverlet.collector (formato Cobertura)"
+    command: "pwsh scripts/check-coverage.ps1 -ResultsDirectory TestResults -Package TimeTracker.Domain -MinimumPercent 100"   # Tras dotnet test con --collect
+    command_application: "pwsh scripts/check-coverage.ps1 -ResultsDirectory TestResults -Package TimeTracker.Application -MinimumPercent 80"   # Tras dotnet test con --collect
+    tiers:
+      domain: 100
+      application: 80
+      infrastructure: none
+      generated: none
+  quality:
+    linter: { available: true, note: "analizadores .NET con TreatWarningsAsErrors", command: "dotnet build TimeTracker.sln -c Release --no-restore -warnaserror" }
+    type_checker: { available: true, note: "compilador C#", command: "dotnet build TimeTracker.sln" }
+    formatter: { available: true, note: "dotnet format", command: "dotnet format TimeTracker.sln --verify-no-changes --no-restore" }
