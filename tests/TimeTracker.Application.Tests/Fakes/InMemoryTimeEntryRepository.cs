@@ -5,7 +5,7 @@ namespace TimeTracker.Application.Tests.Fakes;
 
 /// <summary>
 /// Repositorio en memoria que respeta el contrato del puerto (filtra por empleado, orden descendente,
-/// límite) y registra lo que los casos de uso añaden y actualizan.
+/// límite) y registra lo que los casos de uso añaden, actualizan y reemplazan.
 /// </summary>
 internal sealed class InMemoryTimeEntryRepository : ITimeEntryRepository
 {
@@ -14,6 +14,8 @@ internal sealed class InMemoryTimeEntryRepository : ITimeEntryRepository
     public List<TimeEntry> Added { get; } = [];
 
     public List<TimeEntry> Updated { get; } = [];
+
+    public List<(TimeEntry Closed, TimeEntry Next)> Replaced { get; } = [];
 
     public IReadOnlyList<TimeEntry> Entries => _entries;
 
@@ -48,6 +50,13 @@ internal sealed class InMemoryTimeEntryRepository : ITimeEntryRepository
     public Task UpdateAsync(TimeEntry entry, CancellationToken cancellationToken)
     {
         Updated.Add(entry);
+        return Task.CompletedTask;
+    }
+
+    public Task ReplaceOpenAsync(TimeEntry closed, TimeEntry next, CancellationToken cancellationToken)
+    {
+        _entries.Add(next);
+        Replaced.Add((closed, next));
         return Task.CompletedTask;
     }
 }

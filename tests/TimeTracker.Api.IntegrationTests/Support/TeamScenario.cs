@@ -28,7 +28,7 @@ internal sealed record TeamScenario(UserAccount Marta, UserAccount Luis, UserAcc
     /// <summary>Inserta un fichaje; con <paramref name="minutes"/> nulo queda abierto.</summary>
     public static async Task AddEntryAsync(PostgresFixture postgres, Guid employeeId, DateTimeOffset at, int? minutes)
     {
-        var entry = TimeEntry.Start(employeeId, at);
+        var entry = TimeEntry.Start(employeeId, TimeEntryType.Work, at);
         if (minutes is { } worked)
         {
             entry.Close(at.AddMinutes(worked));

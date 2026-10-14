@@ -15,7 +15,7 @@ public class TimeEntryRepositoryTests(PostgresFixture postgres)
     [Fact]
     public async Task AddAsync_ThenReadWithNewContext_KeepsUtcInstant()
     {
-        var entry = TimeEntry.Start(Guid.NewGuid(), EightAm);
+        var entry = TimeEntry.Start(Guid.NewGuid(), TimeEntryType.Work, EightAm);
         await AddAsync(entry);
 
         var read = await FindOpenAsync(entry.EmployeeId);
@@ -30,7 +30,7 @@ public class TimeEntryRepositoryTests(PostgresFixture postgres)
     [Fact]
     public async Task FindOpenAsync_IgnoresOtherEmployeesOpenEntry()
     {
-        await AddAsync(TimeEntry.Start(Guid.NewGuid(), EightAm));
+        await AddAsync(TimeEntry.Start(Guid.NewGuid(), TimeEntryType.Work, EightAm));
 
         Assert.Null(await FindOpenAsync(Guid.NewGuid()));
     }
@@ -63,9 +63,9 @@ public class TimeEntryRepositoryTests(PostgresFixture postgres)
     public async Task AddAsync_SecondOpenEntry_ThrowsOpenTimeEntryAlreadyExists()
     {
         var employeeId = Guid.NewGuid();
-        await AddAsync(TimeEntry.Start(employeeId, EightAm));
+        await AddAsync(TimeEntry.Start(employeeId, TimeEntryType.Work, EightAm));
 
-        await Assert.ThrowsAsync<OpenTimeEntryAlreadyExistsException>(() => AddAsync(TimeEntry.Start(employeeId, EightAm.AddHours(1))));
+        await Assert.ThrowsAsync<OpenTimeEntryAlreadyExistsException>(() => AddAsync(TimeEntry.Start(employeeId, TimeEntryType.Work, EightAm.AddHours(1))));
     }
 
     [Fact]
@@ -83,16 +83,16 @@ public class TimeEntryRepositoryTests(PostgresFixture postgres)
     [Fact]
     public async Task AddAsync_OpenEntriesOfDifferentEmployees_AreAllowed()
     {
-        await AddAsync(TimeEntry.Start(Guid.NewGuid(), EightAm));
+        await AddAsync(TimeEntry.Start(Guid.NewGuid(), TimeEntryType.Work, EightAm));
 
-        await AddAsync(TimeEntry.Start(Guid.NewGuid(), EightAm));
+        await AddAsync(TimeEntry.Start(Guid.NewGuid(), TimeEntryType.Work, EightAm));
     }
 
     [Fact]
     public async Task UpdateAsync_PersistsClosedEntry()
     {
         var employeeId = Guid.NewGuid();
-        await AddAsync(TimeEntry.Start(employeeId, EightAm));
+        await AddAsync(TimeEntry.Start(employeeId, TimeEntryType.Work, EightAm));
 
         await using (var context = postgres.CreateContext(postgres.ConnectionString))
         {
@@ -117,7 +117,7 @@ public class TimeEntryRepositoryTests(PostgresFixture postgres)
         {
             try
             {
-                await AddAsync(TimeEntry.Start(employeeId, EightAm.AddSeconds(index)));
+                await AddAsync(TimeEntry.Start(employeeId, TimeEntryType.Work, EightAm.AddSeconds(index)));
                 return true;
             }
             catch (OpenTimeEntryAlreadyExistsException)
@@ -136,7 +136,7 @@ public class TimeEntryRepositoryTests(PostgresFixture postgres)
 
     private static TimeEntry ClosedEntry(Guid employeeId, DateTimeOffset clockInAt)
     {
-        var entry = TimeEntry.Start(employeeId, clockInAt);
+        var entry = TimeEntry.Start(employeeId, TimeEntryType.Work, clockInAt);
         entry.Close(clockInAt.AddMinutes(30));
         return entry;
     }

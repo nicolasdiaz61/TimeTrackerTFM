@@ -13,7 +13,7 @@ public sealed class ClockInUseCase(ITimeEntryRepository repository, ICurrentUser
             throw new OpenTimeEntryAlreadyExistsException();
         }
 
-        var entry = TimeEntry.Start(currentUser.EmployeeId, timeProvider.GetUtcNow());
+        var entry = TimeEntry.Start(currentUser.EmployeeId, TimeEntryType.Work, timeProvider.GetUtcNow());
         await repository.AddAsync(entry, cancellationToken);
         return TimeEntryResult.From(entry);
     }
