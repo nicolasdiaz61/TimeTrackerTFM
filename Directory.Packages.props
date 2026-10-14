@@ -1,0 +1,32 @@
+<Project>
+
+  <PropertyGroup>
+    <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Versiones comprobadas con `dotnet package search` el 2026-10-11 (V1). -->
+    <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="18.10.1" />
+    <PackageVersion Include="xunit" Version="2.9.3" />
+    <PackageVersion Include="xunit.runner.visualstudio" Version="3.1.5" />
+    <PackageVersion Include="coverlet.collector" Version="10.1.0" />
+    <PackageVersion Include="Microsoft.AspNetCore.Mvc.Testing" Version="10.0.10" />
+    <PackageVersion Include="Microsoft.AspNetCore.OpenApi" Version="10.0.10" />
+    <PackageVersion Include="Microsoft.Extensions.ApiDescription.Server" Version="10.0.10" />
+    <!-- Eleva la dependencia transitiva de Microsoft.AspNetCore.OpenApi (2.0.0, GHSA-v5pm-xwqc-g5wc, NU1903) a una versión corregida. -->
+    <PackageVersion Include="Microsoft.OpenApi" Version="2.7.6" />
+    <!-- Versión comprobada con `dotnet package search` el 2026-10-12 (V1, fichaje-extremo-a-extremo). -->
+    <PackageVersion Include="Microsoft.Extensions.TimeProvider.Testing" Version="10.10.0" />
+    <!-- Versiones comprobadas con `dotnet package search` el 2026-10-12 (V1, fichaje-extremo-a-extremo). Relational eleva toda la familia EF (V4). -->
+    <PackageVersion Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.3" />
+    <PackageVersion Include="Microsoft.EntityFrameworkCore.Relational" Version="10.0.12" />
+    <PackageVersion Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.12" />
+    <PackageVersion Include="Testcontainers.PostgreSql" Version="4.16.0" />
+    <PackageVersion Include="Microsoft.AspNetCore.Components.WebAssembly" Version="10.0.10" />
+    <PackageVersion Include="Microsoft.AspNetCore.Components.WebAssembly.DevServer" Version="10.0.10" />
+    <!-- Versiones comprobadas con `dotnet package search` el 2026-10-13 (V1, V2, autenticacion-y-roles); respaldo 10.0.12. -->
+    <PackageVersion Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="10.0.10" />
+    <PackageVersion Include="Microsoft.AspNetCore.Components.Authorization" Version="10.0.10" />
+  </ItemGroup>
+
+</Project>
