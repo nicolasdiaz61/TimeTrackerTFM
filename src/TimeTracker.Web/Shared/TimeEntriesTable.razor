@@ -23,8 +23,8 @@ else
                 {
                     <tr>
                         <td>@TimeEntryPresentation.TypeLabel(entry.Type)</td>
-                        <td>@FormatUtc(entry.ClockInAt)</td>
-                        <td>@(entry.ClockOutAt is { } clockOut ? FormatUtc(clockOut) : "en curso")</td>
+                        <td>@Utc(entry.ClockInAt)</td>
+                        <td>@if (entry.ClockOutAt is { } clockOut) { @Utc(clockOut) } else { <text>en curso</text> }</td>
                         <td>@(entry.DurationMinutes?.ToString(CultureInfo.InvariantCulture))</td>
                     </tr>
                 }
@@ -42,6 +42,21 @@ else
 @code {
     [Parameter, EditorRequired]
     public TimeEntryListDto List { get; set; } = default!;
+
+    // Fecha y hora van en trozos que no se parten (en móvil la columna es estrecha); el texto sigue siendo «yyyy-MM-dd HH:mm UTC».
+    private static RenderFragment Utc(DateTimeOffset value) => builder =>
+    {
+        var parts = FormatUtc(value).Split(' ', 2);
+        builder.OpenElement(0, "span");
+        builder.AddAttribute(1, "class", "text-nowrap");
+        builder.AddContent(2, parts[0]);
+        builder.CloseElement();
+        builder.AddContent(3, " ");
+        builder.OpenElement(4, "span");
+        builder.AddAttribute(5, "class", "text-nowrap");
+        builder.AddContent(6, parts[1]);
+        builder.CloseElement();
+    };
 
     private static string FormatUtc(DateTimeOffset value)
         => value.UtcDateTime.ToString("yyyy-MM-dd HH:mm 'UTC'", CultureInfo.InvariantCulture);
