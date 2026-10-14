@@ -13,6 +13,7 @@ DocumentGeneration.ApplyPlaceholderSettings(builder.Configuration);
 // No se anuncia el servidor: la cabecera `Server` revela tecnología y versión sin aportar nada al cliente.
 builder.WebHost.ConfigureKestrel(options => options.AddServerHeader = false);
 
+builder.Services.AddForwardedHeadersBehindProxy(builder.Configuration);
 builder.Services.AddRestrictiveCors();
 builder.Services.AddDatabaseConfiguration();
 builder.Services.AddJwtAuthentication();
@@ -25,7 +26,9 @@ builder.Services.AddOpenApi(options => options.AddBearerSecurity());
 
 var app = builder.Build();
 
-// Primero de todos: las cabeceras de seguridad llegan también a los errores (DD-20).
+// Tras un proxy de confianza (opt-in): IP y esquema reales antes que nada, para el limitador por IP (DD-19).
+app.UseForwardedHeadersBehindProxy();
+// Después: las cabeceras de seguridad llegan también a los errores (DD-20).
 app.UseSecurityHeaders();
 // Antes de CORS: así los errores también pasan por la política de la API.
 app.UseExceptionHandler();
