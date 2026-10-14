@@ -1,0 +1,112 @@
+@page "/equipo"
+@attribute [Authorize(Roles = "Manager")]
+@using System.Net
+@using TimeTracker.Web.Http
+@using TimeTracker.Web.Team
+@using TimeTracker.Web.TimeEntries
+@inject TeamApiClient Api
+
+<PageTitle>Equipo</PageTitle>
+
+<h1>Equipo</h1>
+
+@if (errorMessage is not null)
+{
+    <div class="alert alert-danger" role="alert">@errorMessage</div>
+}
+
+@if (loadingMembers)
+{
+    <p><em>Cargando equipo...</em></p>
+}
+else if (members is { Count: 0 })
+{
+    <p>No tiene personas a su cargo.</p>
+}
+else if (members is not null)
+{
+    <div class="mb-3">
+        <label for="member" class="form-label">Persona</label>
+        <select id="member" class="form-select" @onchange="OnMemberChangedAsync">
+            <option value="">Seleccione una persona</option>
+            @foreach (var member in members)
+            {
+                <option value="@member.Id" selected="@(member.Id == selectedId)">@member.DisplayName</option>
+            }
+        </select>
+    </div>
+
+    @if (loadingEntries)
+    {
+        <p><em>Cargando fichajes...</em></p>
+    }
+    else if (entries is not null)
+    {
+        <TimeEntriesTable List="entries" />
+    }
+}
+
+@code {
+    private IReadOnlyList<TeamMemberDto>? members;
+    private TimeEntryListDto? entries;
+    private Guid? selectedId;
+    private string? errorMessage;
+    private bool loadingMembers = true;
+    private bool loadingEntries;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            members = (await Api.GetMembersAsync()).Items;
+        }
+        catch (ApiRequestException exception)
+        {
+            errorMessage = MessageFor(exception, forMember: false);
+        }
+        finally
+        {
+            loadingMembers = false;
+        }
+    }
+
+    private async Task OnMemberChangedAsync(ChangeEventArgs args)
+    {
+        errorMessage = null;
+        entries = null;
+        selectedId = Guid.TryParse(args.Value?.ToString(), out var id) ? id : null;
+        if (selectedId is not { } memberId)
+        {
+            return;
+        }
+
+        loadingEntries = true;
+        try
+        {
+            var result = await Api.GetTimeEntriesAsync(memberId);
+            // Si el usuario cambió de miembro mientras se cargaba, se descarta la respuesta antigua.
+            if (selectedId == memberId)
+            {
+                entries = result;
+            }
+        }
+        catch (ApiRequestException exception)
+        {
+            errorMessage = MessageFor(exception, forMember: true);
+        }
+        finally
+        {
+            loadingEntries = false;
+        }
+    }
+
+    // Un 401 lo gestiona el BearerTokenHandler (sesión cerrada y redirección): aquí no se muestra.
+    private static string? MessageFor(ApiRequestException exception, bool forMember)
+        => exception.StatusCode switch
+        {
+            HttpStatusCode.Unauthorized => null,
+            HttpStatusCode.NotFound when forMember => "Esa persona ya no forma parte de su equipo.",
+            HttpStatusCode.Forbidden => "No tiene permiso para ver este equipo.",
+            _ => exception.Message,
+        };
+}
