@@ -9,7 +9,7 @@ namespace TimeTracker.Web.Auth;
 /// Estado de autenticación a partir del payload del JWT. La firma no se valida aquí (no se puede en el navegador):
 /// solo decide qué mostrar; la API valida el token en cada petición (ADR 0012).
 /// </summary>
-public sealed class JwtAuthenticationStateProvider(TokenStore store, TimeProvider timeProvider) : AuthenticationStateProvider
+public sealed class JwtAuthenticationStateProvider(TokenStore store, TimeProvider timeProvider, SessionNotice notice) : AuthenticationStateProvider
 {
     private static readonly AuthenticationState Anonymous = new(new ClaimsPrincipal(new ClaimsIdentity()));
 
@@ -24,8 +24,9 @@ public sealed class JwtAuthenticationStateProvider(TokenStore store, TimeProvide
         var claims = TryReadClaims(token, timeProvider.GetUtcNow());
         if (claims is null)
         {
-            // Mal formado o caducado: se borra sin mostrar errores técnicos.
+            // Mal formado o caducado: se borra sin errores técnicos y /login avisa de que la sesión terminó.
             await store.ClearAsync();
+            notice.MarkExpired();
             return Anonymous;
         }
 
@@ -35,12 +36,14 @@ public sealed class JwtAuthenticationStateProvider(TokenStore store, TimeProvide
     public async Task SignInAsync(string token)
     {
         await store.SetAsync(token);
+        notice.Clear();
         NotifyAuthenticationStateChanged(GetAuthenticationStateAsync());
     }
 
     public async Task SignOutAsync()
     {
         await store.ClearAsync();
+        notice.Clear();
         NotifyAuthenticationStateChanged(Task.FromResult(Anonymous));
     }
 

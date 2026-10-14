@@ -2,7 +2,7 @@
 
 Aplicación de control de tiempos y ausencias para empresas: fichajes, ausencias, saldo de horas y horas extra, con un asistente de IA que responderá consultas en lenguaje natural sobre esos datos.
 
-> **Estado actual:** la aplicación tiene **autenticación real y roles**. Se inicia sesión en `/login` con un correo y una contraseña; un **empleado** ficha su entrada y salida en `/fichajes` y un **responsable** (rol `Manager`) además consulta los fichajes de sus reportes directos en `/equipo`. La API emite un JWT propio de 30 minutos (sin renovación) y guarda los usuarios y los fichajes en PostgreSQL con EF Core. Todavía **no** hay ausencias ni asistente de IA.
+> **Estado actual:** la aplicación tiene **autenticación real y roles**. Se inicia sesión en `/login` con un correo y una contraseña; un **empleado** ficha su entrada y salida en `/fichajes` y un **responsable** (rol `Manager`) además consulta los fichajes de sus reportes directos en `/equipo`. La API emite un JWT propio de 30 minutos (sin renovación) y guarda los usuarios y los fichajes en PostgreSQL con EF Core. La Web tiene una página de inicio en español con enlaces según la sesión y avisa en `/login` cuando la sesión ha caducado. Todavía **no** hay ausencias ni asistente de IA.
 >
 > **Aviso: usuarios de demostración.** La siembra de cuatro usuarios de prueba (contraseña pública, ver «Usuarios de prueba») está **desactivada por defecto**. No la active en un despliegue real. Ver los [ADR 0011](docs/adr/0011-autenticacion-jwt-roles-y-equipo.md) y [0012](docs/adr/0012-sesion-web-y-riesgo-xss.md). Todos los datos de ejemplo son inventados.
 
@@ -100,7 +100,7 @@ Comprobación: `Invoke-WebRequest http://localhost:5274/health` responde `200` c
 dotnet run --project src/TimeTracker.Web --launch-profile http
 ```
 
-5. Abra `http://localhost:5172/login` e inicie sesión con un usuario de prueba. Un empleado va a `/fichajes`: pulse «Fichar entrada» y «Fichar salida»; la tabla muestra las horas en UTC, «en curso» para el fichaje abierto y el total de minutos. Un responsable ve además `/equipo`, con la lista de sus reportes directos y los fichajes de cada uno. La sesión caduca a los 30 minutos y hay que volver a iniciarla. La Web toma la URL de la API de `ApiBaseUrl` en `src/TimeTracker.Web/wwwroot/appsettings.json` (por defecto `http://localhost:5274`); si falta o no es válida, la Web no arranca y lo indica.
+5. Abra `http://localhost:5172/login` e inicie sesión con un usuario de prueba. Un empleado va a `/fichajes`: pulse «Fichar entrada» y «Fichar salida»; la tabla muestra las horas en UTC, «en curso» para el fichaje abierto y el total de minutos. Un responsable ve además `/equipo`, con la lista de sus reportes directos y los fichajes de cada uno. La sesión caduca a los 30 minutos: la Web lo indica en `/login` («Su sesión ha caducado. Inicie sesión de nuevo.») y hay que volver a iniciarla. La Web toma la URL de la API de `ApiBaseUrl` en `src/TimeTracker.Web/wwwroot/appsettings.json` (por defecto `http://localhost:5274`); si falta o no es válida, la Web no arranca y lo indica.
 
 Al terminar, borre las variables de la sesión (`Remove-Item Env:ASPNETCORE_ENVIRONMENT, Env:ConnectionStrings__Default, Env:Jwt__SigningKey, Env:Database__ApplyMigrationsOnStartup, Env:Cors__AllowedOrigins__0, Env:Seed__DemoUsers, Env:Seed__DemoPassword`) y pare la base de datos con `docker compose down`.
 
@@ -158,8 +158,8 @@ src/
   TimeTracker.Application     Casos de uso (fichar, listar, iniciar sesión, equipo) y puertos. Depende de Domain.
   TimeTracker.Infrastructure  EF Core, migraciones y repositorios PostgreSQL. Depende de Application.
   TimeTracker.Api             Endpoints, autenticación JWT, autorización y composición. Depende de Application e Infrastructure.
-  TimeTracker.Web             Blazor WebAssembly (/login, /fichajes y /equipo), independiente.
-tests/                        Pruebas de Domain, Application, Api (integración con PostgreSQL) y de arquitectura.
+  TimeTracker.Web             Blazor WebAssembly (inicio, /login, /fichajes y /equipo), independiente.
+tests/                        Pruebas de Domain, Application, Web (formato y estado de sesión), Api (integración con PostgreSQL) y de arquitectura.
 docs/adr/                     Registros de decisiones de arquitectura.
 docs/api/openapi.json         Contrato OpenAPI generado (no se edita a mano).
 scripts/check-coverage.ps1    Comprobación del umbral de cobertura.
@@ -185,11 +185,11 @@ openspec/                     Especificaciones y cambios (Spec Driven Developmen
 
 ## Integración continua
 
-El flujo `.github/workflows/ci.yml` restaura, comprueba el formato, compila, prueba con cobertura (Domain al 100 % y Application al 80 %), audita paquetes vulnerables, publica y construye la imagen (sin subirla). **Pendiente:** todavía no se ha ejecutado en GitHub (el proyecto aún no tiene repositorio remoto); sus pasos se reprodujeron en local.
+El flujo `.github/workflows/ci.yml` se ejecuta en GitHub Actions en cada `push` a `main` y en cada pull request: restaura, comprueba el formato, compila, prueba con cobertura (Domain al 100 % y Application al 80 %), audita paquetes vulnerables, publica y construye la imagen (sin subirla). Sus pasos pueden reproducirse en local con los comandos de «Compilar» y «Probar».
 
 ## Enlaces y datos de demostración
 
-- Despliegue: **pendiente** (no hay URL).
+- Despliegue: **pendiente** (aún no hay URL publicada).
 - Vídeo de demostración: **pendiente**.
 - Presentación (slides): **pendiente**.
 - Usuarios de prueba: véase «Usuarios de prueba» (solo para uso local, con la siembra activada).

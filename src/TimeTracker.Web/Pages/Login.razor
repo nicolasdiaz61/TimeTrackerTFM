@@ -4,10 +4,16 @@
 @inject AuthApiClient Api
 @inject JwtAuthenticationStateProvider Authentication
 @inject NavigationManager Navigation
+@inject SessionNotice Notice
 
-<PageTitle>Iniciar sesión</PageTitle>
+<PageTitle>Iniciar sesión - TimeTracker</PageTitle>
 
 <h1>Iniciar sesión</h1>
+
+@if (sessionExpired)
+{
+    <div class="alert alert-warning" role="status">Su sesión ha caducado. Inicie sesión de nuevo.</div>
+}
 
 <EditForm Model="form" OnSubmit="SubmitAsync" FormName="login">
     <div class="mb-3">
@@ -31,9 +37,17 @@
     private readonly LoginForm form = new();
     private string? errorMessage;
     private bool busy;
+    private bool sessionExpired;
 
     [SupplyParameterFromQuery(Name = "returnUrl")]
     public string? ReturnUrlParameter { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        // Se evalúa antes el estado para que un token caducado guardado se detecte (y avise) en esta misma visita.
+        await Authentication.GetAuthenticationStateAsync();
+        sessionExpired = Notice.Consume();
+    }
 
     private async Task SubmitAsync()
     {
@@ -50,6 +64,7 @@
 
         busy = true;
         errorMessage = null;
+        sessionExpired = false;
         try
         {
             var response = await Api.LoginAsync(form.Email.Trim(), form.Password);

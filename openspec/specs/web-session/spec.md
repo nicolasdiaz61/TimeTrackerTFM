@@ -6,7 +6,7 @@ Define la sesión en `TimeTracker.Web` (Blazor WebAssembly): página `/login`, a
 
 Decisiones aceptadas (D16 a D19, Q3, Q4): token en `sessionStorage` con copia en memoria y riesgo XSS aceptado y documentado en el ADR 0012; `JwtAuthenticationStateProvider` decodifica el payload y comprueba `exp` pero no valida la firma; `BearerTokenHandler` compartido por los clientes de fichajes y de equipo (el cliente de autenticación no lo usa); roles en inglés en el código y textos de interfaz en español.
 
-Verificación: sin bUnit ni E2E; los escenarios de esta capacidad se verifican manualmente en el navegador (flujo de empleado y de responsable) y la evidencia se registra en `verify-report.md`. Solo la compilación, el formato y las pruebas de arquitectura de la Web (sin URL fija ni referencias de proyecto) son automáticos. Los escenarios que exigirían esperar 30 minutos se comprueban editando el token de `sessionStorage` con las herramientas del navegador.
+Verificación: sin bUnit ni E2E; la lógica de presentación y de estado sin interfaz (formato del total, aviso de sesión caducada, estado de autenticación) se cubre con xUnit en `TimeTracker.Web.Tests`; los escenarios de esta capacidad se verifican manualmente en el navegador (flujo de empleado y de responsable) y la evidencia se registra en `verify-report.md`. Solo la compilación, el formato y las pruebas de arquitectura de la Web (sin URL fija ni referencias de proyecto) son automáticos. Los escenarios que exigirían esperar 30 minutos se comprueban editando el token de `sessionStorage` con las herramientas del navegador.
 
 Fuera de alcance: refresh token, renovación silenciosa, «recordarme», registro, recuperación de contraseña, alta o edición de usuarios, hosting estático de la Web con CSP y la Web en compose.
 
@@ -154,12 +154,12 @@ Todas las peticiones a la API (salvo el propio login) DEBEN llevar `Authorizatio
 
 ### Requirement: Menú según el rol
 
-El menú DEBE mostrar, sin sesión, solo el enlace de inicio de sesión; con sesión, «Fichajes», el nombre del usuario y «Cerrar sesión»; y «Equipo» solo si el rol es `Manager`.
+El menú DEBE mostrar la marca «TimeTracker» y el enlace «Inicio»; sin sesión, además solo el enlace de inicio de sesión; con sesión, «Fichajes», el nombre del usuario y «Cerrar sesión»; y «Equipo» solo si el rol es `Manager`. Cada entrada DEBE llevar un icono propio (SVG en línea, sin recursos externos), el nombre del usuario y «Cerrar sesión» DEBEN alinearse con el resto de entradas, y en pantallas estrechas el menú DEBE cerrarse al elegir una entrada. La plantilla (páginas de ejemplo y enlaces externos) NO DEBE aparecer en la interfaz.
 
 #### Scenario: Sin sesión
 - DADO ninguna sesión
 - CUANDO se carga la Web
-- ENTONCES el menú muestra el enlace de inicio de sesión y no muestra «Fichajes» ni «Equipo»
+- ENTONCES el menú muestra «Inicio» y el enlace de inicio de sesión, y no muestra «Fichajes» ni «Equipo»
 
 #### Scenario: Empleado
 - DADO una sesión de `luis.empleado@example.test`
@@ -204,6 +204,34 @@ La ruta `/equipo` DEBE listar, con `GET /api/team/members`, los miembros del res
 - DADO un miembro elegido cuya relación se eliminó después de cargar la lista
 - CUANDO la API responde `404`
 - ENTONCES se muestra un mensaje en español y la pantalla sigue operativa
+
+### Requirement: Aviso de sesión caducada
+
+Cuando la sesión termina por un token caducado o por un `401` de la API y se navega a `/login`, la página DEBE mostrar un aviso en español («Su sesión ha caducado. Inicie sesión de nuevo.») sin conservarlo en la URL: el aviso viaja como estado en memoria, se muestra una sola vez y NO DEBE contener datos personales. NO DEBE aparecer en un inicio de sesión normal, ni tras el cierre voluntario de sesión, ni tras un inicio de sesión correcto. `returnUrl` y su validación contra redirecciones abiertas DEBEN conservarse.
+
+#### Scenario: Token caducado
+- DADO un token almacenado cuyo `exp` ya pasó
+- CUANDO se abre `/fichajes`
+- ENTONCES se navega a `/login?returnUrl=%2Ffichajes` y se muestra el aviso de sesión caducada
+
+#### Scenario: 401 de la API
+- DADO una sesión con la firma del token alterada
+- CUANDO la API responde `401`
+- ENTONCES se navega a `/login` con `returnUrl` y se muestra el aviso
+
+#### Scenario: Sin aviso en un acceso normal
+- DADO ninguna sesión previa, o el cierre voluntario con «Cerrar sesión»
+- CUANDO se abre `/login`
+- ENTONCES no se muestra el aviso
+
+### Requirement: Página de inicio
+
+La ruta `/` DEBE presentar TimeTracker en español: qué es la aplicación y, según la sesión, un enlace para iniciar sesión (anónimo), a «Fichajes» (con sesión) y a «Equipo» (solo el rol `Manager`). La página no encontrada DEBE estar en español con un enlace al inicio, el documento DEBE declarar `lang="es"` y su título DEBE llevar la marca «TimeTracker».
+
+#### Scenario: Inicio según la sesión
+- DADO una sesión anónima, de empleado o de responsable
+- CUANDO se abre `/`
+- ENTONCES se ofrece iniciar sesión, «Fichajes», o «Fichajes» y «Equipo», respectivamente
 
 ### Requirement: Cierre de sesión
 

@@ -12,7 +12,7 @@ Fuera de alcance: paginación, edición de fichajes y hora local.
 
 ### Requirement: Página /fichajes con listado y total
 
-La ruta `/fichajes` DEBE exigir una sesión iniciada; sin sesión DEBE navegar a `/login`. Con sesión, DEBE mostrar una tabla con los fichajes devueltos por `GET /api/time-entries` (entrada, salida, minutos trabajados) en el orden recibido y el total `totalWorkedMinutes` (en minutos y en formato h:mm). Sin fichajes DEBE mostrar un mensaje indicando que no hay fichajes y total `0`. La página DEBERÍA enlazarse desde el menú de navegación.
+La ruta `/fichajes` DEBE exigir una sesión iniciada; sin sesión DEBE navegar a `/login`. Con sesión, DEBE mostrar una tabla con los fichajes devueltos por `GET /api/time-entries` (entrada, salida, minutos trabajados) en el orden recibido y el total `totalWorkedMinutes` (en minutos y en formato h:mm, con «1 minuto» en singular). Sin fichajes DEBE mostrar un mensaje indicando que no hay fichajes y total `0`. La página DEBERÍA enlazarse desde el menú de navegación.
 
 #### Scenario: Carga inicial con datos
 - DADO una sesión de un empleado con dos fichajes cerrados y uno abierto
