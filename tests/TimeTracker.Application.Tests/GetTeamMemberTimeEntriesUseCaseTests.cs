@@ -66,7 +66,7 @@ public class GetTeamMemberTimeEntriesUseCaseTests
         Assert.Equal([TimeEntryType.MealBreak, TimeEntryType.Break, TimeEntryType.Work], result.Items.Select(item => item.Type));
     }
 
-    private static readonly Guid OtherManagerId =Guid.Parse("0197a1b2-9c3d-7e4f-8a5b-6c7d8e9f0a93");
+    private static readonly Guid OtherManagerId = Guid.Parse("0197a1b2-9c3d-7e4f-8a5b-6c7d8e9f0a93");
     private static readonly Guid ForeignMemberId = Guid.Parse("0197a1b2-ac3d-7e4f-8a5b-6c7d8e9f0aa4");
     private static readonly Guid UnmanagedId = Guid.Parse("0197a1b2-bc3d-7e4f-8a5b-6c7d8e9f0ab5");
 
