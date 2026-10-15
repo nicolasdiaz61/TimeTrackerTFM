@@ -1,0 +1,33 @@
+@using TimeTracker.Web.Calendar
+
+<nav class="month-nav" aria-label="Navegación por meses">
+    <button type="button" class="btn btn-outline-secondary" aria-label="Mes anterior" data-testid="month-prev"
+            @onclick="() => Select(Month.Previous())" disabled="@Disabled">
+        <span aria-hidden="true">&lsaquo;</span> Anterior
+    </button>
+    <h2 class="month-title" data-testid="month-label">@Month.Label</h2>
+    <button type="button" class="btn btn-outline-secondary" aria-label="Mes siguiente" data-testid="month-next"
+            @onclick="() => Select(Month.Next())" disabled="@(Disabled || !Month.CanGoNext(Current))">
+        Siguiente <span aria-hidden="true">&rsaquo;</span>
+    </button>
+    <button type="button" class="btn btn-outline-primary" aria-label="Ir al mes actual" data-testid="month-current"
+            @onclick="() => Select(Current)" disabled="@(Disabled || Month.IsCurrent(Current))">
+        Mes actual
+    </button>
+</nav>
+
+@code {
+    [Parameter, EditorRequired]
+    public MonthRef Month { get; set; }
+
+    [Parameter, EditorRequired]
+    public MonthRef Current { get; set; }
+
+    [Parameter]
+    public bool Disabled { get; set; }
+
+    [Parameter, EditorRequired]
+    public EventCallback<MonthRef> MonthChanged { get; set; }
+
+    private Task Select(MonthRef month) => MonthChanged.InvokeAsync(month);
+}

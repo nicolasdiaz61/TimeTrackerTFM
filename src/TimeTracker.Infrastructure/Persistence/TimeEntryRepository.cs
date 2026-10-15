@@ -21,6 +21,16 @@ public sealed class TimeEntryRepository(TimeTrackerDbContext context) : ITimeEnt
             .Take(limit)
             .ToListAsync(cancellationToken);
 
+    public async Task<IReadOnlyList<TimeEntry>> ListInWindowAsync(Guid employeeId, TimeWindow window, int limit, CancellationToken cancellationToken)
+        => await context.TimeEntries
+            .AsNoTracking()
+            .Where(entry => entry.EmployeeId == employeeId
+                && entry.ClockInAt < window.To
+                && (entry.ClockOutAt == null || entry.ClockOutAt > window.From))
+            .OrderByDescending(entry => entry.ClockInAt)
+            .Take(limit)
+            .ToListAsync(cancellationToken);
+
     public async Task AddAsync(TimeEntry entry, CancellationToken cancellationToken)
     {
         context.TimeEntries.Add(entry);

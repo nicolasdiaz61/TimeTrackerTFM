@@ -1,0 +1,136 @@
+@using System.Net
+@using TimeTracker.Web.Formatting
+@using TimeTracker.Web.Http
+@using TimeTracker.Web.Time
+@using TimeTracker.Web.TimeEntries
+@using TimeTracker.Web.Timeline
+@implements IDisposable
+@inject TimeEntriesApiClient Api
+@inject ILocalTimeZone Zone
+@inject TimeProvider Clock
+
+<section class="clock-player card" aria-labelledby="player-title" data-testid="clock-player">
+    <div class="card-body">
+        <h2 id="player-title" class="h5 card-title">Su jornada</h2>
+
+        @if (list is not null)
+        {
+            var snapshot = PlayerSnapshot.From(list.Items, Zone, Clock.GetUtcNow());
+
+            <p class="player-status @TimeEntryPresentation.StatusCssClass(list.Status)" role="status" data-testid="tracking-status">
+                <span class="status-dot" aria-hidden="true"></span>
+                <span class="visually-hidden">Estado actual: </span>@TimeEntryPresentation.StatusLabel(list.Status)
+            </p>
+
+            <div class="player-clocks">
+                <div class="player-clock player-clock-main">
+                    <span class="player-clock-label" id="clock-current-label">@CurrentLabel(list.Status)</span>
+                    <span class="player-clock-value" role="timer" aria-labelledby="clock-current-label" data-testid="current-timer">@DurationFormatter.Stopwatch(snapshot.CurrentSegmentSeconds)</span>
+                </div>
+                <div class="player-clock">
+                    <span class="player-clock-label" id="clock-today-label">Trabajado hoy</span>
+                    <span class="player-clock-value" role="timer" aria-labelledby="clock-today-label" data-testid="today-timer">@DurationFormatter.Stopwatch(snapshot.WorkedTodaySeconds)</span>
+                </div>
+            </div>
+
+            <div class="player-actions" role="group" aria-label="Acciones de fichaje">
+                @foreach (var action in TimeEntryPresentation.AvailableActions(list.Status))
+                {
+                    <button type="button" class="btn player-btn @TimeEntryPresentation.ActionButtonClass(action)"
+                            aria-label="@TimeEntryPresentation.ActionAriaLabel(action)" data-testid="action-@action"
+                            @onclick="() => RunAsync(action)" disabled="@busy">
+                        <ActionIcon Action="action" />
+                        <span>@TimeEntryPresentation.ActionLabel(action)</span>
+                    </button>
+                }
+            </div>
+        }
+        else if (errorMessage is null)
+        {
+            <p aria-busy="true"><em>Cargando su jornada...</em></p>
+        }
+
+        @if (errorMessage is not null)
+        {
+            <div class="alert alert-danger mt-3 mb-0" role="alert">@errorMessage</div>
+        }
+    </div>
+</section>
+
+@code {
+    private TimeEntryListDto? list;
+    private string? errorMessage;
+    private bool busy = true;
+    private Timer? ticker;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await RefreshAsync();
+        busy = false;
+
+        // Solo repinta este componente: la hora se calcula con las marcas del servidor y el reloj, no con un contador.
+        ticker = new Timer(_ => _ = InvokeAsync(Tick), null, TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(1));
+    }
+
+    public void Dispose() => ticker?.Dispose();
+
+    private void Tick()
+    {
+        if (list is { Status: not "Idle" })
+        {
+            StateHasChanged();
+        }
+    }
+
+    private static string CurrentLabel(string status) => status switch
+    {
+        "Working" => "Tramo de trabajo actual",
+        "OnBreak" => "Pausa en curso",
+        "OnMealBreak" => "Comida en curso",
+        _ => "Sin jornada en curso",
+    };
+
+    private async Task RefreshAsync()
+    {
+        try
+        {
+            var today = Zone.DateOf(Clock.GetUtcNow());
+            list = await Api.GetAsync(Zone.StartOfDay(today), Zone.StartOfDay(today.AddDays(1)));
+            errorMessage = null;
+        }
+        catch (ApiRequestException exception)
+        {
+            ShowError(exception);
+        }
+    }
+
+    // La Web no decide si la acción es válida: lo hace el servidor y aquí solo se muestra su respuesta.
+    // Tras un 409 se recarga el estado: pudo cambiar desde otra pestaña y los botones deben reflejarlo.
+    private async Task RunAsync(ClockAction action)
+    {
+        busy = true;
+        try
+        {
+            await Api.RunAsync(action);
+            await RefreshAsync();
+        }
+        catch (ApiRequestException exception)
+        {
+            ShowError(exception);
+            if (exception.StatusCode == HttpStatusCode.Conflict)
+            {
+                var message = errorMessage;
+                await RefreshAsync();
+                errorMessage = message;
+            }
+        }
+        finally
+        {
+            busy = false;
+        }
+    }
+
+    // Un 401 lo gestiona el BearerTokenHandler (cierra la sesión y lleva a /login): no se muestra como error de la pantalla.
+    private void ShowError(ApiRequestException exception)
+        => errorMessage = exception.StatusCode == HttpStatusCode.Unauthorized ? null : exception.Message;
+}

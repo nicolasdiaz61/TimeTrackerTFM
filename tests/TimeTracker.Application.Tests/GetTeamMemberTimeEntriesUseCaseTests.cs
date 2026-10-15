@@ -38,7 +38,7 @@ public class GetTeamMemberTimeEntriesUseCaseTests
         var open = TimeEntry.Start(LuisId, TimeEntryType.Work, EightAm.AddHours(4));
         _entries.Seed(open);
 
-        var result = await CreateUseCase().ExecuteAsync(LuisId, CancellationToken.None);
+        var result = await CreateUseCase().ExecuteAsync(LuisId, null, CancellationToken.None);
 
         Assert.NotNull(result);
         Assert.Equal(90, result.TotalWorkedMinutes);
@@ -56,7 +56,7 @@ public class GetTeamMemberTimeEntriesUseCaseTests
         _entries.Seed(pause);
         _entries.Seed(TimeEntry.Start(LuisId, TimeEntryType.MealBreak, EightAm.AddHours(2)));
 
-        var result = await CreateUseCase().ExecuteAsync(LuisId, CancellationToken.None);
+        var result = await CreateUseCase().ExecuteAsync(LuisId, null, CancellationToken.None);
 
         Assert.NotNull(result);
         Assert.Equal(60, result.TotalWorkedMinutes);
@@ -92,7 +92,7 @@ public class GetTeamMemberTimeEntriesUseCaseTests
         SeedClosed(UnmanagedId, EightAm, 60);
         SeedClosed(MartaId, EightAm, 60);
 
-        var result = await CreateUseCase().ExecuteAsync(memberId, CancellationToken.None);
+        var result = await CreateUseCase().ExecuteAsync(memberId, null, CancellationToken.None);
 
         Assert.Null(result);
         Assert.Equal(0, _entries.ListLatestCalls);
@@ -107,7 +107,7 @@ public class GetTeamMemberTimeEntriesUseCaseTests
             SeedClosed(LuisId, EightAm.AddDays(day), 10);
         }
 
-        var result = await CreateUseCase().ExecuteAsync(LuisId, CancellationToken.None);
+        var result = await CreateUseCase().ExecuteAsync(LuisId, null, CancellationToken.None);
 
         Assert.NotNull(result);
         Assert.Equal(GetTimeEntriesUseCase.MaxEntries, result.Items.Count);
@@ -120,7 +120,7 @@ public class GetTeamMemberTimeEntriesUseCaseTests
     {
         _users.Seed(NewUser(LuisId, "Luis Empleado", UserRole.Employee, MartaId));
 
-        var result = await CreateUseCase().ExecuteAsync(LuisId, CancellationToken.None);
+        var result = await CreateUseCase().ExecuteAsync(LuisId, null, CancellationToken.None);
 
         Assert.NotNull(result);
         Assert.Empty(result.Items);
@@ -137,10 +137,47 @@ public class GetTeamMemberTimeEntriesUseCaseTests
         SeedClosed(AnaId, EightAm, 45);
         SeedClosed(MartaId, EightAm, 30);
 
-        var result = await CreateUseCase().ExecuteAsync(LuisId, CancellationToken.None);
+        var result = await CreateUseCase().ExecuteAsync(LuisId, null, CancellationToken.None);
 
         Assert.NotNull(result);
         Assert.Equal([luisEntry.Id], result.Items.Select(item => item.Id));
         Assert.Equal(60, result.TotalWorkedMinutes);
+    }
+
+    private static TimeWindow WindowOf(DateTimeOffset from, DateTimeOffset to)
+    {
+        Assert.True(TimeWindow.TryCreate(from, to, to, out var window, out _));
+        return window!;
+    }
+
+    [Fact]
+    public async Task Get_WithAWindow_ReturnsOnlyTheMembersEntriesInIt()
+    {
+        _users.Seed(NewUser(LuisId, "Luis Empleado", UserRole.Employee, MartaId));
+        var inside = SeedClosed(LuisId, EightAm, 60);
+        SeedClosed(LuisId, EightAm.AddDays(-30), 60);
+        SeedClosed(MartaId, EightAm, 60);
+        var open = TimeEntry.Start(LuisId, TimeEntryType.MealBreak, EightAm.AddDays(-45));
+        _entries.Seed(open);
+
+        var result = await CreateUseCase().ExecuteAsync(LuisId, WindowOf(EightAm.AddHours(-1), EightAm.AddHours(2)), CancellationToken.None);
+
+        Assert.NotNull(result);
+        Assert.Equal([inside.Id, open.Id], result.Items.Select(item => item.Id));
+        Assert.Equal(TimeTrackingStatus.OnMealBreak, result.Status);
+        Assert.Equal(GetTimeEntriesUseCase.MaxWindowEntries, _entries.LastRequestedLimit);
+    }
+
+    [Fact]
+    public async Task Get_WithAWindowForANonDirectReport_ReturnsNullWithoutQueryingEntries()
+    {
+        _users.Seed(NewUser(MartaId, "Marta Responsable", UserRole.Manager, null));
+        SeedClosed(ForeignMemberId, EightAm, 60);
+
+        var result = await CreateUseCase().ExecuteAsync(ForeignMemberId, WindowOf(EightAm.AddHours(-1), EightAm.AddHours(2)), CancellationToken.None);
+
+        Assert.Null(result);
+        Assert.Equal(0, _entries.ListInWindowCalls);
+        Assert.Equal(0, _entries.ListLatestCalls);
     }
 }

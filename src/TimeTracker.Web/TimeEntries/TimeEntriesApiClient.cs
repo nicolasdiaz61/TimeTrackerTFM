@@ -6,8 +6,11 @@ namespace TimeTracker.Web.TimeEntries;
 /// <summary>Cliente tipado de /api/time-entries. La base de la URL viene del HttpClient (ApiBaseUrl).</summary>
 public sealed class TimeEntriesApiClient(HttpClient http) : IDisposable
 {
-    public Task<TimeEntryListDto> GetAsync(CancellationToken cancellationToken = default)
-        => ApiRequest.SendAsync<TimeEntryListDto>(() => http.GetAsync("api/time-entries", cancellationToken), cancellationToken);
+    /// <summary>Intervalos que solapan la ventana <c>[from, to)</c> (UTC) y el estado actual de la persona.</summary>
+    public Task<TimeEntryListDto> GetAsync(DateTimeOffset from, DateTimeOffset to, CancellationToken cancellationToken = default)
+        => ApiRequest.SendAsync<TimeEntryListDto>(
+            () => http.GetAsync(new Uri($"api/time-entries?{TimeWindowQuery.Build(from, to)}", UriKind.Relative), cancellationToken),
+            cancellationToken);
 
     public Task<TimeEntryDto> ClockInAsync(CancellationToken cancellationToken = default)
         => PostAsync("clock-in", cancellationToken);

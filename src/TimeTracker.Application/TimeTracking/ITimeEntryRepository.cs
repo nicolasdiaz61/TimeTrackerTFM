@@ -9,6 +9,12 @@ public interface ITimeEntryRepository
     /// <summary>Devuelve como máximo <paramref name="limit"/> fichajes del empleado, por <c>ClockInAt</c> descendente.</summary>
     Task<IReadOnlyList<TimeEntry>> ListLatestAsync(Guid employeeId, int limit, CancellationToken cancellationToken);
 
+    /// <summary>
+    /// Devuelve como máximo <paramref name="limit"/> fichajes del empleado que solapan la ventana (<c>ClockInAt &lt; To</c> y
+    /// <c>ClockOutAt</c> nulo o <c>&gt; From</c>), por <c>ClockInAt</c> descendente.
+    /// </summary>
+    Task<IReadOnlyList<TimeEntry>> ListInWindowAsync(Guid employeeId, TimeWindow window, int limit, CancellationToken cancellationToken);
+
     /// <summary>Persiste un fichaje nuevo; si ya hay otro abierto del empleado lanza <c>OpenTimeEntryAlreadyExistsException</c>.</summary>
     Task AddAsync(TimeEntry entry, CancellationToken cancellationToken);
 

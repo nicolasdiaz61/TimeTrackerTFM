@@ -34,11 +34,38 @@ public class TimeEntryPresentationTests
         => Assert.Equal([ClockAction.ClockIn, ClockAction.ClockOut], TimeEntryPresentation.AvailableActions("Otro"));
 
     [Theory]
-    [InlineData(ClockAction.ClockIn, "Fichar entrada")]
-    [InlineData(ClockAction.StartBreak, "Iniciar pausa")]
-    [InlineData(ClockAction.StartMealBreak, "Pausa de comida")]
-    [InlineData(ClockAction.EndBreak, "Terminar pausa")]
-    [InlineData(ClockAction.ClockOut, "Fichar salida")]
+    [InlineData(ClockAction.ClockIn, "Iniciar jornada")]
+    [InlineData(ClockAction.StartBreak, "Pausa")]
+    [InlineData(ClockAction.StartMealBreak, "Comida")]
+    [InlineData(ClockAction.EndBreak, "Reanudar")]
+    [InlineData(ClockAction.ClockOut, "Finalizar jornada")]
     public void ActionLabel_IsInSpanish(ClockAction action, string expected)
         => Assert.Equal(expected, TimeEntryPresentation.ActionLabel(action));
+
+    [Theory]
+    [InlineData(ClockAction.ClockIn, "Iniciar jornada")]
+    [InlineData(ClockAction.StartBreak, "Pausa: pausar la jornada")]
+    [InlineData(ClockAction.StartMealBreak, "Comida: pausar la jornada para comer")]
+    [InlineData(ClockAction.EndBreak, "Reanudar: volver al trabajo")]
+    [InlineData(ClockAction.ClockOut, "Finalizar jornada: terminar la jornada de hoy")]
+    public void ActionAriaLabel_DescribesWhatTheButtonDoes(ClockAction action, string expected)
+        => Assert.Equal(expected, TimeEntryPresentation.ActionAriaLabel(action));
+
+    [Theory]
+    [InlineData(ClockAction.ClockIn, "btn-primary")]
+    [InlineData(ClockAction.StartBreak, "btn-warning")]
+    [InlineData(ClockAction.StartMealBreak, "btn-info")]
+    [InlineData(ClockAction.EndBreak, "btn-success")]
+    [InlineData(ClockAction.ClockOut, "btn-danger")]
+    public void ActionButtonClass_GivesEachActionItsOwnColour(ClockAction action, string expected)
+        => Assert.Equal(expected, TimeEntryPresentation.ActionButtonClass(action));
+
+    [Theory]
+    [InlineData("Idle", "status-idle")]
+    [InlineData("Working", "status-working")]
+    [InlineData("OnBreak", "status-break")]
+    [InlineData("OnMealBreak", "status-meal")]
+    [InlineData("Otro", "status-idle")]
+    public void StatusCssClass_MatchesTheStatus(string status, string expected)
+        => Assert.Equal(expected, TimeEntryPresentation.StatusCssClass(status));
 }

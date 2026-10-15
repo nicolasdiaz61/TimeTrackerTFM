@@ -3,7 +3,7 @@ namespace TimeTracker.Web.Auth;
 /// <summary>Valida el destino posterior al inicio de sesión: solo rutas relativas de la propia aplicación (redirección abierta).</summary>
 public static class ReturnUrl
 {
-    public const string DefaultTarget = "/fichajes";
+    public const string DefaultTarget = "/";
 
     private const char Backslash = (char)92;
 
