@@ -6,9 +6,9 @@ Define las reglas de dominio del fichaje (`TimeEntry`, con tipos de intervalo `W
 
 Nombres fijados en el diseño: `TimeEntry.Start(employeeId, type, at)`, `Close`, `Pause`, `Resume`, `IsOpen`, `CalculateDuration()`, `TimeEntryType`, `TimeTrackingStatus`, casos de uso `StartBreakUseCase` y `EndBreakUseCase`; excepciones de dominio `TimeEntryAlreadyClosedException`, `ClockOutBeforeClockInException`, `NotWorkingException` y `NoOpenBreakException` y excepciones de Application `OpenTimeEntryAlreadyExistsException`, `NoOpenTimeEntryException` y `ConcurrentTimeEntryChangeException` (todas derivadas de `DomainRuleException`); el listado se devuelve como `{ "items": [...], "totalWorkedMinutes": n, "totalBreakMinutes": n, "totalMealBreakMinutes": n, "status": "..." }` y cada elemento lleva `type` y `durationMinutes` (antes `workedMinutes`; cambio `tipos-de-marcaje`, ADR 0014).
 
-Decisiones aceptadas: los instantes se truncan a segundos enteros; los totales suman solo los intervalos cerrados de los 50 devueltos; el `201` de entrada no lleva cabecera `Location`.
+Decisiones aceptadas: los instantes se truncan a segundos enteros; los totales suman solo los intervalos cerrados devueltos (sin recortar a la ventana); el `201` de entrada no lleva cabecera `Location`.
 
-Fuera de alcance: tabla `Employee`, atribución por día, saldos, horas extra, tope de entrada olvidada, edición o borrado de fichajes, paginación y zona horaria local.
+Fuera de alcance: tabla `Employee`, atribución por día, saldos, horas extra, tope de entrada olvidada, edición o borrado de fichajes, paginación y zona horaria local en la API (la API habla UTC; la hora local la resuelve la Web, ADR 0016).
 
 ## ADDED Requirements
 
@@ -154,7 +154,7 @@ Fuera de alcance: tabla `Employee`, atribución por día, saldos, horas extra, t
 
 ### Requirement: Caso de uso GetTimeEntries y total
 
-`GetTimeEntries` DEBE devolver, para el empleado de `ICurrentUser`, sus últimos 300 intervalos (constante `GetTimeEntriesUseCase.MaxEntries`, no controlable por el cliente) ordenados por `ClockInAt` descendente, con `type` y `durationMinutes` por intervalo (nulo si está abierto) y estos totales, siempre de los 300 devueltos y solo de los **cerrados**: `totalWorkedMinutes` (tipo `Work`), `totalBreakMinutes` (tipo `Break`) y `totalMealBreakMinutes` (tipo `MealBreak`). Un intervalo abierto NO DEBE sumar. `status` DEBE reflejar el intervalo abierto: `Idle` si no hay ninguno, `Working` si es `Work`, `OnBreak` si es `Break` y `OnMealBreak` si es `MealBreak`. Sin intervalos, la lista es vacía, los totales son `0` y `status` es `Idle`.
+`GetTimeEntries` DEBE devolver, para el empleado de `ICurrentUser`, sus intervalos ordenados por `ClockInAt` descendente: los últimos 300 (constante `GetTimeEntriesUseCase.MaxEntries`, no controlable por el cliente) si no recibe ventana, o los que solapan la ventana `TimeWindow` (hasta `MaxWindowEntries`, 1000) si la recibe. Cada intervalo lleva `type` y `durationMinutes` (nulo si está abierto). Los totales, siempre de los devueltos y solo de los **cerrados**, son `totalWorkedMinutes` (tipo `Work`), `totalBreakMinutes` (tipo `Break`) y `totalMealBreakMinutes` (tipo `MealBreak`). Un intervalo abierto NO DEBE sumar. `status` DEBE reflejar el intervalo abierto **del empleado, aunque no esté en la lista devuelta**: `Idle` si no hay ninguno, `Working` si es `Work`, `OnBreak` si es `Break` y `OnMealBreak` si es `MealBreak`. Sin intervalos, la lista es vacía, los totales son `0` y `status` es `Idle`.
 
 #### Scenario: Totales por tipo
 - DADO un empleado con trabajos cerrados de `60` y `30` minutos, una pausa de `15`, una comida de `45` y un trabajo abierto
@@ -166,6 +166,11 @@ Fuera de alcance: tabla `Employee`, atribución por día, saldos, horas extra, t
 - CUANDO se ejecuta `GetTimeEntries`
 - ENTONCES `status` es `Working`, `OnBreak`, `OnMealBreak` o `Idle`, respectivamente
 
+#### Scenario: Estado con la ventana de un mes anterior
+- DADO un empleado con un intervalo `Work` abierto desde hoy y una ventana de hace dos meses
+- CUANDO se ejecuta `GetTimeEntries` con esa ventana
+- ENTONCES la lista no incluye el abierto y `status` es `Working`
+
 #### Scenario: Orden descendente
 - DADO intervalos con entradas a las `08:00Z` de los días 10, 11 y 12
 - CUANDO se ejecuta `GetTimeEntries`
@@ -176,15 +181,20 @@ Fuera de alcance: tabla `Employee`, atribución por día, saldos, horas extra, t
 - CUANDO se ejecuta `GetTimeEntries`
 - ENTONCES la lista está vacía, los tres totales son `0` y `status` es `Idle`
 
-#### Scenario: Más de 300 intervalos
+#### Scenario: Más de 300 intervalos sin ventana
 - DADO un empleado con 305 intervalos
-- CUANDO se ejecuta `GetTimeEntries`
+- CUANDO se ejecuta `GetTimeEntries` sin ventana
 - ENTONCES se devuelven 300, los más recientes por `ClockInAt`
 
 #### Scenario: Total limitado a los 300 devueltos
 - DADO un empleado con 305 intervalos `Work` cerrados de 10 minutos cada uno
-- CUANDO se ejecuta `GetTimeEntries`
+- CUANDO se ejecuta `GetTimeEntries` sin ventana
 - ENTONCES se devuelven 300 y `totalWorkedMinutes` es `3000`
+
+#### Scenario: Con ventana solo los de la ventana
+- DADO un empleado con intervalos dentro y fuera de la ventana
+- CUANDO se ejecuta `GetTimeEntries` con la ventana
+- ENTONCES solo se devuelven los que solapan y los totales suman solo los cerrados devueltos
 
 ### Requirement: Identidad del empleado desde el token
 
@@ -256,7 +266,7 @@ Un empleado NO DEBE ver, cerrar, pausar ni reanudar los intervalos de otro, ni s
 
 ### Requirement: Contrato REST de fichajes
 
-La API DEBE exponer, todos con autenticación obligatoria y sin cuerpo: `POST /api/time-entries/clock-in` (`201` con `TimeEntryResponse`; `401`; `409` si hay un intervalo abierto), `POST /api/time-entries/clock-out` (`200`; `401`; `409` si no hay abierto), `POST /api/time-entries/start-break` y `POST /api/time-entries/start-meal-break` (`200` con el `TimeEntryResponse` de la pausa abierta; `401`; `409` si no se está trabajando), `POST /api/time-entries/end-break` (`200` con el `TimeEntryResponse` del trabajo reanudado; `401`; `409` si no hay pausa abierta) y `GET /api/time-entries` (`200` con `{ items, totalWorkedMinutes, totalBreakMinutes, totalMealBreakMinutes, status }`; `401`). `TimeEntryResponse` DEBE tener `id`, `type` (texto `Work`, `Break` o `MealBreak`, declarado como enumeración en el contrato), `clockInAt`, `clockOutAt` (nulo si abierto) y `durationMinutes` (nulo si abierto); `status` es texto (`Idle`, `Working`, `OnBreak`, `OnMealBreak`). Los instantes DEBEN serializarse en ISO 8601 UTC con sufijo `Z` y declararse `format: date-time`. El `201` de `clock-in` NO DEBE incluir cabecera `Location`. Ningún endpoint acepta `employeeId`. El `clockInAt` devuelto por cada POST DEBE ser idéntico al que devuelve el `GET` posterior.
+La API DEBE exponer, todos con autenticación obligatoria y sin cuerpo: `POST /api/time-entries/clock-in` (`201` con `TimeEntryResponse`; `401`; `409` si hay un intervalo abierto), `POST /api/time-entries/clock-out` (`200`; `401`; `409` si no hay abierto), `POST /api/time-entries/start-break` y `POST /api/time-entries/start-meal-break` (`200` con el `TimeEntryResponse` de la pausa abierta; `401`; `409` si no se está trabajando), `POST /api/time-entries/end-break` (`200` con el `TimeEntryResponse` del trabajo reanudado; `401`; `409` si no hay pausa abierta) y `GET /api/time-entries` con los parámetros de consulta opcionales `from` y `to` (`200` con `{ items, totalWorkedMinutes, totalBreakMinutes, totalMealBreakMinutes, status }`; `400` ventana no válida; `401`). `TimeEntryResponse` DEBE tener `id`, `type` (texto `Work`, `Break` o `MealBreak`, declarado como enumeración en el contrato), `clockInAt`, `clockOutAt` (nulo si abierto) y `durationMinutes` (nulo si abierto); `status` es texto (`Idle`, `Working`, `OnBreak`, `OnMealBreak`). Los instantes DEBEN serializarse en ISO 8601 UTC con sufijo `Z` y declararse `format: date-time`. El `201` de `clock-in` NO DEBE incluir cabecera `Location`. Ningún endpoint acepta `employeeId`. El `clockInAt` devuelto por cada POST DEBE ser idéntico al que devuelve el `GET` posterior.
 
 #### Scenario: Entrada correcta
 - DADO un empleado autenticado sin intervalo abierto
@@ -301,7 +311,7 @@ La API DEBE exponer, todos con autenticación obligatoria y sin cuerpo: `POST /a
 #### Scenario: Contrato OpenAPI
 - DADO el build de `TimeTracker.Api` ejecutado
 - CUANDO se lee `docs/api/openapi.json`
-- ENTONCES contiene `post` en `clock-in` (`201`, `401`, `409`), `clock-out`, `start-break`, `start-meal-break` y `end-break` (`200`, `401`, `409`) y `get` en `/api/time-entries` (`200`, `401`); `TimeEntryResponse` declara `type` como enumeración de texto, `format: date-time` en `clockInAt` y `clockOutAt` y no declara `workedMinutes`
+- ENTONCES contiene `post` en `clock-in` (`201`, `401`, `409`), `clock-out`, `start-break`, `start-meal-break` y `end-break` (`200`, `401`, `409`) y `get` en `/api/time-entries` (`200`, `400`, `401`) con los parámetros de consulta `from` y `to`; `TimeEntryResponse` declara `type` como enumeración de texto, `format: date-time` en `clockInAt` y `clockOutAt` y no declara `workedMinutes`
 
 ### Requirement: Errores 409 como ProblemDetails en español
 
@@ -498,3 +508,32 @@ Pausar y reanudar DEBEN cerrar un intervalo y abrir otro en una única transacci
 - DADO un empleado con un `Work` abierto
 - CUANDO se envían a la vez `clock-out` y `start-break`
 - ENTONCES nunca queda un intervalo abierto tras una respuesta correcta de `clock-out`
+
+### Requirement: Ventana de consulta del listado
+
+`GET /api/time-entries` DEBE aceptar los parámetros de consulta opcionales `from` y `to`: instantes ISO 8601 (sin desfase se interpretan como UTC; con desfase se normalizan a UTC) que definen la ventana semiabierta `[from, to)`. Se envían ambos o ninguno. Con ventana, DEBE devolver los intervalos del empleado que **solapan** la ventana (`ClockInAt < to` y `ClockOutAt` nulo o `> from`), por `ClockInAt` descendente, con un tope de 1000 (`MaxWindowEntries`); sin ventana DEBE comportarse como antes (últimos 300). `TimeWindow` DEBE rechazar con un mensaje en español: `to` no posterior a `from`, una ventana de más de 32 días y un `from` posterior al instante actual del servidor (periodos futuros). La API DEBE responder `400` `application/problem+json` con título «Solicitud no válida» y el motivo en `detail` cuando falta uno de los dos, no se pueden leer o la ventana no es válida. Los totales son los de los intervalos cerrados devueltos (sin recortar a la ventana).
+
+#### Scenario: Ventana de un mes
+- DADO un empleado con intervalos en septiembre y octubre de 2026 y un instante actual de `2026-10-14T12:00:00Z`
+- CUANDO envía `GET /api/time-entries?from=2026-09-30T22:00:00Z&to=2026-10-31T23:00:00Z`
+- ENTONCES recibe solo los intervalos que solapan esa ventana, por `ClockInAt` descendente
+
+#### Scenario: Límites semiabiertos y solape
+- DADO un intervalo que acaba exactamente en `from`, otro que empieza exactamente en `to`, otro que empieza antes de `from` y acaba dentro, y otro que empieza dentro y acaba después de `to`
+- CUANDO se consulta la ventana
+- ENTONCES se devuelven los dos últimos y no los dos primeros
+
+#### Scenario: Abierto anterior a la ventana
+- DADO un empleado con un intervalo abierto desde el mes anterior
+- CUANDO consulta el mes actual
+- ENTONCES el intervalo abierto aparece en la ventana y `status` lo refleja
+
+#### Scenario: Ventana inválida
+- DADO un empleado autenticado
+- CUANDO envía `from` sin `to`, fechas ilegibles, `to` anterior a `from`, una ventana de 40 días o un `from` futuro
+- ENTONCES recibe `400` `application/problem+json` con el motivo en español
+
+#### Scenario: Sin ventana
+- DADO un empleado con 305 intervalos
+- CUANDO envía `GET /api/time-entries` sin parámetros
+- ENTONCES recibe los 300 más recientes, igual que antes

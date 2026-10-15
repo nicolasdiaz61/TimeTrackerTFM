@@ -2,7 +2,7 @@
 
 Aplicación de control de tiempos y ausencias para empresas: fichajes, ausencias, saldo de horas y horas extra, con un asistente de IA que responderá consultas en lenguaje natural sobre esos datos.
 
-> **Estado actual:** la aplicación tiene **autenticación real y roles**. Se inicia sesión en `/login` con un correo y una contraseña; un **empleado** ficha su entrada, sus pausas, sus pausas de comida y su salida en `/fichajes` y un **responsable** (rol `Manager`) además consulta los fichajes (con sus pausas) de sus reportes directos en `/equipo`. La API emite un JWT propio de 30 minutos (sin renovación) y guarda los usuarios y los fichajes en PostgreSQL con EF Core. La Web tiene una página de inicio en español con enlaces según la sesión y avisa en `/login` cuando la sesión ha caducado. Todavía **no** hay ausencias ni asistente de IA.
+> **Estado actual:** la aplicación tiene **autenticación real y roles**. Se inicia sesión en `/login` con un correo y una contraseña; cualquier persona con sesión (empleado o responsable) ficha con el **reproductor del Inicio** (iniciar jornada, pausa, comida, reanudar y finalizar, con cronómetro en vivo), consulta su historial **por mes** en `/fichajes` (una fila por día con una barra de franjas de trabajo, pausas y comidas, en su hora local) y un **responsable** (rol `Manager`) consulta la misma vista mensual de sus reportes directos en `/equipo`. La API emite un JWT propio de 30 minutos (sin renovación) y guarda los usuarios y los fichajes en PostgreSQL con EF Core. La Web tiene una página de inicio en español con enlaces según la sesión y avisa en `/login` cuando la sesión ha caducado. Todavía **no** hay ausencias ni asistente de IA.
 >
 > **Aviso: usuarios de demostración.** La siembra de cuatro usuarios de prueba (contraseña pública, ver «Usuarios de prueba») está **desactivada por defecto**. No la active en un despliegue real. Ver los [ADR 0011](docs/adr/0011-autenticacion-jwt-roles-y-equipo.md) y [0012](docs/adr/0012-sesion-web-y-riesgo-xss.md). Todos los datos de ejemplo son inventados.
 
@@ -104,7 +104,7 @@ Comprobación: `Invoke-WebRequest http://localhost:5274/health` responde `200` c
 dotnet run --project src/TimeTracker.Web --launch-profile http
 ```
 
-5. Abra `http://localhost:5172/login` e inicie sesión con un usuario de prueba. Un empleado va a `/fichajes`: pulse «Fichar entrada»; la pantalla muestra el estado actual y solo los botones válidos («Iniciar pausa», «Pausa de comida», «Terminar pausa», «Fichar salida»). La tabla indica el tipo de cada intervalo («Trabajo», «Pausa», «Comida»), las horas en UTC, «en curso» para el intervalo abierto y los totales de trabajo, pausas y comidas. Un responsable ve además `/equipo`, con la lista de sus reportes directos y los fichajes de cada uno. La sesión caduca a los 30 minutos: la Web lo indica en `/login` («Su sesión ha caducado. Inicie sesión de nuevo.») y hay que volver a iniciarla. La Web toma la URL de la API de `ApiBaseUrl` en `src/TimeTracker.Web/wwwroot/appsettings.json` (por defecto `http://localhost:5274`); si falta o no es válida, la Web no arranca y lo indica.
+5. Abra `http://localhost:5172/login` e inicie sesión con un usuario de prueba. Tras entrar se llega al Inicio, que muestra el reproductor: pulse «Iniciar jornada»; el control indica el estado y ofrece solo las acciones válidas («Pausa», «Comida», «Reanudar», «Finalizar jornada») con el tiempo del tramo actual y el total trabajado hoy. `/fichajes` es de consulta: muestra el estado, un enlace al Inicio para fichar y el mes elegido (con «Anterior», «Siguiente» y «Mes actual»; no se pueden ver meses futuros), con una fila por día, la barra de franjas a escala en hora local, la leyenda y los totales del día y del mes. Un responsable ve además `/equipo`, con la lista de sus reportes directos y la misma vista mensual de cada uno (el miembro elegido se conserva al cambiar de mes). La sesión caduca a los 30 minutos: la Web lo indica en `/login` («Su sesión ha caducado. Inicie sesión de nuevo.») y hay que volver a iniciarla. La Web toma la URL de la API de `ApiBaseUrl` en `src/TimeTracker.Web/wwwroot/appsettings.json` (por defecto `http://localhost:5274`); si falta o no es válida, la Web no arranca y lo indica.
 
 Al terminar, borre las variables de la sesión (`Remove-Item Env:ASPNETCORE_ENVIRONMENT, Env:ConnectionStrings__Default, Env:Jwt__SigningKey, Env:Database__ApplyMigrationsOnStartup, Env:Cors__AllowedOrigins__0, Env:Seed__DemoUsers, Env:Seed__DemoPassword`) y pare la base de datos con `docker compose down`.
 
@@ -128,7 +128,10 @@ Cada intervalo tiene un tipo (`Work`, `Break`, `MealBreak`) y el empleado tiene 
 | `POST /api/time-entries/start-break` / `start-meal-break` | Cierra el trabajo y abre una pausa o una pausa de comida. `409` si no se está trabajando. |
 | `POST /api/time-entries/end-break` | Cierra la pausa y reanuda el trabajo. `409` si no hay pausa abierta. |
 | `POST /api/time-entries/clock-out` | Cierra el intervalo abierto, sea del tipo que sea. |
-| `GET /api/time-entries` | Intervalos con `type` y `durationMinutes`, totales de trabajo, pausas y comidas, y el `status` actual. |
+| `GET /api/time-entries` | Intervalos con `type` y `durationMinutes`, totales de trabajo, pausas y comidas, y el `status` actual. Con `from` y `to` (instantes UTC, ventana `[from, to)`) devuelve los intervalos que solapan esa ventana; sin ellos, los últimos 300. |
+| `GET /api/team/members/{id}/time-entries` | Lo mismo para un reporte directo del responsable (solo lectura; `404` idéntico para ajenos). |
+
+La ventana admite como máximo 32 días y no puede empezar en el futuro (`400` en español en otro caso); el `status` sale siempre del intervalo abierto, esté o no en la ventana. La Web calcula en la hora del navegador las 00:00 del primer día del mes y del mes siguiente y las envía en UTC, de modo que el cambio de hora de marzo y de octubre queda bien resuelto ([ADR 0016](docs/adr/0016-vista-mensual-y-hora-local.md)).
 
 La migración `AddTimeEntryType` deja los fichajes existentes como `Work` (columna `type` con valor por defecto `Work`) y es reversible; la decisión está en el [ADR 0014](docs/adr/0014-tipos-de-marcaje-pausas-y-comida.md).
 
@@ -256,7 +259,7 @@ Con `Seed__DemoUsers=true` y `Seed__DemoData=true`, la API crea al arrancar (tra
 | `ana.empleada` | 09:30-18:30, comida larga (~75 min) y alguna pausa de tarde; los miércoles teletrabaja (09:00-17:00) y registra la comida como pausa normal, sin comida. |
 | `pablo.empleado` | Media jornada 08:00-14:00 con una sola pausa corta y sin comida. |
 
-Para apagarla basta con `Seed__DemoData=false` (o quitar la variable): no se borran los intervalos ya creados, que son datos normales. El listado de fichajes devuelve hasta 300 intervalos ([ADR 0015](docs/adr/0015-datos-de-demostracion-de-un-mes.md)). `.env.example` no incluye esta clave a propósito; se documenta solo aquí. Con Compose, añada `Seed__DemoData=true` a su `.env` local (Compose lo pasa a la API junto con el resto del archivo). Si ejecuta varias instancias de la API a la vez, no active la siembra en todas: podrían duplicar días.
+Para apagarla basta con `Seed__DemoData=false` (o quitar la variable): no se borran los intervalos ya creados, que son datos normales. Sin ventana, el listado de fichajes devuelve hasta 300 intervalos ([ADR 0015](docs/adr/0015-datos-de-demostracion-de-un-mes.md)); la Web pide siempre un mes concreto ([ADR 0016](docs/adr/0016-vista-mensual-y-hora-local.md)). `.env.example` no incluye esta clave a propósito; se documenta solo aquí. Con Compose, añada `Seed__DemoData=true` a su `.env` local (Compose lo pasa a la API junto con el resto del archivo). Si ejecuta varias instancias de la API a la vez, no active la siembra en todas: podrían duplicar días.
 
 ## Estructura
 
@@ -266,8 +269,8 @@ src/
   TimeTracker.Application     Casos de uso (fichar, listar, iniciar sesión, equipo) y puertos. Depende de Domain.
   TimeTracker.Infrastructure  EF Core, migraciones y repositorios PostgreSQL. Depende de Application.
   TimeTracker.Api             Endpoints, autenticación JWT, autorización y composición. Depende de Application e Infrastructure.
-  TimeTracker.Web             Blazor WebAssembly (inicio, /login, /fichajes y /equipo), independiente.
-tests/                        Pruebas de Domain, Application, Web (formato y estado de sesión), Api (integración con PostgreSQL) y de arquitectura.
+  TimeTracker.Web             Blazor WebAssembly (inicio con el reproductor de fichaje, /login, /fichajes y /equipo), independiente.
+tests/                        Pruebas de Domain, Application, Web (formato, sesión, hora local, meses y franjas), Api (integración con PostgreSQL) y de arquitectura.
 docs/adr/                     Registros de decisiones de arquitectura.
 docs/api/openapi.json         Contrato OpenAPI generado (no se edita a mano).
 scripts/check-coverage.ps1    Comprobación del umbral de cobertura.
@@ -293,6 +296,7 @@ openspec/                     Especificaciones y cambios (Spec Driven Developmen
 13. [Despliegue de la demostración en Railway](docs/adr/0013-despliegue-en-railway.md)
 14. [Tipos de marcaje: pausas y pausas de comida](docs/adr/0014-tipos-de-marcaje-pausas-y-comida.md)
 15. [Datos de demostración de un mes](docs/adr/0015-datos-de-demostracion-de-un-mes.md)
+16. [Vista mensual de fichajes y hora local en la Web](docs/adr/0016-vista-mensual-y-hora-local.md)
 
 ## Integración continua
 

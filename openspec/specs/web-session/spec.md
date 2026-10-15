@@ -6,7 +6,7 @@ Define la sesión en `TimeTracker.Web` (Blazor WebAssembly): página `/login`, a
 
 Decisiones aceptadas (D16 a D19, Q3, Q4): token en `sessionStorage` con copia en memoria y riesgo XSS aceptado y documentado en el ADR 0012; `JwtAuthenticationStateProvider` decodifica el payload y comprueba `exp` pero no valida la firma; `BearerTokenHandler` compartido por los clientes de fichajes y de equipo (el cliente de autenticación no lo usa); roles en inglés en el código y textos de interfaz en español.
 
-Verificación: sin bUnit ni E2E; la lógica de presentación y de estado sin interfaz (formato del total, aviso de sesión caducada, estado de autenticación) se cubre con xUnit en `TimeTracker.Web.Tests`; los escenarios de esta capacidad se verifican manualmente en el navegador (flujo de empleado y de responsable) y la evidencia se registra en `verify-report.md`. Solo la compilación, el formato y las pruebas de arquitectura de la Web (sin URL fija ni referencias de proyecto) son automáticos. Los escenarios que exigirían esperar 30 minutos se comprueban editando el token de `sessionStorage` con las herramientas del navegador.
+Verificación: sin bUnit ni E2E; la lógica de presentación y de estado sin interfaz (formato de duraciones, hora local, meses y franjas, aviso de sesión caducada, estado de autenticación) se cubre con xUnit en `TimeTracker.Web.Tests`; los escenarios de esta capacidad se verifican manualmente en el navegador (flujo de empleado y de responsable) y la evidencia se registra en `verify-report.md`. Solo la compilación, el formato y las pruebas de arquitectura de la Web (sin URL fija ni referencias de proyecto) son automáticos. Los escenarios que exigirían esperar 30 minutos se comprueban editando el token de `sessionStorage` con las herramientas del navegador.
 
 Fuera de alcance: refresh token, renovación silenciosa, «recordarme», registro, recuperación de contraseña, alta o edición de usuarios, hosting estático de la Web con CSP y la Web en compose.
 
@@ -14,12 +14,12 @@ Fuera de alcance: refresh token, renovación silenciosa, «recordarme», registr
 
 ### Requirement: Página de inicio de sesión
 
-La ruta `/login` DEBE ser accesible sin sesión y mostrar un formulario con correo y contraseña que invoque `POST /api/auth/login` mediante el cliente tipado. Con éxito DEBE guardar la sesión y navegar a `/fichajes`, o a la ruta del parámetro `returnUrl` si es una ruta relativa segura (empieza por `/` y no por `//` ni `/\`); en otro caso DEBE ignorar `returnUrl`. Con un `401` DEBE mostrar un mensaje genérico en español que no distinga entre correo y contraseña; con un `429`, un mensaje en español que pida esperar; ante un fallo de red u otra respuesta, un mensaje genérico en español sin datos técnicos. Si el correo o la contraseña están vacíos NO DEBE enviar la petición y DEBE avisar en español.
+La ruta `/login` DEBE ser accesible sin sesión y mostrar un formulario con correo y contraseña que invoque `POST /api/auth/login` mediante el cliente tipado. Con éxito DEBE guardar la sesión y navegar al Inicio (`/`, donde está el reproductor de fichaje), o a la ruta del parámetro `returnUrl` si es una ruta relativa segura (empieza por `/` y no por `//` ni `/\`); en otro caso DEBE ignorar `returnUrl`. Con un `401` DEBE mostrar un mensaje genérico en español que no distinga entre correo y contraseña; con un `429`, un mensaje en español que pida esperar; ante un fallo de red u otra respuesta, un mensaje genérico en español sin datos técnicos. Si el correo o la contraseña están vacíos NO DEBE enviar la petición y DEBE avisar en español.
 
 #### Scenario: Inicio de sesión correcto
 - DADO la API en marcha con los usuarios de demostración
 - CUANDO se introduce `luis.empleado@example.test` y su contraseña de demostración en `/login`
-- ENTONCES se navega a `/fichajes` y el menú muestra el nombre del usuario
+- ENTONCES se navega a `/`, se ve el reproductor de fichaje y el menú muestra el nombre del usuario
 
 #### Scenario: Regreso a la ruta de origen
 - DADO `/login?returnUrl=/equipo` abierta
@@ -29,7 +29,7 @@ La ruta `/login` DEBE ser accesible sin sesión y mostrar un formulario con corr
 #### Scenario: Redirección abierta rechazada
 - DADO `/login?returnUrl=//ejemplo.test` y, por separado, `/login?returnUrl=https://ejemplo.test`
 - CUANDO se inicia sesión correctamente
-- ENTONCES se navega a `/fichajes` y no se abandona el origen de la Web
+- ENTONCES se navega a `/` y no se abandona el origen de la Web
 
 #### Scenario: Credenciales erróneas
 - DADO `/login` abierta
@@ -173,7 +173,7 @@ El menú DEBE mostrar la marca «TimeTracker» y el enlace «Inicio»; sin sesi�
 
 ### Requirement: Página Equipo
 
-La ruta `/equipo` DEBE listar, con `GET /api/team/members`, los miembros del responsable (nombre visible) y permitir elegir uno para ver sus fichajes con `GET /api/team/members/{memberId}/time-entries`, con la misma presentación que `/fichajes` (UTC con etiqueta, «en curso», minutos truncados de la API y total). NO DEBE ofrecer botones de fichar ni editar. Un equipo vacío DEBE mostrar un mensaje en español. Una respuesta `404` o `403` DEBE mostrarse como mensaje en español sin romper la pantalla.
+La ruta `/equipo` DEBE listar, con `GET /api/team/members`, los miembros del responsable (nombre visible) y permitir elegir uno para ver sus fichajes con `GET /api/team/members/{memberId}/time-entries`, con la misma vista mensual que `/fichajes` (navegación de mes, barras de franjas por día en hora local y totales del mes). Al cambiar de mes DEBE conservar el miembro elegido y al cambiar de miembro DEBE conservar el mes. NO DEBE ofrecer botones de fichar ni editar. Un equipo vacío DEBE mostrar un mensaje en español. Una respuesta `404` o `403` DEBE mostrarse como mensaje en español sin romper la pantalla.
 
 #### Scenario: Lista de miembros
 - DADO una sesión de `marta` cuyo equipo es `ana` y `luis`
@@ -181,19 +181,24 @@ La ruta `/equipo` DEBE listar, con `GET /api/team/members`, los miembros del res
 - ENTONCES se listan `ana` y `luis` y no `pablo`
 
 #### Scenario: Fichajes de un miembro
-- DADO `luis` con fichajes cerrados de 60 y 30 minutos y uno abierto
+- DADO `luis` con fichajes en el mes actual
 - CUANDO el responsable elige a `luis`
-- ENTONCES la tabla muestra los tres con horas `yyyy-MM-dd HH:mm UTC`, el abierto como «en curso» y el total de 90 minutos igual al de la API
+- ENTONCES ve las filas por día con las franjas del mes actual en hora local y los totales del mes
+
+#### Scenario: Cambio de mes conservando al miembro
+- DADO `luis` elegido y el mes actual visible
+- CUANDO el responsable pulsa «Mes anterior»
+- ENTONCES se muestra el mes anterior de `luis` y el selector sigue en `luis`
 
 #### Scenario: Cambio de miembro
-- DADO la tabla de `luis` visible
+- DADO la vista de `luis` en un mes anterior
 - CUANDO se elige a `ana`
-- ENTONCES la tabla muestra solo los fichajes de `ana`
+- ENTONCES se muestran los fichajes de `ana` del mismo mes y solo los suyos
 
 #### Scenario: Solo lectura
 - DADO la página `/equipo`
 - CUANDO se revisan sus controles
-- ENTONCES no hay botones «Fichar entrada» ni «Fichar salida»
+- ENTONCES no hay botones de fichar ni de editar
 
 #### Scenario: Equipo vacío
 - DADO un responsable sin reportes
@@ -226,12 +231,12 @@ Cuando la sesión termina por un token caducado o por un `401` de la API y se na
 
 ### Requirement: Página de inicio
 
-La ruta `/` DEBE presentar TimeTracker en español: qué es la aplicación y, según la sesión, un enlace para iniciar sesión (anónimo), a «Fichajes» (con sesión) y a «Equipo» (solo el rol `Manager`). La página no encontrada DEBE estar en español con un enlace al inicio, el documento DEBE declarar `lang="es"` y su título DEBE llevar la marca «TimeTracker».
+La ruta `/` DEBE presentar TimeTracker en español: qué es la aplicación y, según la sesión, un enlace para iniciar sesión (anónimo) o, con sesión (empleado o responsable), el reproductor de fichaje (ver `time-entries-ui`), un acceso a «Fichajes» y, solo para el rol `Manager`, a «Equipo». La página no encontrada DEBE estar en español con un enlace al inicio, el documento DEBE declarar `lang="es"` y su título DEBE llevar la marca «TimeTracker».
 
 #### Scenario: Inicio según la sesión
 - DADO una sesión anónima, de empleado o de responsable
 - CUANDO se abre `/`
-- ENTONCES se ofrece iniciar sesión, «Fichajes», o «Fichajes» y «Equipo», respectivamente
+- ENTONCES se ofrece iniciar sesión sin reproductor, o el reproductor y «Fichajes», o el reproductor, «Fichajes» y «Equipo», respectivamente
 
 ### Requirement: Cierre de sesión
 

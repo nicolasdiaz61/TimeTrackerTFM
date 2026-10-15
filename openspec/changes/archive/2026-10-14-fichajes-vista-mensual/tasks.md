@@ -30,6 +30,6 @@ Cada tarea de implementación empieza por su prueba (rojo), sigue con el código
 
 ## 5. Documentación y cierre
 
-- [ ] 5.1 ADR 0016, README y ajuste de la prueba que cuenta los ADR.
-- [ ] 5.2 Verificación (build, formato, pruebas, cobertura, paquetes) y comprobación real en Chrome (incluida la imagen de la Web con su CSP); `verify-report.md`.
-- [ ] 5.3 Fusión de especificaciones y archivo (`archive-report.md`).
+- [x] 5.1 ADR 0016, README y ajuste de la prueba que cuenta los ADR.
+- [x] 5.2 Verificación (build, formato, pruebas, cobertura, paquetes) y comprobación real en Chrome (incluida la imagen de la Web con su CSP); `verify-report.md`.
+- [x] 5.3 Fusión de especificaciones y archivo (`archive-report.md`).
