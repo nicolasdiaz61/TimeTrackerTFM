@@ -44,10 +44,38 @@ public static class TimeEntryPresentation
 
     public static string ActionLabel(ClockAction action) => action switch
     {
-        ClockAction.ClockIn => "Fichar entrada",
-        ClockAction.StartBreak => "Iniciar pausa",
-        ClockAction.StartMealBreak => "Pausa de comida",
-        ClockAction.EndBreak => "Terminar pausa",
-        _ => "Fichar salida",
+        ClockAction.ClockIn => "Iniciar jornada",
+        ClockAction.StartBreak => "Pausa",
+        ClockAction.StartMealBreak => "Comida",
+        ClockAction.EndBreak => "Reanudar",
+        _ => "Finalizar jornada",
+    };
+
+    // Texto para lectores de pantalla: describe lo que hace el botón, no solo su etiqueta corta.
+    public static string ActionAriaLabel(ClockAction action) => action switch
+    {
+        ClockAction.ClockIn => "Iniciar la jornada",
+        ClockAction.StartBreak => "Pausar la jornada",
+        ClockAction.StartMealBreak => "Pausar la jornada para comer",
+        ClockAction.EndBreak => "Reanudar el trabajo",
+        _ => "Finalizar la jornada",
+    };
+
+    public static string ActionButtonClass(ClockAction action) => action switch
+    {
+        ClockAction.ClockIn => "btn-primary",
+        ClockAction.StartBreak => "btn-warning",
+        ClockAction.StartMealBreak => "btn-info",
+        ClockAction.EndBreak => "btn-success",
+        _ => "btn-danger",
+    };
+
+    // Clase CSS del indicador de estado del reproductor (los colores viven en app.css).
+    public static string StatusCssClass(string status) => status switch
+    {
+        "Working" => "status-working",
+        "OnBreak" => "status-break",
+        "OnMealBreak" => "status-meal",
+        _ => "status-idle",
     };
 }

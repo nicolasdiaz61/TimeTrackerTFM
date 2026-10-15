@@ -16,10 +16,10 @@ Cada tarea de implementación empieza por su prueba (rojo), sigue con el código
 ## 3. Web: lógica pura
 
 - [ ] 3.1 `DurationFormatter` (forma corta y hablada, plurales) y `SpanishDates`; se elimina `WorkedTimeFormatter`.
-- [ ] 3.2 `ILocalTimeZone`, `BrowserTimeZone` (con JS falso) y zona de prueba `Europe/Madrid`.
-- [ ] 3.3 `MonthRef` (etiqueta, navegación, no futuro, límites UTC en marzo y octubre).
-- [ ] 3.4 Constructor de la vista mensual: agrupación por día, recorte en medianoche y fin de mes, cambio de hora, tramo abierto hasta ahora, eje mínimo y ampliado, atenuado y fines de semana, totales.
-- [ ] 3.5 Instantánea del reproductor (tramo actual y total de hoy) y etiquetas de las acciones.
+- [x] 3.2 `ILocalTimeZone`, `BrowserTimeZone` (con JS falso) y zona de prueba `Europe/Madrid`.
+- [x] 3.3 `MonthRef` (etiqueta, navegación, no futuro, límites UTC en marzo y octubre).
+- [x] 3.4 Constructor de la vista mensual: agrupación por día, recorte en medianoche y fin de mes, cambio de hora, tramo abierto hasta ahora, eje mínimo y ampliado, atenuado y fines de semana, totales.
+- [x] 3.5 Instantánea del reproductor (tramo actual y total de hoy) y etiquetas de las acciones.
 
 ## 4. Web: interfaz
 
