@@ -5,18 +5,21 @@
 <h1>TimeTracker</h1>
 
 <p class="lead">
-    Control de tiempos para su empresa: registre la entrada y la salida de su jornada y consulte el tiempo trabajado.
+    Control de tiempos para su empresa: registre su jornada con un clic y consulte el tiempo trabajado.
 </p>
 
 <AuthorizeView>
     <Authorized>
         <p>Hola, <strong>@context.User.Identity?.Name</strong>. ¿Qué desea hacer?</p>
+
+        <ClockPlayer />
+
         <div class="row g-3 home-actions">
             <div class="col-12 col-md-6 col-xl-4">
                 <div class="card h-100">
                     <div class="card-body">
                         <h2 class="h5 card-title">Fichajes</h2>
-                        <p class="card-text">Fiche su entrada y su salida y revise el tiempo que lleva trabajado.</p>
+                        <p class="card-text">Revise su historial mes a mes, con las franjas de trabajo, pausas y comidas de cada día.</p>
                         <a class="btn btn-primary" href="fichajes">Ir a Fichajes</a>
                     </div>
                 </div>

@@ -43,11 +43,11 @@ public class TimeEntryPresentationTests
         => Assert.Equal(expected, TimeEntryPresentation.ActionLabel(action));
 
     [Theory]
-    [InlineData(ClockAction.ClockIn, "Iniciar la jornada")]
-    [InlineData(ClockAction.StartBreak, "Pausar la jornada")]
-    [InlineData(ClockAction.StartMealBreak, "Pausar la jornada para comer")]
-    [InlineData(ClockAction.EndBreak, "Reanudar el trabajo")]
-    [InlineData(ClockAction.ClockOut, "Finalizar la jornada")]
+    [InlineData(ClockAction.ClockIn, "Iniciar jornada")]
+    [InlineData(ClockAction.StartBreak, "Pausa: pausar la jornada")]
+    [InlineData(ClockAction.StartMealBreak, "Comida: pausar la jornada para comer")]
+    [InlineData(ClockAction.EndBreak, "Reanudar: volver al trabajo")]
+    [InlineData(ClockAction.ClockOut, "Finalizar jornada: terminar la jornada de hoy")]
     public void ActionAriaLabel_DescribesWhatTheButtonDoes(ClockAction action, string expected)
         => Assert.Equal(expected, TimeEntryPresentation.ActionAriaLabel(action));
 

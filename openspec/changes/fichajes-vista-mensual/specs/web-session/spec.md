@@ -51,3 +51,42 @@ La ruta `/` DEBE presentar TimeTracker en español: qué es la aplicación y, se
 - DADO una sesión anónima, de empleado o de responsable
 - CUANDO se abre `/`
 - ENTONCES se ofrece iniciar sesión sin reproductor, o el reproductor y «Fichajes», o el reproductor, «Fichajes» y «Equipo», respectivamente
+
+### Requirement: Página de inicio de sesión
+
+La ruta `/login` DEBE ser accesible sin sesión y mostrar un formulario con correo y contraseña que invoque `POST /api/auth/login` mediante el cliente tipado. Con éxito DEBE guardar la sesión y navegar al Inicio (`/`, donde está el reproductor de fichaje), o a la ruta del parámetro `returnUrl` si es una ruta relativa segura (empieza por `/` y no por `//` ni `/\`); en otro caso DEBE ignorar `returnUrl`. Con un `401` DEBE mostrar un mensaje genérico en español que no distinga entre correo y contraseña; con un `429`, un mensaje en español que pida esperar; ante un fallo de red u otra respuesta, un mensaje genérico en español sin datos técnicos. Si el correo o la contraseña están vacíos NO DEBE enviar la petición y DEBE avisar en español.
+
+#### Scenario: Inicio de sesión correcto
+- DADO la API en marcha con los usuarios de demostración
+- CUANDO se introduce `luis.empleado@example.test` y su contraseña de demostración en `/login`
+- ENTONCES se navega a `/`, se ve el reproductor de fichaje y el menú muestra el nombre del usuario
+
+#### Scenario: Regreso a la ruta de origen
+- DADO `/login?returnUrl=/equipo` abierta
+- CUANDO se inicia sesión correctamente como responsable
+- ENTONCES se navega a `/equipo`
+
+#### Scenario: Redirección abierta rechazada
+- DADO `/login?returnUrl=//ejemplo.test` y, por separado, `/login?returnUrl=https://ejemplo.test`
+- CUANDO se inicia sesión correctamente
+- ENTONCES se navega a `/` y no se abandona el origen de la Web
+
+#### Scenario: Credenciales erróneas
+- DADO `/login` abierta
+- CUANDO se envía una contraseña incorrecta y, por separado, un correo inexistente
+- ENTONCES ambos casos muestran el mismo mensaje genérico en español, la página sigue en `/login` y el campo de contraseña queda vacío
+
+#### Scenario: Demasiados intentos
+- DADO 10 intentos de login fallidos en un minuto
+- CUANDO se envía el undécimo
+- ENTONCES se muestra un mensaje en español indicando que debe esperar y la pantalla sigue operativa
+
+#### Scenario: API caída
+- DADO la API detenida
+- CUANDO se envía el formulario de `/login`
+- ENTONCES se muestra un mensaje genérico en español sin trazas ni detalles técnicos
+
+#### Scenario: Campos vacíos
+- DADO `/login` con el correo en blanco
+- CUANDO se pulsa el botón de entrar
+- ENTONCES se muestra un aviso en español y no se observa ninguna petición a `/api/auth/login` en la red

@@ -1,0 +1,163 @@
+@using System.Globalization
+@using TimeTracker.Web.Calendar
+@using TimeTracker.Web.Formatting
+@using TimeTracker.Web.Timeline
+
+@* Vista de un mes: totales, leyenda y una fila por día con su barra de franjas. Las barras son SVG con atributos numéricos
+   (x, width) y color por clases CSS: la CSP de la Web no admite estilos en línea (ver ADR 0016). *@
+<section aria-label="Fichajes de @Timeline.Month.Label" data-testid="month-view">
+    <dl class="month-totals" data-testid="month-totals">
+        <div class="month-total">
+            <dt>Trabajado</dt>
+            <dd data-testid="total-worked"><span class="swatch seg-work" aria-hidden="true"></span>@DurationFormatter.Compact(Timeline.WorkedMinutes)</dd>
+        </div>
+        <div class="month-total">
+            <dt>Pausas</dt>
+            <dd data-testid="total-break"><span class="swatch seg-break" aria-hidden="true"></span>@DurationFormatter.Compact(Timeline.BreakMinutes)</dd>
+        </div>
+        <div class="month-total">
+            <dt>Comidas</dt>
+            <dd data-testid="total-meal"><span class="swatch seg-meal" aria-hidden="true"></span>@DurationFormatter.Compact(Timeline.MealMinutes)</dd>
+        </div>
+        <div class="month-total">
+            <dt>Días con fichajes</dt>
+            <dd data-testid="total-days">@Timeline.DaysWithEntries</dd>
+        </div>
+    </dl>
+
+    @if (Timeline.IsEmpty)
+    {
+        <p class="empty-month" data-testid="empty-month">No hay fichajes en @Timeline.Month.Label.</p>
+    }
+    else
+    {
+        <ul class="legend" aria-label="Leyenda de las franjas">
+            @foreach (var kind in Kinds)
+            {
+                <li><span class="swatch @SegmentKinds.CssClass(kind)" aria-hidden="true"></span>@SegmentKinds.Label(kind)</li>
+            }
+            <li class="legend-note">Horas locales</li>
+        </ul>
+
+        <div class="day-axis @AxisSpanClass" aria-hidden="true">
+            <span class="day-label"></span>
+            <div class="axis-ticks">
+                @foreach (var hour in Timeline.Axis.TickHours)
+                {
+                    <span class="axis-tick tick-k-@(hour - Timeline.Axis.StartHour)">@hour</span>
+                }
+            </div>
+            <span class="day-total axis-caption">Hora local</span>
+        </div>
+
+        <ol class="day-list" data-testid="day-list">
+            @foreach (var day in Timeline.Days)
+            {
+                <li class="@RowClass(day)" data-testid="day-row" data-date="@DateKey(day)">
+                    <span class="day-label">
+                        @SpanishDates.DayLabel(day.Date)
+                        @if (day.IsToday)
+                        {
+                            <span class="badge text-bg-primary day-today-badge">Hoy</span>
+                        }
+                    </span>
+                    <svg class="day-bar" viewBox="0 0 @Number(TimelineAxis.ViewWidth) 24" preserveAspectRatio="none" role="img"
+                         aria-label="@TimelineText.DayText(day)" focusable="false">
+                        <rect class="bar-track" x="0" y="0" width="@Number(TimelineAxis.ViewWidth)" height="24" />
+                        @foreach (var hour in Timeline.Axis.TickHours)
+                        {
+                            var tickX = Number(Timeline.Axis.X(hour * 3600));
+                            <line class="bar-grid" x1="@tickX" x2="@tickX" y1="0" y2="24" />
+                        }
+                        @foreach (var segment in day.Segments)
+                        {
+                            var (x, width) = Timeline.Axis.Layout(segment);
+                            <rect class="bar-segment @SegmentKinds.CssClass(segment.Kind) @(segment.IsOpen ? "bar-open" : null)"
+                                  x="@Number(x)" y="3" width="@Number(width)" height="18">
+                                <title>@TimelineText.SegmentText(segment)</title>
+                            </rect>
+                        }
+                    </svg>
+                    @if (day.HasEntries)
+                    {
+                        <span class="day-total">
+                            <strong>@TimelineText.WorkedLabel(day)</strong>
+                            <small>@TimelineText.OthersLabel(day)</small>
+                        </span>
+                    }
+                    else
+                    {
+                        <span class="day-total day-total-empty">Sin fichajes</span>
+                    }
+                </li>
+            }
+        </ol>
+
+        <details class="day-details">
+            <summary>Detalle de franjas</summary>
+            <div class="table-responsive">
+                <table class="table table-sm">
+                    <thead>
+                        <tr>
+                            <th scope="col">Día</th>
+                            <th scope="col">Tipo</th>
+                            <th scope="col">Inicio</th>
+                            <th scope="col">Fin</th>
+                            <th scope="col">Duración</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var day in Timeline.Days.Where(day => day.HasEntries))
+                        {
+                            foreach (var segment in day.Segments)
+                            {
+                                <tr>
+                                    <td class="text-nowrap">@SpanishDates.DayLabel(day.Date)</td>
+                                    <td>@SegmentKinds.Label(segment.Kind)</td>
+                                    <td>@TimelineText.TimeOfDay(segment.StartSecond)</td>
+                                    <td>@(segment.IsOpen ? "en curso" : TimelineText.TimeOfDay(segment.EndSecond))</td>
+                                    <td class="text-nowrap">@DurationFormatter.Compact(segment.DurationMinutes)</td>
+                                </tr>
+                            }
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </details>
+    }
+</section>
+
+@code {
+    private static readonly SegmentKind[] Kinds = [SegmentKind.Work, SegmentKind.Break, SegmentKind.MealBreak];
+
+    [Parameter, EditorRequired]
+    public MonthTimeline Timeline { get; set; } = default!;
+
+    // El ancho del eje en horas (16 a 24) selecciona una clase que fija la variable CSS de las marcas.
+    private string AxisSpanClass => $"axis-span-{Timeline.Axis.EndHour - Timeline.Axis.StartHour}";
+
+    private static string RowClass(DayTimeline day)
+    {
+        var classes = new List<string> { "day-row" };
+        if (!day.HasEntries)
+        {
+            classes.Add("day-empty");
+        }
+
+        if (day.IsWeekend)
+        {
+            classes.Add("day-weekend");
+        }
+
+        if (day.IsToday)
+        {
+            classes.Add("day-today");
+        }
+
+        return string.Join(' ', classes);
+    }
+
+    private static string DateKey(DayTimeline day) => day.Date.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+
+    private static string Number(double value) => value.ToString("0.##", CultureInfo.InvariantCulture);
+}

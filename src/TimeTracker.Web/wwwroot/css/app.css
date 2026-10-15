@@ -113,3 +113,410 @@ code {
 .form-floating > .form-control-plaintext:focus::placeholder, .form-floating > .form-control:focus::placeholder {
     text-align: start;
 }
+
+
+/* ==== Reproductor de fichaje, vista mensual y barras de franjas (ADR 0016) ==== */
+/* La CSP de la Web no admite estilos en línea (style-src 'self'): todo lo dinámico va en clases o en atributos SVG. */
+
+:root {
+    --seg-work: #2b6cb0;
+    --seg-break: #d9780a;
+    --seg-meal: #7e3fc0;
+    --text-muted-strong: #565e66;
+}
+
+.btn:focus-visible, a:focus-visible, summary:focus-visible, select:focus-visible {
+    outline: 3px solid #258cfb;
+    outline-offset: 2px;
+}
+
+.seg-work { fill: var(--seg-work); background-color: var(--seg-work); }
+.seg-break { fill: var(--seg-break); background-color: var(--seg-break); }
+.seg-meal { fill: var(--seg-meal); background-color: var(--seg-meal); }
+
+.swatch {
+    display: inline-block;
+    width: 0.8rem;
+    height: 0.8rem;
+    margin-right: 0.4rem;
+    border-radius: 2px;
+    vertical-align: -0.05rem;
+}
+
+/* ---- Reproductor ---- */
+
+.clock-player {
+    max-width: 42rem;
+    margin-bottom: 1.5rem;
+}
+
+.player-status {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin: 0.25rem 0 1rem;
+    font-size: 1.15rem;
+    font-weight: 600;
+}
+
+.status-dot {
+    flex: none;
+    width: 0.9rem;
+    height: 0.9rem;
+    border-radius: 50%;
+    background-color: var(--state-color, #6c757d);
+}
+
+.status-idle { --state-color: #6c757d; }
+.status-working { --state-color: var(--seg-work); }
+.status-break { --state-color: var(--seg-break); }
+.status-meal { --state-color: var(--seg-meal); }
+
+.status-working .status-dot, .status-break .status-dot, .status-meal .status-dot {
+    animation: status-pulse 2s ease-in-out infinite;
+}
+
+@keyframes status-pulse {
+    0%, 100% { box-shadow: 0 0 0 0 transparent; }
+    50% { box-shadow: 0 0 0 0.35rem rgba(43, 108, 176, 0.25); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .status-dot { animation: none !important; }
+}
+
+.player-clocks {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem 2.5rem;
+    margin-bottom: 1.25rem;
+}
+
+.player-clock {
+    display: flex;
+    flex-direction: column;
+}
+
+.player-clock-label {
+    color: var(--text-muted-strong);
+    font-size: 0.875rem;
+}
+
+.player-clock-value {
+    font-size: 1.75rem;
+    font-weight: 700;
+    line-height: 1.15;
+    font-variant-numeric: tabular-nums;
+}
+
+.player-clock-main .player-clock-value {
+    font-size: 2.6rem;
+}
+
+.player-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+}
+
+.player-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    min-width: 9.5rem;
+    min-height: 3.25rem;
+    padding: 0.5rem 1.25rem;
+    font-size: 1.15rem;
+    font-weight: 600;
+}
+
+.action-icon {
+    flex: none;
+}
+
+.player-btn.btn-warning { color: #fff; background-color: #a85a06; border-color: #a85a06; }
+.player-btn.btn-info { color: #fff; background-color: #7e3fc0; border-color: #7e3fc0; }
+.player-btn.btn-success { color: #fff; background-color: #146c43; border-color: #146c43; }
+.player-btn.btn-danger { color: #fff; background-color: #b02a37; border-color: #b02a37; }
+.player-btn.btn-warning:hover { background-color: #8c4a04; border-color: #8c4a04; }
+.player-btn.btn-info:hover { background-color: #6a32a3; border-color: #6a32a3; }
+.player-btn.btn-success:hover { background-color: #0f5535; border-color: #0f5535; }
+.player-btn.btn-danger:hover { background-color: #8e1f2b; border-color: #8e1f2b; }
+
+@media (max-width: 575.98px) {
+    .player-btn {
+        flex: 1 1 calc(50% - 0.75rem);
+        min-width: 0;
+    }
+
+    .player-clock-main .player-clock-value {
+        font-size: 2.25rem;
+    }
+}
+
+/* ---- Pantalla de fichajes y equipo ---- */
+
+.status-bar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem 1.5rem;
+    margin-bottom: 1rem;
+}
+
+.status-bar .tracking-status {
+    margin-bottom: 0 !important;
+}
+
+.month-nav {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 1rem;
+}
+
+.month-nav .btn {
+    min-height: 2.75rem;
+}
+
+.month-title {
+    flex: 1 1 auto;
+    min-width: 10rem;
+    margin: 0 0.5rem;
+    font-size: 1.35rem;
+    text-align: center;
+}
+
+.month-title::first-letter {
+    text-transform: uppercase;
+}
+
+@media (max-width: 575.98px) {
+    .month-title {
+        order: -1;
+        flex-basis: 100%;
+        margin: 0;
+    }
+
+    .month-nav .btn {
+        flex: 1 1 auto;
+    }
+}
+
+.month-totals {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+    gap: 0.75rem;
+    margin: 0 0 1rem;
+}
+
+.month-total {
+    padding: 0.5rem 0.75rem;
+    border: 1px solid #dee2e6;
+    border-radius: 0.5rem;
+    background-color: #fff;
+}
+
+.month-total dt {
+    color: var(--text-muted-strong);
+    font-size: 0.8rem;
+    font-weight: 600;
+}
+
+.month-total dd {
+    margin: 0;
+    font-size: 1.25rem;
+    font-weight: 700;
+}
+
+.empty-month {
+    padding: 1.5rem 1rem;
+    border: 1px dashed #adb5bd;
+    border-radius: 0.5rem;
+    color: var(--text-muted-strong);
+    text-align: center;
+}
+
+.legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.25rem 1.25rem;
+    margin: 0 0 0.5rem;
+    padding: 0;
+    font-size: 0.9rem;
+    list-style: none;
+}
+
+.legend-note {
+    color: var(--text-muted-strong);
+}
+
+/* ---- Filas por día con la barra de franjas ---- */
+
+.day-list {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.day-row, .day-axis {
+    display: grid;
+    grid-template-columns: 5.5rem minmax(0, 1fr) 13rem;
+    align-items: center;
+    gap: 0.25rem 0.75rem;
+}
+
+.day-row {
+    padding: 0.35rem 0.5rem;
+    border-bottom: 1px solid #e9ecef;
+    border-left: 4px solid transparent;
+}
+
+.day-label {
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+.day-today-badge {
+    margin-left: 0.25rem;
+    font-size: 0.65rem;
+    vertical-align: 0.1rem;
+}
+
+.day-bar {
+    display: block;
+    width: 100%;
+    height: 1.75rem;
+}
+
+.bar-track { fill: #eef1f5; }
+.bar-grid { stroke: #cfd5db; stroke-width: 1; vector-effect: non-scaling-stroke; }
+.bar-segment:hover { filter: brightness(1.2); }
+.bar-open { fill-opacity: 0.78; }
+
+.day-total {
+    display: flex;
+    flex-direction: column;
+    line-height: 1.2;
+    text-align: right;
+}
+
+.day-total small {
+    white-space: nowrap;
+    color: var(--text-muted-strong);
+    font-size: 0.75rem;
+}
+
+.day-weekend {
+    background-color: #f4f0ea;
+}
+
+.day-weekend .day-label {
+    color: #7a3e00;
+}
+
+.day-empty .day-label, .day-total-empty {
+    color: var(--text-muted-strong);
+    font-weight: 400;
+}
+
+.day-empty .day-label { font-weight: 500; }
+.day-empty .bar-track { fill: #f6f7f9; }
+.day-empty .bar-grid { stroke: #e6e9ec; }
+.day-total-empty { font-size: 0.8rem; }
+
+.day-today {
+    border-left-color: #1b6ec2;
+    background-color: #eaf3ff;
+}
+
+.day-axis {
+    padding: 0 0.5rem 0 calc(0.5rem + 4px);
+    color: var(--text-muted-strong);
+    font-size: 0.75rem;
+}
+
+.axis-ticks {
+    position: relative;
+    height: 1.1rem;
+}
+
+.axis-tick {
+    position: absolute;
+    left: calc(var(--k) / var(--span) * 100%);
+    transform: translateX(-50%);
+}
+
+.axis-caption {
+    text-align: right;
+}
+
+@media (max-width: 991.98px) {
+    .day-row {
+        grid-template-columns: 1fr auto;
+        grid-template-areas: "label total" "bar bar";
+    }
+
+    .day-row .day-label { grid-area: label; }
+    .day-row .day-total { grid-area: total; }
+    .day-row .day-bar { grid-area: bar; }
+
+    .day-axis {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .day-axis .day-label, .day-axis .axis-caption {
+        display: none;
+    }
+
+    .day-total {
+        text-align: right;
+    }
+}
+
+.day-details {
+    margin-top: 1rem;
+}
+
+.day-details summary {
+    cursor: pointer;
+    font-weight: 600;
+}
+
+/* Posición de las marcas del eje: --k (horas desde el inicio del eje) y --span (horas del eje), por clase. */
+.axis-span-16 { --span: 16; }
+.axis-span-17 { --span: 17; }
+.axis-span-18 { --span: 18; }
+.axis-span-19 { --span: 19; }
+.axis-span-20 { --span: 20; }
+.axis-span-21 { --span: 21; }
+.axis-span-22 { --span: 22; }
+.axis-span-23 { --span: 23; }
+.axis-span-24 { --span: 24; }
+.tick-k-0 { --k: 0; }
+.tick-k-1 { --k: 1; }
+.tick-k-2 { --k: 2; }
+.tick-k-3 { --k: 3; }
+.tick-k-4 { --k: 4; }
+.tick-k-5 { --k: 5; }
+.tick-k-6 { --k: 6; }
+.tick-k-7 { --k: 7; }
+.tick-k-8 { --k: 8; }
+.tick-k-9 { --k: 9; }
+.tick-k-10 { --k: 10; }
+.tick-k-11 { --k: 11; }
+.tick-k-12 { --k: 12; }
+.tick-k-13 { --k: 13; }
+.tick-k-14 { --k: 14; }
+.tick-k-15 { --k: 15; }
+.tick-k-16 { --k: 16; }
+.tick-k-17 { --k: 17; }
+.tick-k-18 { --k: 18; }
+.tick-k-19 { --k: 19; }
+.tick-k-20 { --k: 20; }
+.tick-k-21 { --k: 21; }
+.tick-k-22 { --k: 22; }
+.tick-k-23 { --k: 23; }
+.tick-k-24 { --k: 24; }

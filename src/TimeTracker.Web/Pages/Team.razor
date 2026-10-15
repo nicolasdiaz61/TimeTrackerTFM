@@ -1,10 +1,14 @@
 @page "/equipo"
 @attribute [Authorize(Roles = "Manager")]
 @using System.Net
+@using TimeTracker.Web.Calendar
 @using TimeTracker.Web.Http
 @using TimeTracker.Web.Team
-@using TimeTracker.Web.TimeEntries
+@using TimeTracker.Web.Time
+@using TimeTracker.Web.Timeline
 @inject TeamApiClient Api
+@inject ILocalTimeZone Zone
+@inject TimeProvider Clock
 
 <PageTitle>Equipo - TimeTracker</PageTitle>
 
@@ -25,7 +29,7 @@ else if (members is { Count: 0 })
 }
 else if (members is not null)
 {
-    <div class="mb-3">
+    <div class="mb-3 member-picker">
         <label for="member" class="form-label">Persona</label>
         <select id="member" class="form-select" @onchange="OnMemberChangedAsync">
             <option value="">Seleccione una persona</option>
@@ -36,27 +40,38 @@ else if (members is not null)
         </select>
     </div>
 
-    @if (loadingEntries)
+    @if (selectedId is not null)
     {
-        <p><em>Cargando fichajes...</em></p>
-    }
-    else if (entries is not null)
-    {
-        <TrackingStatusBadge Status="@entries.Status" />
-        <TimeEntriesTable List="entries" />
+        <MonthNavigator Month="month" Current="current" Disabled="loadingEntries" MonthChanged="ChangeMonthAsync" />
+
+        @if (loadingEntries)
+        {
+            <p aria-busy="true"><em>Cargando fichajes...</em></p>
+        }
+        else if (timeline is not null)
+        {
+            <TrackingStatusBadge Status="@status" />
+            <MonthTimelineView Timeline="timeline" />
+        }
     }
 }
 
 @code {
     private IReadOnlyList<TeamMemberDto>? members;
-    private TimeEntryListDto? entries;
+    private MonthTimeline? timeline;
     private Guid? selectedId;
+    private MonthRef current;
+    private MonthRef month;
+    private string status = "Idle";
     private string? errorMessage;
     private bool loadingMembers = true;
     private bool loadingEntries;
+    private int loadSequence;
 
     protected override async Task OnInitializedAsync()
     {
+        current = MonthRef.Of(Zone.DateOf(Clock.GetUtcNow()));
+        month = current;
         try
         {
             members = (await Api.GetMembersAsync()).Items;
@@ -71,33 +86,56 @@ else if (members is not null)
         }
     }
 
+    // Al cambiar de miembro se conserva el mes mostrado.
     private async Task OnMemberChangedAsync(ChangeEventArgs args)
     {
-        errorMessage = null;
-        entries = null;
         selectedId = Guid.TryParse(args.Value?.ToString(), out var id) ? id : null;
+        await LoadAsync();
+    }
+
+    // Al cambiar de mes se conserva el miembro elegido.
+    private async Task ChangeMonthAsync(MonthRef selected)
+    {
+        month = selected;
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        errorMessage = null;
+        timeline = null;
+        // Cada carga lleva un número: si cambia el miembro o el mes mientras se carga, se descarta la respuesta antigua.
+        var sequence = ++loadSequence;
         if (selectedId is not { } memberId)
         {
+            loadingEntries = false;
             return;
         }
 
         loadingEntries = true;
         try
         {
-            var result = await Api.GetTimeEntriesAsync(memberId);
-            // Si el usuario cambió de miembro mientras se cargaba, se descarta la respuesta antigua.
-            if (selectedId == memberId)
+            var (from, to) = month.Window(Zone);
+            var list = await Api.GetTimeEntriesAsync(memberId, from, to);
+            if (sequence == loadSequence)
             {
-                entries = result;
+                timeline = MonthTimelineBuilder.Build(month, list.Items, Zone, Clock.GetUtcNow());
+                status = list.Status;
             }
         }
         catch (ApiRequestException exception)
         {
-            errorMessage = MessageFor(exception, forMember: true);
+            if (sequence == loadSequence)
+            {
+                errorMessage = MessageFor(exception, forMember: true);
+            }
         }
         finally
         {
-            loadingEntries = false;
+            if (sequence == loadSequence)
+            {
+                loadingEntries = false;
+            }
         }
     }
 

@@ -89,7 +89,7 @@ Cada día del mes DEBE mostrarse como una fila con la etiqueta del día (día de
 #### Scenario: Franjas a escala
 - DADO un día con trabajo de 08:00 a 13:00, comida de 13:00 a 14:00 y trabajo de 14:00 a 17:00 (hora local)
 - CUANDO se muestra
-- ENTONCES hay tres franjas contiguas posicionadas según el eje del mes y el total del día es «7 h 0 min» de trabajo y «1 h» de comida
+- ENTONCES hay tres franjas contiguas posicionadas según el eje del mes y el total del día es «7 h» de trabajo, «0 min» de pausas y «1 h» de comida
 
 #### Scenario: Eje comparable
 - DADO un mes cuyos tramos están entre 08:00 y 18:00
@@ -174,7 +174,7 @@ Una respuesta `409` DEBE mostrar al usuario el `detail` en español del ProblemD
 #### Scenario: Ventana rechazada
 - DADO una respuesta `400` de la API a una ventana de fechas
 - CUANDO se muestra
-- ENTONCES aparece el motivo en español de la API y la pantalla sigue operativa
+- ENTONCES aparece un mensaje genérico en español (la Web siempre envía ventanas válidas) y la pantalla sigue operativa
 
 ### Requirement: Cliente tipado y URL base configurable
 

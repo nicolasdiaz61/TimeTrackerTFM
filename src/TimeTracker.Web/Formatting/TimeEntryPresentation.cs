@@ -54,11 +54,11 @@ public static class TimeEntryPresentation
     // Texto para lectores de pantalla: describe lo que hace el botón, no solo su etiqueta corta.
     public static string ActionAriaLabel(ClockAction action) => action switch
     {
-        ClockAction.ClockIn => "Iniciar la jornada",
-        ClockAction.StartBreak => "Pausar la jornada",
-        ClockAction.StartMealBreak => "Pausar la jornada para comer",
-        ClockAction.EndBreak => "Reanudar el trabajo",
-        _ => "Finalizar la jornada",
+        ClockAction.ClockIn => "Iniciar jornada",
+        ClockAction.StartBreak => "Pausa: pausar la jornada",
+        ClockAction.StartMealBreak => "Comida: pausar la jornada para comer",
+        ClockAction.EndBreak => "Reanudar: volver al trabajo",
+        _ => "Finalizar jornada: terminar la jornada de hoy",
     };
 
     public static string ActionButtonClass(ClockAction action) => action switch

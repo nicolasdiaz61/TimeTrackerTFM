@@ -2,9 +2,11 @@ using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Authorization;
 using Microsoft.AspNetCore.Components.Web;
 using Microsoft.AspNetCore.Components.WebAssembly.Hosting;
+using Microsoft.JSInterop;
 using TimeTracker.Web;
 using TimeTracker.Web.Auth;
 using TimeTracker.Web.Team;
+using TimeTracker.Web.Time;
 using TimeTracker.Web.TimeEntries;
 
 var builder = WebAssemblyHostBuilder.CreateDefault(args);
@@ -22,6 +24,8 @@ if (!Uri.TryCreate(apiBaseUrl, UriKind.Absolute, out var apiBaseUri) || apiBaseU
 }
 
 builder.Services.AddSingleton(TimeProvider.System);
+// Zona horaria del navegador (js/local-time.js): WebAssembly se ejecuta en el hilo del navegador, así que la llamada es síncrona.
+builder.Services.AddScoped<ILocalTimeZone>(sp => new BrowserTimeZone((IJSInProcessRuntime)sp.GetRequiredService<IJSRuntime>()));
 builder.Services.AddAuthorizationCore();
 builder.Services.AddCascadingAuthenticationState();
 builder.Services.AddScoped<TokenStore>();

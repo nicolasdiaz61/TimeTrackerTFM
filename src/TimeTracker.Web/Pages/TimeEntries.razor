@@ -1,102 +1,99 @@
 @page "/fichajes"
 @attribute [Authorize]
 @using System.Net
-@using TimeTracker.Web.Formatting
+@using TimeTracker.Web.Calendar
 @using TimeTracker.Web.Http
+@using TimeTracker.Web.Time
 @using TimeTracker.Web.TimeEntries
+@using TimeTracker.Web.Timeline
 @inject TimeEntriesApiClient Api
+@inject ILocalTimeZone Zone
+@inject TimeProvider Clock
 
 <PageTitle>Fichajes - TimeTracker</PageTitle>
 
 <h1>Fichajes</h1>
 
-@if (list is not null)
+@* Esta pantalla es de consulta: las acciones de fichaje están en el reproductor del Inicio (ADR 0016). *@
+@if (status is not null)
 {
-    <TrackingStatusBadge Status="@list.Status" />
-
-    <div class="d-flex flex-wrap gap-2 mb-3 clock-actions">
-        @foreach (var action in TimeEntryPresentation.AvailableActions(list.Status))
-        {
-            <button type="button" class="btn @ButtonClass(action)" @onclick="() => RunAsync(action)" disabled="@busy">@TimeEntryPresentation.ActionLabel(action)</button>
-        }
+    <div class="status-bar">
+        <TrackingStatusBadge Status="@status" />
+        <a class="btn btn-primary" href="" data-testid="go-home">Ir al Inicio para fichar</a>
     </div>
 }
+
+<MonthNavigator Month="month" Current="current" Disabled="loading" MonthChanged="ChangeMonthAsync" />
 
 @if (errorMessage is not null)
 {
     <div class="alert alert-danger" role="alert">@errorMessage</div>
 }
 
-@if (busy && list is null)
+@if (loading)
 {
-    <p><em>Cargando fichajes...</em></p>
+    <p aria-busy="true"><em>Cargando fichajes...</em></p>
 }
-
-@if (list is not null)
+else if (timeline is not null)
 {
-    <TimeEntriesTable List="list" />
+    <MonthTimelineView Timeline="timeline" />
 }
 
 @code {
-    private TimeEntryListDto? list;
+    private MonthRef current;
+    private MonthRef month;
+    private MonthTimeline? timeline;
+    private string? status;
     private string? errorMessage;
-    private bool busy = true;
+    private bool loading = true;
+    private int loadSequence;
 
     protected override async Task OnInitializedAsync()
     {
-        await RefreshAsync();
-        busy = false;
+        current = MonthRef.Of(Zone.DateOf(Clock.GetUtcNow()));
+        month = current;
+        await LoadAsync();
     }
 
-    private async Task RefreshAsync()
+    private async Task ChangeMonthAsync(MonthRef selected)
     {
-        try
-        {
-            list = await Api.GetAsync();
-            errorMessage = null;
-        }
-        catch (ApiRequestException exception)
-        {
-            ShowError(exception);
-        }
+        month = selected;
+        await LoadAsync();
     }
 
-    private static string ButtonClass(ClockAction action) => action switch
+    private async Task LoadAsync()
     {
-        ClockAction.ClockIn => "btn-primary",
-        ClockAction.StartBreak => "btn-warning",
-        ClockAction.StartMealBreak => "btn-info",
-        ClockAction.EndBreak => "btn-success",
-        _ => "btn-secondary",
-    };
-
-    // La Web no decide si la acción es válida: lo hace el servidor y aquí solo se muestra su respuesta.
-    // Tras un 409 se recarga el listado: el estado pudo cambiar desde otra pestaña y los botones deben reflejarlo.
-    private async Task RunAsync(ClockAction action)
-    {
-        busy = true;
+        // Cada carga lleva un número: una respuesta antigua (cambios rápidos de mes) no pisa a la más reciente.
+        var sequence = ++loadSequence;
+        loading = true;
+        errorMessage = null;
         try
         {
-            await Api.RunAsync(action);
-            await RefreshAsync();
-        }
-        catch (ApiRequestException exception)
-        {
-            ShowError(exception);
-            if (exception.StatusCode == HttpStatusCode.Conflict)
+            var (from, to) = month.Window(Zone);
+            var list = await Api.GetAsync(from, to);
+            if (sequence != loadSequence)
             {
-                var message = errorMessage;
-                await RefreshAsync();
-                errorMessage = message;
+                return;
+            }
+
+            timeline = MonthTimelineBuilder.Build(month, list.Items, Zone, Clock.GetUtcNow());
+            status = list.Status;
+        }
+        catch (ApiRequestException exception)
+        {
+            if (sequence == loadSequence)
+            {
+                timeline = null;
+                // Un 401 lo gestiona el BearerTokenHandler (cierra la sesión y lleva a /login): no se muestra como error.
+                errorMessage = exception.StatusCode == HttpStatusCode.Unauthorized ? null : exception.Message;
             }
         }
         finally
         {
-            busy = false;
+            if (sequence == loadSequence)
+            {
+                loading = false;
+            }
         }
     }
-
-    // Un 401 lo gestiona el BearerTokenHandler (cierra la sesión y lleva a /login): no se muestra como error de la pantalla.
-    private void ShowError(ApiRequestException exception)
-        => errorMessage = exception.StatusCode == HttpStatusCode.Unauthorized ? null : exception.Message;
 }
