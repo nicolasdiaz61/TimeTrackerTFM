@@ -241,6 +241,63 @@ public class TimeEntryRepositoryTests(PostgresFixture postgres)
             () => secondRepository.UpdateAsync(secondCopy, CancellationToken.None));
     }
 
+    [Fact]
+    public async Task ListInWindowAsync_ReturnsOverlappingEntriesOfThatEmployeeNewestFirst()
+    {
+        var employeeId = Guid.NewGuid();
+        var from = EightAm;
+        var to = EightAm.AddDays(1);
+        await AddAsync(ClosedEntry(employeeId, from.AddMinutes(-30)));              // acaba justo en from: fuera
+        var crossingStart = ClosedAt(employeeId, from.AddMinutes(-10), from.AddMinutes(20));
+        var inside = ClosedEntry(employeeId, from.AddHours(5));
+        var crossingEnd = ClosedAt(employeeId, to.AddMinutes(-10), to.AddMinutes(20));
+        await AddAsync(ClosedEntry(employeeId, to));                                // empieza justo en to: fuera
+        await AddAsync(ClosedEntry(Guid.NewGuid(), from.AddHours(5)));              // de otro empleado
+        foreach (var entry in new[] { crossingStart, inside, crossingEnd })
+        {
+            await AddAsync(entry);
+        }
+
+        await using var context = postgres.CreateContext(postgres.ConnectionString);
+        var found = await new TimeEntryRepository(context).ListInWindowAsync(employeeId, WindowOf(from, to), 10, CancellationToken.None);
+
+        Assert.Equal([crossingEnd.Id, inside.Id, crossingStart.Id], found.Select(entry => entry.Id));
+    }
+
+    [Fact]
+    public async Task ListInWindowAsync_IncludesAnOpenEntryStartedBeforeTheWindowEnd_AndAppliesTheLimit()
+    {
+        var employeeId = Guid.NewGuid();
+        var open = TimeEntry.Start(employeeId, TimeEntryType.Work, EightAm.AddDays(-3));
+        await AddAsync(open);
+
+        await using var context = postgres.CreateContext(postgres.ConnectionString);
+        var repository = new TimeEntryRepository(context);
+        var found = await repository.ListInWindowAsync(employeeId, WindowOf(EightAm, EightAm.AddDays(1)), 10, CancellationToken.None);
+        var before = await repository.ListInWindowAsync(employeeId, WindowOf(EightAm.AddDays(-10), EightAm.AddDays(-5)), 10, CancellationToken.None);
+
+        Assert.Equal([open.Id], found.Select(entry => entry.Id));
+        Assert.Empty(before);
+
+        await AddAsync(ClosedEntry(employeeId, EightAm.AddHours(2)));
+        await AddAsync(ClosedEntry(employeeId, EightAm.AddHours(4)));
+        var limited = await repository.ListInWindowAsync(employeeId, WindowOf(EightAm, EightAm.AddDays(1)), 2, CancellationToken.None);
+        Assert.Equal(2, limited.Count);
+    }
+
+    private static TimeWindow WindowOf(DateTimeOffset from, DateTimeOffset to)
+    {
+        Assert.True(TimeWindow.TryCreate(from, to, to, out var window, out _));
+        return window!;
+    }
+
+    private static TimeEntry ClosedAt(Guid employeeId, DateTimeOffset clockInAt, DateTimeOffset clockOutAt)
+    {
+        var entry = TimeEntry.Start(employeeId, TimeEntryType.Work, clockInAt);
+        entry.Close(clockOutAt);
+        return entry;
+    }
+
     private static TimeEntry ClosedEntry(Guid employeeId, DateTimeOffset clockInAt)
     {
         var entry = TimeEntry.Start(employeeId, TimeEntryType.Work, clockInAt);

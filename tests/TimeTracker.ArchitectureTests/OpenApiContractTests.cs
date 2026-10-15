@@ -28,7 +28,10 @@ public class OpenApiContractTests
             AssertResponses(paths, $"{TimeEntriesPath}/{action}", "post", "200", "401", "409");
         }
 
-        AssertResponses(paths, TimeEntriesPath, "get", "200");
+        AssertResponses(paths, TimeEntriesPath, "get", "200", "400", "401");
+        var windowParameters = paths.GetProperty(TimeEntriesPath).GetProperty("get").GetProperty("parameters").EnumerateArray().ToList();
+        Assert.Equal(["from", "to"], windowParameters.Select(parameter => parameter.GetProperty("name").GetString()));
+        Assert.All(windowParameters, parameter => Assert.Equal("query", parameter.GetProperty("in").GetString()));
 
         var response = document.RootElement.GetProperty("components").GetProperty("schemas")
             .GetProperty("TimeEntryResponse").GetProperty("properties");
@@ -96,10 +99,10 @@ public class OpenApiContractTests
 
         Assert.Equal(["/api/team/members", MemberEntries], teamPaths.Select(path => path.Name).Order(StringComparer.Ordinal));
         Assert.All(teamPaths, path => Assert.Equal(["get"], path.Value.EnumerateObject().Select(operation => operation.Name)));
-        var parameter = Assert.Single(paths.GetProperty(MemberEntries).GetProperty("get").GetProperty("parameters").EnumerateArray());
-        Assert.Equal("memberId", parameter.GetProperty("name").GetString());
-        Assert.Equal("path", parameter.GetProperty("in").GetString());
-        Assert.Equal("uuid", parameter.GetProperty("schema").GetProperty("format").GetString());
+        var parameters = paths.GetProperty(MemberEntries).GetProperty("get").GetProperty("parameters").EnumerateArray().ToList();
+        Assert.Equal(["memberId", "from", "to"], parameters.Select(parameter => parameter.GetProperty("name").GetString()));
+        Assert.Equal(["path", "query", "query"], parameters.Select(parameter => parameter.GetProperty("in").GetString()));
+        Assert.Equal("uuid", parameters[0].GetProperty("schema").GetProperty("format").GetString());
     }
 
     [Fact]
@@ -109,7 +112,7 @@ public class OpenApiContractTests
         var paths = document.RootElement.GetProperty("paths");
 
         AssertResponses(paths, "/api/team/members", "get", "200", "401", "403");
-        AssertResponses(paths, "/api/team/members/{memberId}/time-entries", "get", "200", "401", "403", "404");
+        AssertResponses(paths, "/api/team/members/{memberId}/time-entries", "get", "200", "400", "401", "403", "404");
     }
 
     [Fact]

@@ -1,3 +1,5 @@
+using Microsoft.AspNetCore.Http.HttpResults;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 
 using TimeTracker.Application.TimeTracking;
@@ -51,10 +53,30 @@ public static class TimeEntryEndpoints
             .ProducesProblem(StatusCodes.Status401Unauthorized)
             .ProducesProblem(StatusCodes.Status409Conflict);
 
-        group.MapGet("", async (GetTimeEntriesUseCase useCase, CancellationToken cancellationToken)
-            => TypedResults.Ok(TimeEntryListResponse.From(await useCase.ExecuteAsync(cancellationToken))))
+        // from y to (UTC, ventana semiabierta) son opcionales: sin ellos, los últimos 300 como antes (ADR 0016).
+        group.MapGet("", ListAsync)
+            .ProducesProblem(StatusCodes.Status400BadRequest)
             .ProducesProblem(StatusCodes.Status401Unauthorized);
 
         return endpoints;
     }
+
+    private static async Task<Results<Ok<TimeEntryListResponse>, ProblemHttpResult>> ListAsync(
+        [FromQuery(Name = "from")] string? from,
+        [FromQuery(Name = "to")] string? to,
+        TimeProvider clock,
+        GetTimeEntriesUseCase useCase,
+        CancellationToken cancellationToken)
+    {
+        if (TimeWindowQuery.TryRead(from, to, clock.GetUtcNow(), out var window) is { } error)
+        {
+            return InvalidWindow(error);
+        }
+
+        return TypedResults.Ok(TimeEntryListResponse.From(await useCase.ExecuteAsync(window, cancellationToken)));
+    }
+
+    // Compartido con /api/team: 400 en español con el motivo.
+    internal static ProblemHttpResult InvalidWindow(string reason)
+        => TypedResults.Problem(detail: reason, statusCode: StatusCodes.Status400BadRequest, title: "Solicitud no válida");
 }

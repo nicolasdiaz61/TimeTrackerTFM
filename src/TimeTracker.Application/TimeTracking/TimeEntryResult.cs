@@ -16,8 +16,8 @@ public sealed record TimeEntryListResult(
     int TotalMealBreakMinutes,
     TimeTrackingStatus Status)
 {
-    /// <summary>Convierte los intervalos en el listado: suma por tipo solo los cerrados (los abiertos no suman) y deduce el estado del abierto.</summary>
-    public static TimeEntryListResult From(IReadOnlyList<TimeEntry> entries)
+    /// <summary>Convierte los intervalos en el listado: suma por tipo solo los cerrados devueltos (los abiertos no suman). El estado sale del intervalo abierto del empleado (<paramref name="open"/>), aunque no esté entre los devueltos.</summary>
+    public static TimeEntryListResult From(IReadOnlyList<TimeEntry> entries, TimeEntry? open)
     {
         var worked = default(WorkedHours);
         var breaks = default(WorkedHours);
@@ -39,7 +39,6 @@ public sealed record TimeEntryListResult(
             }
         }
 
-        var open = entries.FirstOrDefault(entry => entry.IsOpen);
         return new TimeEntryListResult([.. entries.Select(TimeEntryResult.From)], worked.Minutes, breaks.Minutes, meals.Minutes, StatusOf(open));
     }
 

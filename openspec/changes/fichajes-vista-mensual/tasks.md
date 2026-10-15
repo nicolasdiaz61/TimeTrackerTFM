@@ -4,14 +4,14 @@ Cada tarea de implementación empieza por su prueba (rojo), sigue con el código
 
 ## 1. Application e Infrastructure: ventana de consulta
 
-- [ ] 1.1 `TimeWindow.TryCreate` (válida, `to <= from`, más de 32 días, futuro) con sus pruebas.
-- [ ] 1.2 `ITimeEntryRepository.ListInWindowAsync` en el repositorio en memoria y en `TimeEntryRepository` (solape, límites semiabiertos, abierto, tope) con pruebas de integración.
-- [ ] 1.3 `GetTimeEntriesUseCase` y `GetTeamMemberTimeEntriesUseCase` con ventana opcional y estado desde `FindOpenAsync` (`TimeEntryListResult.From(entries, open)`), adaptando las pruebas existentes.
+- [x] 1.1 `TimeWindow.TryCreate` (válida, `to <= from`, más de 32 días, futuro) con sus pruebas.
+- [x] 1.2 `ITimeEntryRepository.ListInWindowAsync` en el repositorio en memoria y en `TimeEntryRepository` (solape, límites semiabiertos, abierto, tope) con pruebas de integración.
+- [x] 1.3 `GetTimeEntriesUseCase` y `GetTeamMemberTimeEntriesUseCase` con ventana opcional y estado desde `FindOpenAsync` (`TimeEntryListResult.From(entries, open)`), adaptando las pruebas existentes.
 
 ## 2. Api: contrato
 
-- [ ] 2.1 `TimeWindowQuery` (lectura de `from` y `to`, `400` en español) y endpoints de fichajes y de equipo; pruebas de integración (ventana, `400` por regla, sin ventana, equipo, `404` idéntico con ventana).
-- [ ] 2.2 Regenerar `docs/api/openapi.json` y ampliar `OpenApiContractTests`.
+- [x] 2.1 `TimeWindowQuery` (lectura de `from` y `to`, `400` en español) y endpoints de fichajes y de equipo; pruebas de integración (ventana, `400` por regla, sin ventana, equipo, `404` idéntico con ventana).
+- [x] 2.2 Regenerar `docs/api/openapi.json` y ampliar `OpenApiContractTests`.
 
 ## 3. Web: lógica pura
 

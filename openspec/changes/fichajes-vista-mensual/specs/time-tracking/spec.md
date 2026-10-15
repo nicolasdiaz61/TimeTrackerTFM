@@ -126,4 +126,4 @@ La API DEBE exponer, todos con autenticación obligatoria y sin cuerpo: `POST /a
 #### Scenario: Contrato OpenAPI
 - DADO el build de `TimeTracker.Api` ejecutado
 - CUANDO se lee `docs/api/openapi.json`
-- ENTONCES contiene `post` en `clock-in` (`201`, `401`, `409`), `clock-out`, `start-break`, `start-meal-break` y `end-break` (`200`, `401`, `409`) y `get` en `/api/time-entries` (`200`, `400`, `401`) con los parámetros `from` y `to` de tipo `date-time`; `TimeEntryResponse` declara `type` como enumeración de texto, `format: date-time` en `clockInAt` y `clockOutAt` y no declara `workedMinutes`
+- ENTONCES contiene `post` en `clock-in` (`201`, `401`, `409`), `clock-out`, `start-break`, `start-meal-break` y `end-break` (`200`, `401`, `409`) y `get` en `/api/time-entries` (`200`, `400`, `401`) con los parámetros de consulta `from` y `to`; `TimeEntryResponse` declara `type` como enumeración de texto, `format: date-time` en `clockInAt` y `clockOutAt` y no declara `workedMinutes`

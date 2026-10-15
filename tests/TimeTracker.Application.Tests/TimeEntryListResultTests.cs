@@ -17,7 +17,7 @@ public class TimeEntryListResultTests
         second.Close(EightAm.AddHours(2).AddMinutes(30));
         var open = TimeEntry.Start(EmployeeId, TimeEntryType.Work, EightAm.AddHours(4));
 
-        var result = TimeEntryListResult.From([first, second, open]);
+        var result = TimeEntryListResult.From([first, second, open], open);
 
         Assert.Equal(90, result.TotalWorkedMinutes);
         Assert.Equal([first.Id, second.Id, open.Id], result.Items.Select(item => item.Id));
@@ -27,7 +27,7 @@ public class TimeEntryListResultTests
     [Fact]
     public void From_WithNoEntries_ReturnsEmptyAndZero()
     {
-        var result = TimeEntryListResult.From([]);
+        var result = TimeEntryListResult.From([], null);
 
         Assert.Empty(result.Items);
         Assert.Equal(0, result.TotalWorkedMinutes);
@@ -44,7 +44,7 @@ public class TimeEntryListResultTests
         var meal = Closed(TimeEntryType.MealBreak, EightAm.AddHours(3), 45);
         var openBreak = TimeEntry.Start(EmployeeId, TimeEntryType.Break, EightAm.AddHours(5));
 
-        var result = TimeEntryListResult.From([openBreak, meal, work2, breakEntry, work1]);
+        var result = TimeEntryListResult.From([openBreak, meal, work2, breakEntry, work1], openBreak);
 
         Assert.Equal(90, result.TotalWorkedMinutes);
         Assert.Equal(15, result.TotalBreakMinutes);
@@ -62,14 +62,25 @@ public class TimeEntryListResultTests
         var closed = Closed(TimeEntryType.Work, EightAm, 60);
         var open = TimeEntry.Start(EmployeeId, openType, EightAm.AddHours(2));
 
-        Assert.Equal(expected, TimeEntryListResult.From([open, closed]).Status);
+        Assert.Equal(expected, TimeEntryListResult.From([open, closed], open).Status);
     }
 
     [Fact]
     public void From_WithoutOpenEntry_StatusIsIdle()
     {
-        Assert.Equal(TimeTrackingStatus.Idle, TimeEntryListResult.From([Closed(TimeEntryType.Work, EightAm, 60)]).Status);
-        Assert.Equal(TimeTrackingStatus.Idle, TimeEntryListResult.From([]).Status);
+        Assert.Equal(TimeTrackingStatus.Idle, TimeEntryListResult.From([Closed(TimeEntryType.Work, EightAm, 60)], null).Status);
+        Assert.Equal(TimeTrackingStatus.Idle, TimeEntryListResult.From([], null).Status);
+    }
+
+    [Fact]
+    public void From_StatusComesFromTheOpenEntryEvenWhenItIsNotInTheItems()
+    {
+        var open = TimeEntry.Start(EmployeeId, TimeEntryType.MealBreak, EightAm);
+
+        var result = TimeEntryListResult.From([Closed(TimeEntryType.Work, EightAm.AddDays(-40), 60)], open);
+
+        Assert.Equal(TimeTrackingStatus.OnMealBreak, result.Status);
+        Assert.Single(result.Items);
     }
 
     [Fact]

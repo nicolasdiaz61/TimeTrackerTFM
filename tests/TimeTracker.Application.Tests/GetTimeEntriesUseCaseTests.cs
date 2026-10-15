@@ -29,7 +29,7 @@ public class GetTimeEntriesUseCaseTests
         var open = TimeEntry.Start(EmployeeId, TimeEntryType.Work, EightAm.AddHours(4));
         _repository.Seed(open);
 
-        var result = await CreateUseCase().ExecuteAsync(CancellationToken.None);
+        var result = await CreateUseCase().ExecuteAsync(null, CancellationToken.None);
 
         Assert.Equal(90, result.TotalWorkedMinutes);
         Assert.Equal(3, result.Items.Count);
@@ -47,7 +47,7 @@ public class GetTimeEntriesUseCaseTests
             SeedClosed(EightAm.AddDays(day), 10);
         }
 
-        var result = await CreateUseCase().ExecuteAsync(CancellationToken.None);
+        var result = await CreateUseCase().ExecuteAsync(null, CancellationToken.None);
 
         Assert.Equal(GetTimeEntriesUseCase.MaxEntries, result.Items.Count);
         Assert.Equal(EightAm.AddDays(GetTimeEntriesUseCase.MaxEntries + 4), result.Items[0].ClockInAt);
@@ -61,7 +61,7 @@ public class GetTimeEntriesUseCaseTests
         SeedClosed(EightAm, 10);
         SeedClosed(EightAm.AddDays(-2), 10);
 
-        var result = await CreateUseCase().ExecuteAsync(CancellationToken.None);
+        var result = await CreateUseCase().ExecuteAsync(null, CancellationToken.None);
 
         Assert.Equal(
             [EightAm, EightAm.AddDays(-1), EightAm.AddDays(-2)],
@@ -71,7 +71,7 @@ public class GetTimeEntriesUseCaseTests
     [Fact]
     public async Task Get_WithNoEntries_ReturnsEmptyAndZeroTotal()
     {
-        var result = await CreateUseCase().ExecuteAsync(CancellationToken.None);
+        var result = await CreateUseCase().ExecuteAsync(null, CancellationToken.None);
 
         Assert.Empty(result.Items);
         Assert.Equal(0, result.TotalWorkedMinutes);
@@ -85,9 +85,71 @@ public class GetTimeEntriesUseCaseTests
             SeedClosed(EightAm.AddDays(day), 10);
         }
 
-        var result = await CreateUseCase().ExecuteAsync(CancellationToken.None);
+        var result = await CreateUseCase().ExecuteAsync(null, CancellationToken.None);
 
         Assert.Equal(GetTimeEntriesUseCase.MaxEntries, result.Items.Count);
         Assert.Equal(GetTimeEntriesUseCase.MaxEntries * 10, result.TotalWorkedMinutes);
+    }
+
+    private static TimeWindow WindowOf(DateTimeOffset from, DateTimeOffset to)
+    {
+        Assert.True(TimeWindow.TryCreate(from, to, to, out var window, out _));
+        return window!;
+    }
+
+    [Fact]
+    public void MaxWindowEntries_BoundsAWindowedList() => Assert.Equal(1000, GetTimeEntriesUseCase.MaxWindowEntries);
+
+    [Fact]
+    public async Task Get_WithAWindow_ReturnsOnlyEntriesOverlappingIt()
+    {
+        var from = EightAm;
+        var to = EightAm.AddDays(1);
+        SeedClosed(from.AddHours(-2), 120);          // acaba justo en from: fuera
+        var crossingStart = SeedClosed(from.AddHours(-1), 120);   // empieza antes y acaba dentro
+        var inside = SeedClosed(from.AddHours(3), 30);
+        var crossingEnd = SeedClosed(to.AddHours(-1), 120);       // empieza dentro y acaba después
+        SeedClosed(to, 30);                           // empieza justo en to: fuera
+
+        var result = await CreateUseCase().ExecuteAsync(WindowOf(from, to), CancellationToken.None);
+
+        Assert.Equal([crossingEnd.Id, inside.Id, crossingStart.Id], result.Items.Select(item => item.Id));
+        Assert.Equal(GetTimeEntriesUseCase.MaxWindowEntries, _repository.LastRequestedLimit);
+        Assert.Equal(0, _repository.ListLatestCalls);
+    }
+
+    [Fact]
+    public async Task Get_WithAWindow_StatusComesFromTheOpenEntryOutsideIt()
+    {
+        SeedClosed(EightAm.AddDays(-60), 30);
+        _repository.Seed(TimeEntry.Start(EmployeeId, TimeEntryType.Break, EightAm));
+
+        var result = await CreateUseCase().ExecuteAsync(WindowOf(EightAm.AddDays(-61), EightAm.AddDays(-59)), CancellationToken.None);
+
+        Assert.Single(result.Items);
+        Assert.Equal(TimeTrackingStatus.OnBreak, result.Status);
+    }
+
+    [Fact]
+    public async Task Get_WithAWindow_IncludesAnOpenEntryStartedBeforeItsEnd()
+    {
+        var open = TimeEntry.Start(EmployeeId, TimeEntryType.Work, EightAm);
+        _repository.Seed(open);
+
+        var result = await CreateUseCase().ExecuteAsync(WindowOf(EightAm.AddDays(1), EightAm.AddDays(2)), CancellationToken.None);
+
+        Assert.Equal([open.Id], result.Items.Select(item => item.Id));
+        Assert.Equal(TimeTrackingStatus.Working, result.Status);
+    }
+
+    [Fact]
+    public async Task Get_WithAWindow_TotalsOnlyTheReturnedClosedEntries()
+    {
+        SeedClosed(EightAm.AddDays(-5), 100);
+        SeedClosed(EightAm, 40);
+
+        var result = await CreateUseCase().ExecuteAsync(WindowOf(EightAm.AddHours(-1), EightAm.AddHours(1)), CancellationToken.None);
+
+        Assert.Equal(40, result.TotalWorkedMinutes);
     }
 }

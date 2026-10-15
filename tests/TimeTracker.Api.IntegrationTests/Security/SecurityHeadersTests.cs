@@ -110,6 +110,9 @@ public class SecurityHeadersTests
         public Task<IReadOnlyList<TimeEntry>> ListLatestAsync(Guid employeeId, int limit, CancellationToken cancellationToken)
             => throw new InvalidOperationException("texto-sensible");
 
+        public Task<IReadOnlyList<TimeEntry>> ListInWindowAsync(Guid employeeId, TimeWindow window, int limit, CancellationToken cancellationToken)
+            => throw new InvalidOperationException("texto-sensible");
+
         public Task AddAsync(TimeEntry entry, CancellationToken cancellationToken)
             => throw new InvalidOperationException("texto-sensible");
 

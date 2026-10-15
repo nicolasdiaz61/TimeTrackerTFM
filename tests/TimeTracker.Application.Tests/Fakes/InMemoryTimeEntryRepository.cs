@@ -23,6 +23,10 @@ internal sealed class InMemoryTimeEntryRepository : ITimeEntryRepository
 
     public int ListLatestCalls { get; private set; }
 
+    public int ListInWindowCalls { get; private set; }
+
+    public TimeWindow? LastRequestedWindow { get; private set; }
+
     /// <summary>Carga un fichaje previo sin contarlo como añadido por el caso de uso.</summary>
     public void Seed(TimeEntry entry) => _entries.Add(entry);
 
@@ -38,6 +42,20 @@ internal sealed class InMemoryTimeEntryRepository : ITimeEntryRepository
             .OrderByDescending(entry => entry.ClockInAt)
             .Take(limit)];
         return Task.FromResult(latest);
+    }
+
+    public Task<IReadOnlyList<TimeEntry>> ListInWindowAsync(Guid employeeId, TimeWindow window, int limit, CancellationToken cancellationToken)
+    {
+        ListInWindowCalls++;
+        LastRequestedWindow = window;
+        LastRequestedLimit = limit;
+        IReadOnlyList<TimeEntry> found = [.. _entries
+            .Where(entry => entry.EmployeeId == employeeId
+                && entry.ClockInAt < window.To
+                && (entry.ClockOutAt is null || entry.ClockOutAt > window.From))
+            .OrderByDescending(entry => entry.ClockInAt)
+            .Take(limit)];
+        return Task.FromResult(found);
     }
 
     public Task AddAsync(TimeEntry entry, CancellationToken cancellationToken)
