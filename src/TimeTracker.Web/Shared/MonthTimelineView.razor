@@ -6,6 +6,16 @@
 @* Vista de un mes: totales, leyenda y una fila por día con su barra de franjas. Las barras son SVG con atributos numéricos
    (x, width) y color por clases CSS: la CSP de la Web no admite estilos en línea (ver ADR 0016). *@
 <section aria-label="Fichajes de @Timeline.Month.Label" data-testid="month-view">
+    @* Patrón de rayas de la comida: referenciado desde app.css (fill: url(#tt-hatch-meal)). *@
+    <svg class="svg-defs" aria-hidden="true" focusable="false">
+        <defs>
+            <pattern id="tt-hatch-meal" patternUnits="userSpaceOnUse" width="8" height="8" patternTransform="rotate(45)">
+                <rect width="8" height="8" fill="#7e3fc0" />
+                <rect width="3" height="8" fill="#b794e0" />
+            </pattern>
+        </defs>
+    </svg>
+
     <dl class="month-totals" data-testid="month-totals">
         <div class="month-total">
             <dt>Trabajado</dt>

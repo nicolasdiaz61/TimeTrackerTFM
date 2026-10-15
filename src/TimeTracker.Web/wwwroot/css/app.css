@@ -120,7 +120,7 @@ code {
 
 :root {
     --seg-work: #2b6cb0;
-    --seg-break: #d9780a;
+    --seg-break: #c26200;
     --seg-meal: #7e3fc0;
     --text-muted-strong: #565e66;
 }
@@ -132,7 +132,12 @@ code {
 
 .seg-work { fill: var(--seg-work); background-color: var(--seg-work); }
 .seg-break { fill: var(--seg-break); background-color: var(--seg-break); }
-.seg-meal { fill: var(--seg-meal); background-color: var(--seg-meal); }
+/* La comida lleva además un rayado (patrón SVG en la vista y degradado en la leyenda): no depende solo del color. */
+.seg-meal {
+    fill: url(#tt-hatch-meal);
+    background-color: var(--seg-meal);
+    background-image: repeating-linear-gradient(135deg, var(--seg-meal) 0 3px, #b794e0 3px 6px);
+}
 
 .swatch {
     display: inline-block;
@@ -393,7 +398,9 @@ code {
 
 .bar-track { fill: #eef1f5; }
 .bar-grid { stroke: #cfd5db; stroke-width: 1; vector-effect: non-scaling-stroke; }
+.bar-segment { stroke: #fff; stroke-width: 1; vector-effect: non-scaling-stroke; }
 .bar-segment:hover { filter: brightness(1.2); }
+.svg-defs { position: absolute; width: 0; height: 0; overflow: hidden; }
 .bar-open { fill-opacity: 0.78; }
 
 .day-total {
