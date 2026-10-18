@@ -1,10 +1,14 @@
+using System.Security.Claims;
+
 using TimeTracker.Application.Identity;
+using TimeTracker.Domain.Users;
 
 namespace TimeTracker.Api.Authentication;
 
 /// <summary>
-/// Adaptador de <see cref="ICurrentUser"/>: el empleado es el claim <c>sub</c> del token ya validado, nunca un
-/// parámetro del cliente. Sin usuario autenticado lanza: el pipeline lo impide, esto es defensa en profundidad.
+/// Adaptador de <see cref="ICurrentUser"/>: el empleado es el claim <c>sub</c> y el rol el claim <c>role</c> del token
+/// ya validado, nunca un parámetro del cliente. Sin usuario autenticado o con claims inválidos lanza: el pipeline lo
+/// impide, esto es defensa en profundidad.
 /// </summary>
 public sealed class HttpContextCurrentUser(IHttpContextAccessor accessor) : ICurrentUser
 {
@@ -12,15 +16,34 @@ public sealed class HttpContextCurrentUser(IHttpContextAccessor accessor) : ICur
     {
         get
         {
-            var user = accessor.HttpContext?.User;
-            if (user?.Identity?.IsAuthenticated == true
-                && Guid.TryParse(user.FindFirst("sub")?.Value, out var id)
-                && id != Guid.Empty)
+            if (Guid.TryParse(Authenticated().FindFirst("sub")?.Value, out var id) && id != Guid.Empty)
             {
                 return id;
             }
 
             throw new InvalidOperationException("No hay un usuario autenticado con un identificador válido.");
         }
+    }
+
+    public UserRole Role
+    {
+        get
+        {
+            if (Enum.TryParse<UserRole>(Authenticated().FindFirst("role")?.Value, ignoreCase: false, out var role)
+                && Enum.IsDefined(role))
+            {
+                return role;
+            }
+
+            throw new InvalidOperationException("No hay un usuario autenticado con un rol válido.");
+        }
+    }
+
+    private ClaimsPrincipal Authenticated()
+    {
+        var user = accessor.HttpContext?.User;
+        return user?.Identity?.IsAuthenticated == true
+            ? user
+            : throw new InvalidOperationException("No hay un usuario autenticado.");
     }
 }

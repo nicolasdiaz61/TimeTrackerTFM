@@ -3,6 +3,7 @@ using System.Security.Claims;
 using Microsoft.AspNetCore.Http;
 
 using TimeTracker.Api.Authentication;
+using TimeTracker.Domain.Users;
 
 namespace TimeTracker.Api.IntegrationTests.Authentication;
 
@@ -39,6 +40,44 @@ public class HttpContextCurrentUserTests
     [Fact]
     public void EmployeeId_WithoutSubClaim_Throws()
         => Assert.Throws<InvalidOperationException>(() => CreateFor(Authenticated(("name", "Luis"))).EmployeeId);
+
+    [Theory]
+    [InlineData("Manager", UserRole.Manager)]
+    [InlineData("Employee", UserRole.Employee)]
+    public void Role_ReturnsTheRoleClaim(string claim, UserRole expected)
+        => Assert.Equal(expected, CreateFor(Authenticated(("sub", Guid.NewGuid().ToString()), ("role", claim))).Role);
+
+    [Fact]
+    public void Role_WithAnonymousIdentity_Throws()
+    {
+        var anonymous = new DefaultHttpContext { User = new ClaimsPrincipal(new ClaimsIdentity()) };
+
+        Assert.Throws<InvalidOperationException>(() => CreateFor(anonymous).Role);
+    }
+
+    [Theory]
+    [InlineData("Admin")]
+    [InlineData("manager")]
+    [InlineData("7")]
+    [InlineData("")]
+    public void Role_WithUnknownRole_Throws(string claim)
+        => Assert.Throws<InvalidOperationException>(() => CreateFor(Authenticated(("sub", Guid.NewGuid().ToString()), ("role", claim))).Role);
+
+    [Fact]
+    public void Role_WithoutRoleClaim_Throws()
+        => Assert.Throws<InvalidOperationException>(() => CreateFor(Authenticated(("sub", Guid.NewGuid().ToString()))).Role);
+
+    [Fact]
+    public void Role_IgnoresRequestHeadersQueryAndBody()
+    {
+        var context = Authenticated(("sub", Guid.NewGuid().ToString()), ("role", "Employee"));
+        context.Request.Headers["X-Role"] = "Manager";
+        context.Request.Headers["role"] = "Manager";
+        context.Request.QueryString = new QueryString("?role=Manager");
+        context.Request.Body = new MemoryStream("{\"role\":\"Manager\"}"u8.ToArray());
+
+        Assert.Equal(UserRole.Employee, CreateFor(context).Role);
+    }
 
     private static HttpContextCurrentUser CreateFor(HttpContext context)
         => new(new HttpContextAccessor { HttpContext = context });
