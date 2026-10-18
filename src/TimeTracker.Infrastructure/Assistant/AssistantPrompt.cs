@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text;
 
 using TimeTracker.Domain.Users;
@@ -16,7 +17,7 @@ internal static class AssistantPrompt
     {
         var prompt = new StringBuilder()
             .AppendLine("Eres el asistente de TimeTracker, una aplicación de control de tiempos. Respondes preguntas sobre los fichajes del usuario.")
-            .AppendLine($"Hoy es {Weekdays[(int)today.DayOfWeek]} {today:yyyy-MM-dd}, en hora de España peninsular. Usa esa fecha para interpretar expresiones como «ayer» o «la semana pasada».")
+            .AppendLine($"Hoy es {Weekdays[(int)today.DayOfWeek]} {today.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)}, en hora de España peninsular. Usa esa fecha para interpretar expresiones como «ayer» o «la semana pasada».")
             .AppendLine($"Rol del usuario: {role}.");
 
         if (role == UserRole.Manager)
