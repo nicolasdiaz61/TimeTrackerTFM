@@ -75,3 +75,56 @@ Rama `feat/asistente-ia-pr2a-herramientas` (desde `cf5f8cb`), con Strict TDD (RE
 - `FakeChatClient` guioniza turnos con `Func<IReadOnlyList<ChatMessage>, ChatResponse>` y guarda `Calls` (mensajes y `ChatOptions`); para «modelo que siempre pide herramienta» basta pasar N veces el mismo turno. PR 3 lo enlazará desde `Api.IntegrationTests`.
 - `TimeProvider` con `FakeTimeProvider` ya se usa en el arnés (`ToolHarness`), reutilizable para el tiempo máximo del motor.
 - `docs/api/openapi.json` sigue regenerándose con ruido de saltos de línea tras compilar: restaurar con `git checkout`.
+
+---
+
+## PR 2b — Motor, opciones y cuota (Infrastructure): completado (tareas 1.1-3.2)
+
+Rama `feat/asistente-ia-pr2b-motor` (desde `origin/main` con PR 1 y PR 2a), con Strict TDD. Ninguna prueba llama a un modelo: solo `FakeChatClient` y `HangingChatClient` (proveedor que no responde, para tiempo y cancelación). Ninguna clave en disco: `clave-secreta-prueba` es un literal ficticio de las pruebas. La API no registra el asistente (PR 3).
+
+### Evidencia del ciclo TDD
+
+| Tarea | Archivo de pruebas | RED (mensaje real) | GREEN | Triangulación | REFACTOR |
+|---|---|---|---|---|---|
+| 1.1 | n/a | n/a | Copia en `..\TimeTracker.rollback\pr-2b\` (`src/.../Assistant/*` de 2a, 6 archivos) | n/a | n/a |
+| 1.2 | `AiOptionsValidatorTests` | `CS0246: El nombre del tipo o del espacio de nombres 'AiOptions' no se encontró` | 40/40 | Sin proveedor (4 formas), proveedor desconocido, clave/endpoint/modelo, 20 casos de borde de rango, el valor nunca se imprime | Un único `CheckRange`; sin cambios de comportamiento |
+| 1.3 | `InMemoryAssistantQuotaTests` | `CS0246: ... 'InMemoryAssistantQuota' no se encontró` | 8/8 | Tope 3, por usuario, medianoche local, 7200 s a las 22:00, día de 25 h (24,5 h), día español vs UTC, 200 tareas concurrentes → exactamente 10 | Bucle de comparación e intercambio (`TryAdd`/`TryUpdate`), sin bloqueos |
+| 2.1 | `AssistantPromptTests` | `CS0103: El nombre 'AssistantPrompt' no existe en el contexto actual` | 9/9 | 3 fechas con su día de la semana, ambos roles, sin claves ni `SigningKey` | Fecha con `InvariantCulture` |
+| 2.2 | `AssistantChatPipelineTests` | `CS0103: El nombre 'AssistantChatPipeline' no existe en el contexto actual` | 6/6 | Opciones enviadas, tope (4 llamadas con 3 iteraciones), 3 llamadas con 2 errores tolerados, error sin texto ni tipo, secuencial, función desconocida | Mutación temporal: `AllowConcurrentInvocation = true` e `IncludeDetailedErrors = true` hacen fallar 2 pruebas; restaurado |
+| 2.3 | `ChatAssistantEngineTests` (16), `EngineLifetimeTests` (2) | `CS0246: El nombre del tipo o del espacio de nombres 'ChatAssistantEngine' no se encontró` | 18/18 | Un solo `system`, historial como `user`, herramientas por rol, texto fijo (vacío y tope), argumentos ausentes y mal tipados → `null`, tiempo (`FakeTimeProvider`), cancelación, registro solo de metadatos | Mutación temporal: quitar el filtro de cancelación y registrar `ex.Message` hacen fallar 3 pruebas; restaurado |
+| 3.1 | suite completa | n/a | `DependencyRuleTests` y `RepositoryConventionsTests` en verde | n/a | Sin duplicación con 2a (el motor reutiliza `ToolHarness`, `AssistantJson`, `AssistantLog`) |
+
+### Puerta de unidad (reales)
+
+- `RESTORE` y `BUILD -warnaserror`: 0 advertencias, 0 errores.
+- `TEST` (Docker en marcha): Domain 67, Application 195, **Infrastructure.Tests 142 (eran 54: +88)**, Web 180, Architecture 77, Api.IntegrationTests 326: todas en verde.
+- `COV-A`: líneas 100,0 %, ramas 99,3 % (mínimo 80). `COV-D`: 100,0 % / 100,0 %.
+- `FORMAT`: sin cambios (exit 0). `VULN`: sin paquetes vulnerables.
+- `docs/api/openapi.json` quedó modificado solo en finales de línea tras compilar: restaurado con `git checkout`.
+
+### Work Unit Evidence
+
+| Evidencia | Valor |
+|---|---|
+| Prueba enfocada | `dotnet test tests/TimeTracker.Infrastructure.Tests` → 142/142 |
+| Harness de ejecución | Pipeline real `FunctionInvokingChatClient` sobre `FakeChatClient`; `EngineLifetimeTests` con un contenedor real (`ValidateScopes` y `ValidateOnBuild`). Sin API ni proveedor reales (PR 3) |
+| Frontera de reversión | Borrar `INF/Assistant/{AiOptions,AiOptionsValidator,AssistantChatClient,AssistantChatPipeline,AssistantPrompt,ChatAssistantEngine,InMemoryAssistantQuota}.cs`, revertir las dos entradas añadidas a `AssistantLog.cs` y borrar las pruebas nuevas de `IFT/Assistant` y `IFT/Fakes/HangingChatClient.cs` |
+
+### Ciclo de vida de `AssistantToolset` (comprobación pedida)
+
+Compatible, con una condición para PR 3. `AssistantToolset` es **scoped** porque depende de los casos de uso y de `ICurrentUser`, que en la API son scoped (`HttpContextCurrentUser`, `AddScoped<...UseCase>`). `ChatAssistantEngine` lo recibe por constructor, así que **debe registrarse scoped**; `AssistantChatClient` y `InMemoryAssistantQuota` son singleton. `EngineLifetimeTests` lo fija con un contenedor real: motor scoped resuelve y responde; motor singleton falla la validación del contenedor (captura un servicio scoped). La tarea 2.2 de PR 3 debe registrar `IAssistantEngine` como scoped (el diseño no lo precisaba).
+
+### Desviaciones y decisiones
+
+1. **Tamaño**: el diff real es de 1.199 líneas (345 `src`, 854 pruebas) frente a las ≈ 225 previstas; supera el umbral de 450 como PR 1 y PR 2a. Lo grande son las pruebas exigidas por las specs (validador con 20 bordes, motor, pipeline).
+2. `AiOptions.Provider` se interpreta sin distinguir mayúsculas (`anthropic` vale); expone `ResolvedProvider` (`null` si no se reconoce), `IsEnabled` y el enum público `AiProvider`. El validador devuelve todos los fallos a la vez, salvo proveedor desconocido, que se informa solo.
+3. `InMemoryAssistantQuota` recibe `IOptions<AiOptions>` y `TimeProvider`; el tope se lee en cada llamada. El contador no guarda estado de rechazos (no crece al rechazar).
+4. `AssistantChatClient(IChatClient? inner, AiOptions options)` monta el pipeline en el constructor; `Pipeline` es `internal`. La fábrica de PR 3 solo debe pasar el cliente del proveedor (o `null`).
+5. El registro del motor son dos mensajes `LoggerMessage` nuevos en `AssistantLog`: `QueryCompleted` (resultados `ok` y `empty`) y `QueryFailed` (`error` y `timeout`, solo el nombre del tipo de la excepción). La cancelación del cliente no registra nada.
+6. El texto fijo de respuesta vacía se aplica a texto en blanco (y al tope de iteraciones, que devuelve `Text` vacío).
+7. Argumentos de herramienta ausentes o mal tipados: el SDK relanza la excepción tras superar los errores consecutivos tolerados y el motor devuelve `null` (503); solo se registra el tipo.
+
+### Para PR 3
+
+- Registrar `IAssistantEngine` scoped; `AssistantChatClient` singleton (desechable, lo libera el contenedor); `IAssistantQuota` singleton.
+- `docs/api/openapi.json` sigue regenerándose con ruido de saltos de línea: restaurar con `git checkout`.
