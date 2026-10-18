@@ -14,6 +14,7 @@ public class RepositoryConventionsTests
         "src/TimeTracker.Web/TimeTracker.Web.csproj",
         "tests/TimeTracker.Domain.Tests/TimeTracker.Domain.Tests.csproj",
         "tests/TimeTracker.Application.Tests/TimeTracker.Application.Tests.csproj",
+        "tests/TimeTracker.Infrastructure.Tests/TimeTracker.Infrastructure.Tests.csproj",
         "tests/TimeTracker.Web.Tests/TimeTracker.Web.Tests.csproj",
         "tests/TimeTracker.Api.IntegrationTests/TimeTracker.Api.IntegrationTests.csproj",
         "tests/TimeTracker.ArchitectureTests/TimeTracker.ArchitectureTests.csproj",
@@ -186,6 +187,35 @@ public class RepositoryConventionsTests
                 .Any(reference => (string?)reference.Attribute("Include") == package))
             .ToList();
         Assert.Equal([owner], referencing);
+    }
+
+    [Fact]
+    public void AiPackages_AreDeclaredOnlyInInfrastructureWithCentralVersion()
+    {
+        static bool IsAiPackage(string? name)
+            => name is not null
+                && (name.StartsWith("Microsoft.Extensions.AI", StringComparison.Ordinal)
+                    || name.Equals("Anthropic", StringComparison.Ordinal)
+                    || name.Equals("OllamaSharp", StringComparison.Ordinal));
+
+        var central = Load("Directory.Packages.props").Descendants("PackageVersion")
+            .Where(reference => IsAiPackage((string?)reference.Attribute("Include")))
+            .ToList();
+        Assert.Contains(central, reference => (string?)reference.Attribute("Include") == "Microsoft.Extensions.AI"
+            && (string?)reference.Attribute("Version") == "10.10.0");
+
+        // Solo Infrastructure declara paquetes de IA (los proyectos de pruebas pueden usar Abstractions); sin Version propia.
+        var offenders = ProjectPaths
+            .Where(path => path.StartsWith("src/", StringComparison.Ordinal) && path != "src/TimeTracker.Infrastructure/TimeTracker.Infrastructure.csproj")
+            .Where(path => Load(path).Descendants("PackageReference").Any(reference => IsAiPackage((string?)reference.Attribute("Include"))))
+            .ToList();
+        Assert.True(offenders.Count == 0, $"Declaran paquetes de IA fuera de Infrastructure: {string.Join(", ", offenders)}");
+
+        var infrastructure = Load("src/TimeTracker.Infrastructure/TimeTracker.Infrastructure.csproj").Descendants("PackageReference")
+            .Where(reference => IsAiPackage((string?)reference.Attribute("Include")))
+            .ToList();
+        Assert.Contains(infrastructure, reference => (string?)reference.Attribute("Include") == "Microsoft.Extensions.AI");
+        Assert.All(infrastructure, reference => Assert.Null(reference.Attribute("Version")));
     }
 
     [Fact]

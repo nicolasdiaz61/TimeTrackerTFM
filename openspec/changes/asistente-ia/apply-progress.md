@@ -34,3 +34,44 @@ Rama `feat/asistente-ia-pr1-resumen-diario`, con Strict TDD (RED por error de co
 - `SpainTime.DateOf(DateTimeOffset)` existe; la cuota de 2b necesitará un `DateOf` desde `TimeProvider` (o `GetUtcNow()`), no añadido aquí.
 - `AskAssistantResult` es una jerarquía cerrada (`Answered`, `Rejected`, `QuotaExceeded`, `Unavailable(bool Disabled)`).
 - `docs/api/openapi.json` se regenera al compilar con saltos de línea distintos (solo ruido); restaurar con `git checkout` si aparece modificado.
+
+---
+
+## PR 2a — Herramientas y proyecto de pruebas (Infrastructure): completado (tareas 1.1-3.1)
+
+Rama `feat/asistente-ia-pr2a-herramientas` (desde `cf5f8cb`), con Strict TDD (RED por error de compilación o por pruebas fallidas, luego GREEN y REFACTOR). Ninguna prueba llama a un modelo: solo `FakeChatClient`. Docker en marcha para `Api.IntegrationTests`.
+
+| Tarea | Resultado |
+|---|---|
+| 1.1 | Copia previa en `..\TimeTracker.rollback\pr-2a\` (`Directory.Packages.props`, `TimeTracker.Infrastructure.csproj`, `TimeTracker.sln`, `RepositoryConventionsTests.cs`). |
+| 1.2 | V-1 (parte 1) correcto: `Microsoft.Extensions.AI` 10.10.0 + Abstractions 10.10.0, 0 advertencias con `-warnaserror`, sin vulnerables. Detalle en `design.md` sección 11. |
+| 1.3 | V-3 resuelto contra el paquete restaurado y una prueba de caracterización desechable: nombres correctos; al tope de iteraciones hay 1 + `MaximumIterationsPerRequest` llamadas, el SDK retira las herramientas en la última y la respuesta puede quedar con `Text` vacío y una llamada pendiente; el error de herramienta se relanza al superar `MaximumConsecutiveErrorsPerRequest` (la excepción original). Detalle en `design.md` sección 11. |
+| 1.4 | `Microsoft.Extensions.AI` en `Directory.Packages.props` (comentado) y referencia sin `Version` en Infrastructure; `InternalsVisibleTo` hacia `TimeTracker.Infrastructure.Tests`. |
+| 1.5 | `tests/TimeTracker.Infrastructure.Tests` (en la solución, dobles enlazados de `Application.Tests`, `FakeChatClient`, `CapturingLogger`, `ThrowingTimeEntryRepository`); `RepositoryConventionsTests` con el proyecto en `ProjectPaths` y `AiPackages_AreDeclaredOnlyInInfrastructureWithCentralVersion` (mutación temporal: un `PackageReference` de IA en Web la hace fallar). |
+| 2.1 | `AssistantJson`, `ToolResults`, `DisplayNameSanitizer`, `ToolOutcome` y `AssistantLog` (`LoggerMessage`, solo metadatos). |
+| 2.2-2.4 | `AssistantToolset` (`get_my_time_entries`, `get_team_members`, `get_team_member_time_entries`; las de equipo solo para `Manager`) y refactor (`SummarizeAsync`/`RunAsync` compartidos). |
+| 3.1 | Puerta de unidad en verde (abajo). |
+
+### Puerta de unidad (reales)
+
+- `RESTORE` y `BUILD -warnaserror`: 0 advertencias, 0 errores.
+- `TEST`: Domain 67, Application 195, Web 180, **Infrastructure.Tests 54 (nuevo)**, Architecture 77 (eran 74: +3), Api.IntegrationTests 326 (Docker): todas en verde.
+- `COV-A`: líneas 100,0 %, ramas 99,3 % (mínimo 80). `COV-D`: 100,0 % / 100,0 %. Infrastructure sin umbral.
+- `FORMAT`: sin cambios. `VULN`: sin paquetes vulnerables.
+
+### Desviaciones y decisiones
+
+1. **Tamaño**: el diff real es de 1.156 líneas (285 `src`, 854 pruebas, 17 props y `.sln`; sin docs de openspec) frente a las ≈ 265 previstas. Supera el umbral de 450: ver propuesta de corte en el informe del apply. Las pruebas de seguridad por herramienta (tabla de «no visibles», registro de auditoría sin datos, registro por rol) son la parte grande y están exigidas por las specs.
+2. `AssistantToolset` es `public` y recibe `GetTimeEntriesUseCase`, `GetTeamMembersUseCase`, `GetTeamMemberTimeEntriesUseCase`, `ICurrentUser`, `TimeProvider` e `ILogger<AssistantToolset>`; `CreateTools()` devuelve las `AIFunction` del rol (PR 2b lo llamará una vez por petición). El resto de tipos nuevos son `internal` con `InternalsVisibleTo`.
+3. Cualquier excepción inesperada dentro de una herramienta (salvo la cancelación) se convierte en `{ "error": "No se ha podido completar la consulta en este momento." }` (sin texto ni tipo) y se registra con resultado `error`. Por eso el límite de errores consecutivos del SDK solo actuará en fallos de enlace de argumentos.
+4. `AssistantJson.Options` copia `AIJsonUtilities.DefaultOptions` (que indenta) y fija `WriteIndented = false` para gastar menos tokens.
+5. Mensaje de fechas inválidas: «Las fechas deben tener el formato yyyy-MM-dd, por ejemplo 2026-10-18.»; los demás errores de fechas son los de `LocalDateRange`.
+6. Orden de tareas: la referencia al paquete se añadió antes de la verificación 1.2 (no se puede restaurar sin declararlo); el resultado es el mismo.
+
+### Para PR 2b
+
+- `AssistantChatPipeline`: con `MaximumIterationsPerRequest` = N hay N + 1 llamadas como máximo y la última va sin herramientas; respuesta vacía o con llamada pendiente → texto fijo. La excepción relanzada por el SDK conserva el mensaje original: registrar solo `GetType().Name`.
+- `AIFunction.JsonSerializerOptions` ya lleva `AssistantJson.Options`; el motor solo debe pasar `Tools = toolset.CreateTools()` en `ChatOptions`.
+- `FakeChatClient` guioniza turnos con `Func<IReadOnlyList<ChatMessage>, ChatResponse>` y guarda `Calls` (mensajes y `ChatOptions`); para «modelo que siempre pide herramienta» basta pasar N veces el mismo turno. PR 3 lo enlazará desde `Api.IntegrationTests`.
+- `TimeProvider` con `FakeTimeProvider` ya se usa en el arnés (`ToolHarness`), reutilizable para el tiempo máximo del motor.
+- `docs/api/openapi.json` sigue regenerándose con ruido de saltos de línea tras compilar: restaurar con `git checkout`.

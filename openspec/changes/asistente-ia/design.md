@@ -149,6 +149,25 @@ Cupo en memoria (DD-2); modelos locales con herramientas; firmas de SDK sin veri
 | V-4 | `OllamaApiClient(Uri, string)` implementa `IChatClient` con la versión de Abstractions resuelta | Usar el adaptador que exponga OllamaSharp 5.5.0 |
 | V-5 | `RequestSizeLimitAttribute` como metadato en Minimal API (32 KiB) | Validar `Content-Length` en el endpoint |
 
+### Resultados de V-1 (parte 1) y V-3 en apply (PR 2a, 2026-10-18)
+
+Comprobados contra el paquete restaurado (`~/.nuget/packages/microsoft.extensions.ai/10.10.0`, su XML de documentación y el de `Microsoft.Extensions.AI.Abstractions` 10.10.0) y con una prueba de caracterización desechable sobre `FakeChatClient`.
+
+**V-1 (parte 1): correcto, sin cambios en el diseño.** `Microsoft.Extensions.AI` 10.10.0 existe y arrastra `Microsoft.Extensions.AI.Abstractions` 10.10.0 (misma versión). `dotnet restore` y `dotnet build -warnaserror` dan 0 advertencias y 0 errores (sin NU1903, NU1605 ni NU1608) y `dotnet list package --vulnerable --include-transitive` no encuentra paquetes vulnerables. No hizo falta elevar ninguna transitiva ni usar 10.11.0. Anthropic y OllamaSharp siguen pendientes de PR 3 (1.2).
+
+**V-3: los nombres del diseño son correctos.** `FunctionInvokingChatClient` expone `MaximumIterationsPerRequest` (por defecto 40; incluye la petición inicial), `MaximumConsecutiveErrorsPerRequest` (por defecto 3), `IncludeDetailedErrors` (false), `AllowConcurrentInvocation` (false), `TerminateOnUnknownCalls` (false) y `AdditionalTools`. La firma es `ChatClientBuilder.UseFunctionInvocation(ILoggerFactory? loggerFactory = null, Action<FunctionInvokingChatClient>? configure = null)`. Comportamiento observado, que condiciona 2b.2:
+
+| Caso | Resultado observado |
+|---|---|
+| Tope de iteraciones (`MaximumIterationsPerRequest` = 3, modelo que siempre pide herramienta) | **4 llamadas** al cliente interno (la inicial más 3); en la última el SDK **retira las herramientas** de `ChatOptions` (`PrepareOptionsForLastIteration`). Si el modelo aun así pide una función, la respuesta termina con una `FunctionCallContent` pendiente y `Text` = `""`: confirma el texto fijo ante respuesta vacía (DD-10). |
+| Función desconocida (`TerminateOnUnknownCalls` = false) | No revienta: el modelo recibe un resultado de función con el texto `Error: Requested function "x" not found.` y el bucle continúa. |
+| Excepción de la herramienta con `MaximumConsecutiveErrorsPerRequest` = 2 | Toleró 2 iteraciones fallidas y **a la tercera relanzó la excepción original** (3 llamadas; el mensaje original viaja en la excepción). El motor de 2b debe tratarla como fallo del proveedor (`null`/503) y registrar solo el nombre del tipo, nunca `ex.Message`. Matiz: «2 errores consecutivos cortan» es en realidad «el tercero». |
+| `AIFunctionFactory.Create(Delegate, AIFunctionFactoryOptions)` | `Name`, `Description` y `SerializerOptions` existen en `AIFunctionFactoryOptions`; los parámetros `CancellationToken` se enlazan solos y no salen en el esquema; `[Description]` en parámetros alimenta el esquema. |
+| `AIFunction.InvokeAsync(AIFunctionArguments, CancellationToken)` | Argumentos adicionales (`employeeId`, `memberId`) se **ignoran** por defecto; falta de un argumento obligatorio lanza `ArgumentException` y un tipo incorrecto, `JsonException` (dentro del bucle del SDK cuentan como error de herramienta). |
+| `AIJsonUtilities.DefaultOptions` | Es de solo lectura y **indenta** la salida: se copia (`new JsonSerializerOptions(DefaultOptions)`), se añade `JsonStringEnumConverter` y se pone `WriteIndented = false` para enviar menos tokens al modelo. |
+
+Las herramientas capturan sus propios errores esperados (fechas, miembro no encontrado, fallo del repositorio) y devuelven `{ "error": "…" }`; por eso `MaximumConsecutiveErrorsPerRequest` solo actuará en fallos de enlace de argumentos.
+
 ## 12. Alineación con las specs en paralelo
 
 Deben coincidir: límites de DD-15 (500/10/2000/8000), valores por defecto de `Ai:*`, textos 429/503, «no encontrado» de DD-9, 31 días de DD-5, el nuevo orden del pipeline (spec `authentication`), 17 ADR y `Infrastructure.Tests` (spec `solution-architecture`), aviso en la página sin ocultar el enlace (spec `assistant-web`). Si una spec fija otro valor, apply sigue la spec y actualiza este diseño.
