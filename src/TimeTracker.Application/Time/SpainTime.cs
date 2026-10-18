@@ -21,7 +21,7 @@ public static class SpainTime
 
     /// <summary>Fecha local de España en el instante UTC indicado.</summary>
     public static DateOnly DateOf(DateTimeOffset utc)
-        => DateOnly.FromDateTime((utc + (IsSummer(utc) ? SummerOffset : WinterOffset)).DateTime);
+        => DateOnly.FromDateTime(ToLocal(utc));
 
     /// <summary>Fecha y hora locales de España en el instante UTC indicado (sin zona asociada).</summary>
     public static DateTime ToLocal(DateTimeOffset utc)

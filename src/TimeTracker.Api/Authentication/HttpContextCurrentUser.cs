@@ -29,13 +29,12 @@ public sealed class HttpContextCurrentUser(IHttpContextAccessor accessor) : ICur
     {
         get
         {
-            if (Enum.TryParse<UserRole>(Authenticated().FindFirst("role")?.Value, ignoreCase: false, out var role)
-                && Enum.IsDefined(role))
+            return Authenticated().FindFirst("role")?.Value switch
             {
-                return role;
-            }
-
-            throw new InvalidOperationException("No hay un usuario autenticado con un rol válido.");
+                nameof(UserRole.Employee) => UserRole.Employee,
+                nameof(UserRole.Manager) => UserRole.Manager,
+                _ => throw new InvalidOperationException("No hay un usuario autenticado con un rol válido."),
+            };
         }
     }
 

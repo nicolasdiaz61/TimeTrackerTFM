@@ -59,6 +59,9 @@ public class HttpContextCurrentUserTests
     [InlineData("Admin")]
     [InlineData("manager")]
     [InlineData("7")]
+    [InlineData("0")]
+    [InlineData("1")]
+    [InlineData("Employee, Manager")]
     [InlineData("")]
     public void Role_WithUnknownRole_Throws(string claim)
         => Assert.Throws<InvalidOperationException>(() => CreateFor(Authenticated(("sub", Guid.NewGuid().ToString()), ("role", claim))).Role);

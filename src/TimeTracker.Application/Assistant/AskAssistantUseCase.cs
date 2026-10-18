@@ -9,10 +9,10 @@ public sealed class AskAssistantUseCase(IAssistantEngine engine, IAssistantQuota
     public const int MaxTurnLength = 2000;
     public const int MaxHistoryLength = 8000;
 
-    private const string InvalidMessage = "El mensaje debe tener entre 1 y 500 caracteres.";
-    private const string TooManyTurns = "El historial admite como máximo 10 mensajes.";
-    private const string InvalidTurnText = "Cada mensaje del historial debe tener entre 1 y 2000 caracteres.";
-    private const string HistoryTooLong = "El historial no puede superar los 8000 caracteres en total.";
+    private static readonly string InvalidMessage = $"El mensaje debe tener entre 1 y {MaxMessageLength} caracteres.";
+    private static readonly string TooManyTurns = $"El historial admite como máximo {MaxHistoryTurns} mensajes.";
+    private static readonly string InvalidTurnText = $"Cada mensaje del historial debe tener entre 1 y {MaxTurnLength} caracteres.";
+    private static readonly string HistoryTooLong = $"El historial no puede superar los {MaxHistoryLength} caracteres en total.";
     private const string InvalidRole = "El historial solo admite mensajes de los roles user y assistant.";
 
     /// <summary>Valida, comprueba que el asistente está habilitado, consume el tope diario y consulta al motor; en ese orden.</summary>
