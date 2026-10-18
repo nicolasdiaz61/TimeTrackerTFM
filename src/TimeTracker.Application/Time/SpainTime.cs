@@ -1,4 +1,4 @@
-namespace TimeTracker.Application.DemoData;
+namespace TimeTracker.Application.Time;
 
 /// <summary>
 /// Hora local de España peninsular con la regla de la UE: UTC+2 desde las 01:00Z del último domingo de marzo hasta las
@@ -22,6 +22,13 @@ public static class SpainTime
     /// <summary>Fecha local de España en el instante UTC indicado.</summary>
     public static DateOnly DateOf(DateTimeOffset utc)
         => DateOnly.FromDateTime((utc + (IsSummer(utc) ? SummerOffset : WinterOffset)).DateTime);
+
+    /// <summary>Fecha y hora locales de España en el instante UTC indicado (sin zona asociada).</summary>
+    public static DateTime ToLocal(DateTimeOffset utc)
+        => (utc + (IsSummer(utc) ? SummerOffset : WinterOffset)).DateTime;
+
+    /// <summary>Instante UTC de la medianoche local que abre el día indicado; el día del cambio de hora dura 23 o 25 horas.</summary>
+    public static DateTimeOffset StartOfDay(DateOnly date) => ToUtc(date, TimeOnly.MinValue);
 
     private static bool IsSummer(DateTimeOffset utc)
     {
