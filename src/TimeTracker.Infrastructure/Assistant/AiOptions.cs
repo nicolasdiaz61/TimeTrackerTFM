@@ -34,8 +34,8 @@ public sealed class AiOptions
     /// <summary>Proveedor configurado, o <c>null</c> si el valor no se reconoce (vacío y <c>None</c> significan deshabilitado).</summary>
     public AiProvider? ResolvedProvider
         => string.IsNullOrWhiteSpace(Provider) ? AiProvider.None
-        : Enum.TryParse<AiProvider>(Provider.Trim(), ignoreCase: true, out var provider) && Enum.IsDefined(provider) ? provider
-        : null;
+        : Enum.GetValues<AiProvider>().Cast<AiProvider?>().FirstOrDefault(
+            candidate => string.Equals(candidate.ToString(), Provider.Trim(), StringComparison.OrdinalIgnoreCase));
 
     public bool IsEnabled => ResolvedProvider is AiProvider.Anthropic or AiProvider.Ollama;
 }

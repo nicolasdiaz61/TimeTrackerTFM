@@ -59,10 +59,12 @@ public sealed class AssistantChatPipelineTests
         var model = new FakeChatClient(Enumerable.Repeat<Func<IReadOnlyList<ChatMessage>, ChatResponse>>(_ => CallTool(), 10).ToArray());
         var options = new AiOptions { MaxToolIterations = 10 };
 
-        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+        var failure = await Assert.ThrowsAsync<AssistantToolFailureException>(() =>
             RunAsync(model, options, Tool(() => throw new InvalidOperationException(LeakedMessage))));
 
         Assert.Equal(3, model.Calls.Count);
+        Assert.IsType<InvalidOperationException>(failure.InnerException);
+        Assert.DoesNotContain(LeakedMessage, failure.Message);
     }
 
     [Fact]

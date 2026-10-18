@@ -186,29 +186,64 @@ public sealed class ChatAssistantEngineTests
     }
 
     [Fact]
-    public async Task ReplyAsync_WhenAToolArgumentIsMissing_IsAProviderFailureWithoutDetail()
+    public async Task ReplyAsync_WhenAToolArgumentIsMissing_ReturnsTheFixedTextNotAProviderFailure()
     {
         var model = new FakeChatClient(Always(() => CallTool(MyTool)));
         var rig = new Rig(model);
 
         var reply = await rig.Engine.ReplyAsync(Question, CancellationToken.None);
 
-        Assert.Null(reply);
+        // Tres llamadas: la inicial y dos errores tolerados; el tercero corta el bucle (spec: «Errores consecutivos»).
+        Assert.Equal(FixedReply, reply);
+        Assert.Equal(3, model.Calls.Count);
         var entry = Assert.Single(rig.Logger.Entries);
+        Assert.Contains("tool-error", entry.Message);
+        Assert.Contains(nameof(ArgumentException), entry.Message);
         Assert.DoesNotContain("fromDate", entry.Message);
         Assert.DoesNotContain("toDate", entry.Message);
     }
 
     [Fact]
-    public async Task ReplyAsync_WhenAToolArgumentHasTheWrongType_IsAProviderFailureWithoutDetail()
+    public async Task ReplyAsync_WhenAToolArgumentHasTheWrongType_ReturnsTheFixedTextNotAProviderFailure()
     {
         var model = new FakeChatClient(Always(() => CallTool(MyTool, new() { ["fromDate"] = new { a = 1 }, ["toDate"] = new[] { 1, 2 } })));
         var rig = new Rig(model);
 
         var reply = await rig.Engine.ReplyAsync(Question, CancellationToken.None);
 
-        Assert.Null(reply);
+        Assert.Equal(FixedReply, reply);
         Assert.DoesNotContain("fromDate", Assert.Single(rig.Logger.Entries).Message);
+    }
+
+    [Fact]
+    public async Task ReplyAsync_WhenAToolFailsOnceAndTheModelRecovers_Answers()
+    {
+        var model = new FakeChatClient(_ => CallTool(MyTool), _ => Text("Disculpe, ya lo tengo."));
+        var rig = new Rig(model);
+
+        Assert.Equal("Disculpe, ya lo tengo.", await rig.Engine.ReplyAsync(Question, CancellationToken.None));
+    }
+
+    // El origen decide, no el tipo de la excepción: una ArgumentException del proveedor sigue siendo un fallo (503).
+    [Theory]
+    [InlineData(typeof(ArgumentException))]
+    [InlineData(typeof(JsonException))]
+    public async Task ReplyAsync_WhenTheProviderThrowsAToolLikeException_StillReturnsNull(Type exceptionType)
+    {
+        var model = new FakeChatClient(_ => throw (Exception)Activator.CreateInstance(exceptionType, "fallo del proveedor")!);
+        var rig = new Rig(model);
+
+        Assert.Null(await rig.Engine.ReplyAsync(Question, CancellationToken.None));
+        Assert.Contains("error", Assert.Single(rig.Logger.Entries).Message);
+    }
+
+    [Fact]
+    public async Task ReplyAsync_WhenTheProviderFailsAfterAToolFailure_ReturnsNull()
+    {
+        var model = new FakeChatClient(_ => CallTool(MyTool), _ => throw new InvalidOperationException(SecretKey));
+        var rig = new Rig(model);
+
+        Assert.Null(await rig.Engine.ReplyAsync(Question, CancellationToken.None));
     }
 
     [Fact]
