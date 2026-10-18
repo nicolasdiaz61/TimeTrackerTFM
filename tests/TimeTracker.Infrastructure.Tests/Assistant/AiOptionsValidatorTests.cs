@@ -1,0 +1,192 @@
+using TimeTracker.Infrastructure.Assistant;
+
+namespace TimeTracker.Infrastructure.Tests.Assistant;
+
+public sealed class AiOptionsValidatorTests
+{
+    private const string SecretKey = "clave-secreta-prueba";
+
+    private static readonly AiOptionsValidator Validator = new();
+
+    private static AiOptions ValidAnthropic() => new() { Provider = "Anthropic", Model = "modelo-ficticio", ApiKey = SecretKey };
+
+    private static AiOptions ValidOllama() => new() { Provider = "Ollama", Model = "modelo-ficticio", Endpoint = "http://localhost:11434/" };
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("   ")]
+    [InlineData("None")]
+    public void Validate_WithoutProvider_IsValidEvenWithInvalidLimits(string? provider)
+    {
+        var options = new AiOptions { Provider = provider, MaxOutputTokens = -5, TimeoutSeconds = 999 };
+
+        var result = Validator.Validate(null, options);
+
+        Assert.True(result.Succeeded);
+        Assert.False(options.IsEnabled);
+    }
+
+    [Fact]
+    public void Validate_WithDefaults_HasTheDocumentedLimits()
+    {
+        var options = ValidAnthropic();
+
+        Assert.Equal(800, options.MaxOutputTokens);
+        Assert.Equal(5, options.MaxToolIterations);
+        Assert.Equal(25, options.TimeoutSeconds);
+        Assert.Equal(5, options.RequestsPerMinute);
+        Assert.Equal(50, options.DailyRequestsPerUser);
+        Assert.True(Validator.Validate(null, options).Succeeded);
+        Assert.True(options.IsEnabled);
+    }
+
+    [Fact]
+    public void Validate_OllamaWithEndpoint_IsValid()
+    {
+        Assert.True(Validator.Validate(null, ValidOllama()).Succeeded);
+    }
+
+    [Fact]
+    public void Validate_UnknownProvider_FailsWithTheKeyName()
+    {
+        var options = ValidAnthropic();
+        options.Provider = "Gemini";
+
+        var result = Validator.Validate(null, options);
+
+        Assert.True(result.Failed);
+        Assert.Contains(result.Failures!, failure => failure.StartsWith("Ai:Provider"));
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("   ")]
+    public void Validate_AnthropicWithoutApiKey_FailsWithTheKeyName(string? apiKey)
+    {
+        var options = ValidAnthropic();
+        options.ApiKey = apiKey;
+
+        var result = Validator.Validate(null, options);
+
+        Assert.Contains(result.Failures!, failure => failure.StartsWith("Ai:ApiKey"));
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("no-es-una-url")]
+    [InlineData("ftp://localhost/")]
+    public void Validate_OllamaWithoutValidEndpoint_FailsWithTheKeyName(string? endpoint)
+    {
+        var options = ValidOllama();
+        options.Endpoint = endpoint;
+
+        var result = Validator.Validate(null, options);
+
+        Assert.Contains(result.Failures!, failure => failure.StartsWith("Ai:Endpoint"));
+    }
+
+    [Fact]
+    public void Validate_OllamaDoesNotRequireApiKeyAndAnthropicDoesNotRequireEndpoint()
+    {
+        Assert.True(Validator.Validate(null, ValidOllama()).Succeeded);
+        Assert.True(Validator.Validate(null, ValidAnthropic()).Succeeded);
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("  ")]
+    public void Validate_EnabledWithoutModel_FailsWithTheKeyName(string? model)
+    {
+        var options = ValidAnthropic();
+        options.Model = model;
+
+        var result = Validator.Validate(null, options);
+
+        Assert.Contains(result.Failures!, failure => failure.StartsWith("Ai:Model"));
+    }
+
+    [Theory]
+    [InlineData(100, true)]
+    [InlineData(101, false)]
+    public void Validate_ModelLength_IsLimitedTo100(int length, bool valid)
+    {
+        var options = ValidAnthropic();
+        options.Model = new string('m', length);
+
+        Assert.Equal(valid, Validator.Validate(null, options).Succeeded);
+    }
+
+    [Theory]
+    [InlineData(nameof(AiOptions.MaxOutputTokens), 63, false)]
+    [InlineData(nameof(AiOptions.MaxOutputTokens), 64, true)]
+    [InlineData(nameof(AiOptions.MaxOutputTokens), 4096, true)]
+    [InlineData(nameof(AiOptions.MaxOutputTokens), 4097, false)]
+    [InlineData(nameof(AiOptions.MaxToolIterations), 0, false)]
+    [InlineData(nameof(AiOptions.MaxToolIterations), 1, true)]
+    [InlineData(nameof(AiOptions.MaxToolIterations), 10, true)]
+    [InlineData(nameof(AiOptions.MaxToolIterations), 11, false)]
+    [InlineData(nameof(AiOptions.TimeoutSeconds), 4, false)]
+    [InlineData(nameof(AiOptions.TimeoutSeconds), 5, true)]
+    [InlineData(nameof(AiOptions.TimeoutSeconds), 55, true)]
+    [InlineData(nameof(AiOptions.TimeoutSeconds), 56, false)]
+    [InlineData(nameof(AiOptions.RequestsPerMinute), 0, false)]
+    [InlineData(nameof(AiOptions.RequestsPerMinute), 1, true)]
+    [InlineData(nameof(AiOptions.RequestsPerMinute), 60, true)]
+    [InlineData(nameof(AiOptions.RequestsPerMinute), 61, false)]
+    [InlineData(nameof(AiOptions.DailyRequestsPerUser), 0, false)]
+    [InlineData(nameof(AiOptions.DailyRequestsPerUser), 1, true)]
+    [InlineData(nameof(AiOptions.DailyRequestsPerUser), 1000, true)]
+    [InlineData(nameof(AiOptions.DailyRequestsPerUser), 1001, false)]
+    public void Validate_EachLimit_IsCheckedOnItsOwn(string property, int value, bool valid)
+    {
+        var options = ValidAnthropic();
+        typeof(AiOptions).GetProperty(property)!.SetValue(options, value);
+
+        var result = Validator.Validate(null, options);
+
+        Assert.Equal(valid, result.Succeeded);
+        if (!valid)
+        {
+            Assert.Single(result.Failures!);
+            Assert.StartsWith($"Ai:{property}", result.Failures!.Single());
+        }
+    }
+
+    [Fact]
+    public void Validate_Failures_AreInSpanishAndNeverPrintValues()
+    {
+        var options = new AiOptions
+        {
+            Provider = "Anthropic",
+            ApiKey = SecretKey,
+            Model = new string('m', 101),
+            Endpoint = "no-es-una-url",
+            MaxOutputTokens = 1,
+            TimeoutSeconds = 999,
+        };
+
+        var result = Validator.Validate(null, options);
+
+        Assert.True(result.Failed);
+        var text = string.Join('\n', result.Failures!);
+        Assert.DoesNotContain(SecretKey, text);
+        Assert.DoesNotContain("no-es-una-url", text);
+        Assert.DoesNotContain("999", text);
+        Assert.Contains("Ai:Model", text);
+        Assert.Contains("Ai:MaxOutputTokens", text);
+        Assert.Contains("Ai:TimeoutSeconds", text);
+        Assert.Contains("debe", text);
+    }
+
+    [Fact]
+    public void Validate_UnknownProvider_NeverPrintsTheProviderValue()
+    {
+        var options = new AiOptions { Provider = "Gemini-secreto" };
+
+        var text = string.Join('\n', Validator.Validate(null, options).Failures!);
+
+        Assert.DoesNotContain("Gemini-secreto", text);
+    }
+}
