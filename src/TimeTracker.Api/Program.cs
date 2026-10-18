@@ -1,3 +1,4 @@
+using TimeTracker.Api.Assistant;
 using TimeTracker.Api.Authentication;
 using TimeTracker.Api.Configuration;
 using TimeTracker.Api.Errors;
@@ -6,6 +7,7 @@ using TimeTracker.Api.Security;
 using TimeTracker.Api.Seeding;
 using TimeTracker.Api.Team;
 using TimeTracker.Api.TimeEntries;
+using TimeTracker.Infrastructure.Assistant;
 
 var builder = WebApplication.CreateBuilder(DocumentGeneration.CreateOptions(args));
 DocumentGeneration.ApplyPlaceholderSettings(builder.Configuration);
@@ -21,7 +23,8 @@ builder.Services.AddDomainProblemDetails();
 builder.Services.AddTimeEntries();
 builder.Services.AddTeam();
 builder.Services.AddDemoSeeding();
-builder.Services.AddLoginRateLimiting();
+builder.Services.AddAssistant();
+builder.Services.AddRateLimiting();
 builder.Services.AddOpenApi(options => options.AddBearerSecurity());
 
 var app = builder.Build();
@@ -35,10 +38,11 @@ app.UseExceptionHandler();
 // Da cuerpo problem+json a los 401/403/404/405/429 que se generan sin cuerpo (DD-21).
 app.UseStatusCodePages();
 app.UseCors();
-// Tras CORS: el 429 conserva las cabeceras del origen permitido (DD-21).
-app.UseRateLimiter();
+// Autenticación y autorización antes del limitador: la política del asistente particiona por usuario (claim sub) y
+// un anónimo recibe 401 sin consumir permisos de nadie. CORS sigue antes: el 429 conserva las cabeceras del origen permitido.
 app.UseAuthentication();
 app.UseAuthorization();
+app.UseRateLimiter();
 
 // El documento solo se sirve en desarrollo; el contrato exportado vive en docs/api/openapi.json.
 if (app.Environment.IsDevelopment())
@@ -50,5 +54,6 @@ app.MapHealthEndpoints();
 app.MapAuthEndpoints();
 app.MapTimeEntryEndpoints();
 app.MapTeamEndpoints();
+app.MapAssistantEndpoints();
 
 app.Run();

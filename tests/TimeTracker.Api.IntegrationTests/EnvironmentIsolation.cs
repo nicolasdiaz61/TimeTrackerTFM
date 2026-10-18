@@ -6,7 +6,7 @@ namespace TimeTracker.Api.IntegrationTests;
 /// </summary>
 internal static class EnvironmentIsolation
 {
-    private static readonly string[] Prefixes = ["Cors__", "ConnectionStrings__", "Database__", "Jwt__", "Seed__"];
+    private static readonly string[] Prefixes = ["Cors__", "ConnectionStrings__", "Database__", "Jwt__", "Seed__", "Ai__"];
 
     private const string EnvironmentName = "ASPNETCORE_ENVIRONMENT";
 
