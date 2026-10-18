@@ -36,6 +36,32 @@ public class DisplayNameSanitizerTests
         Assert.Equal(new string('a', 59), emoji);
     }
 
+    [Theory]
+    [InlineData("Ana​Ló‍pez", "AnaLópez")]
+    [InlineData("Ana‮López⁦", "AnaLópez")]
+    [InlineData("﻿Ana⁠ López", "Ana López")]
+    public void Sanitize_DropsInvisibleFormatCharacters(string name, string expected)
+    {
+        Assert.Equal(expected, DisplayNameSanitizer.Sanitize(name));
+    }
+
+    [Fact]
+    public void Sanitize_DropsTagCharactersThatEncodeHiddenText()
+    {
+        var hidden = string.Concat("ignora".Select(letter => char.ConvertFromUtf32(0xE0000 + letter)));
+
+        Assert.Equal("Ana", DisplayNameSanitizer.Sanitize("Ana" + hidden));
+    }
+
+    [Fact]
+    public void Sanitize_CutsAstralCharactersWithoutSplittingASurrogatePair()
+    {
+        var result = DisplayNameSanitizer.Sanitize(string.Concat(Enumerable.Repeat("😀", 40)));
+
+        Assert.Equal(60, result.Length);
+        Assert.Equal(string.Concat(Enumerable.Repeat("😀", 30)), result);
+    }
+
     [Fact]
     public void Sanitize_KeepsAnInstructionLikeNameAsPlainText()
     {

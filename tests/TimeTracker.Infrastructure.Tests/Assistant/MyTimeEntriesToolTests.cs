@@ -137,6 +137,19 @@ public class MyTimeEntriesToolTests
     }
 
     [Fact]
+    public async Task Cancellation_Propagates_InsteadOfBecomingAnErrorResult()
+    {
+        var harness = new ToolHarness(ToolHarness.Luis, UserRole.Employee, new ThrowingTimeEntryRepository(new OperationCanceledException()));
+        var function = harness.Tools.Single(candidate => candidate.Name == Tool);
+        using var cancellation = new CancellationTokenSource();
+        await cancellation.CancelAsync();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(async () => await function.InvokeAsync(
+            new Microsoft.Extensions.AI.AIFunctionArguments { ["fromDate"] = "2026-10-12", ["toDate"] = "2026-10-18" },
+            cancellation.Token));
+    }
+
+    [Fact]
     public async Task Result_HasNoIntervalList()
     {
         var harness = new ToolHarness(ToolHarness.Luis, UserRole.Employee);

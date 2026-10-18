@@ -32,6 +32,10 @@ public sealed class AssistantToolset(
     private const string ToDescription = "Último día del periodo, formato yyyy-MM-dd (hora de España).";
     private const string DateFormat = "yyyy-MM-dd";
     private const string InvalidDateMessage = "Las fechas deben tener el formato yyyy-MM-dd, por ejemplo 2026-10-18.";
+    // Debe coincidir con LocalDateRange.MaxDays (un int no puede interpolarse en una constante); un test lo fija.
+    internal const string MaxDaysText = "31";
+    private const string DateRangeSuffix = $"entre dos fechas (máximo {MaxDaysText} días).";
+    private const string MemberIdDescription = $"Identificador del miembro del equipo, tal como lo devuelve {TeamMembersTool}.";
     private const string UnavailableMessage = "No se ha podido completar la consulta en este momento.";
 
     /// <summary>Herramientas ofrecidas al modelo para el rol del usuario actual.</summary>
@@ -42,7 +46,7 @@ public sealed class AssistantToolset(
             Create(
                 GetMyTimeEntriesAsync,
                 MyTimeEntriesTool,
-                "Devuelve un resumen por día, en hora de España, de los fichajes del propio usuario entre dos fechas (máximo 31 días)."),
+                $"Devuelve un resumen por día, en hora de España, de los fichajes del propio usuario {DateRangeSuffix}"),
         ];
 
         // Defensa en profundidad (DD-7): un empleado no puede ni nombrar las herramientas de equipo.
@@ -55,7 +59,7 @@ public sealed class AssistantToolset(
             tools.Add(Create(
                 GetTeamMemberTimeEntriesAsync,
                 TeamMemberTimeEntriesTool,
-                "Devuelve un resumen por día, en hora de España, de los fichajes de un miembro del equipo entre dos fechas (máximo 31 días)."));
+                $"Devuelve un resumen por día, en hora de España, de los fichajes de un miembro del equipo {DateRangeSuffix}"));
         }
 
         return tools;
@@ -87,7 +91,7 @@ public sealed class AssistantToolset(
         });
 
     private Task<object> GetTeamMemberTimeEntriesAsync(
-        [Description("Identificador del miembro del equipo, tal como lo devuelve get_team_members.")] string memberId,
+        [Description(MemberIdDescription)] string memberId,
         [Description(FromDescription)] string fromDate,
         [Description(ToDescription)] string toDate,
         CancellationToken cancellationToken)

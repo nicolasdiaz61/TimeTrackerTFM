@@ -4,9 +4,9 @@ using TimeTracker.Domain.TimeTracking;
 namespace TimeTracker.Infrastructure.Tests.Fakes;
 
 /// <summary>Repositorio de fichajes que siempre falla con un texto reconocible, para comprobar que no llega al modelo ni al registro.</summary>
-internal sealed class ThrowingTimeEntryRepository : ITimeEntryRepository
+internal sealed class ThrowingTimeEntryRepository(Exception? failure = null) : ITimeEntryRepository
 {
-    private static InvalidOperationException Failure() => new("clave-secreta-prueba");
+    private Exception Failure() => failure ?? new InvalidOperationException("clave-secreta-prueba");
 
     public Task<TimeEntry?> FindOpenAsync(Guid employeeId, CancellationToken cancellationToken) => throw Failure();
 

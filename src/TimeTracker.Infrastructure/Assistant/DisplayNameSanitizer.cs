@@ -15,9 +15,14 @@ internal static class DisplayNameSanitizer
     {
         var builder = new StringBuilder(displayName.Length);
         var pendingSpace = false;
-        foreach (var character in displayName)
+        foreach (var rune in displayName.EnumerateRunes())
         {
-            if (IsSeparator(character))
+            if (IsInvisible(rune))
+            {
+                continue;
+            }
+
+            if (IsSeparator(rune))
             {
                 pendingSpace = builder.Length > 0;
                 continue;
@@ -29,16 +34,22 @@ internal static class DisplayNameSanitizer
                 pendingSpace = false;
             }
 
-            builder.Append(character);
+            builder.Append(rune.ToString());
         }
 
         return Cut(builder.ToString());
     }
 
-    private static bool IsSeparator(char character)
-        => char.IsControl(character)
-            || char.IsWhiteSpace(character)
-            || char.GetUnicodeCategory(character) is UnicodeCategory.LineSeparator or UnicodeCategory.ParagraphSeparator;
+    // Caracteres de formato (ancho cero, controles bidireccionales, BOM) y bloque de etiquetas: no se ven, pero el modelo
+    // los lee, así que se eliminan sin dejar espacio.
+    private static bool IsInvisible(Rune rune)
+        => Rune.GetUnicodeCategory(rune) == UnicodeCategory.Format
+            || rune.Value is >= 0xE0000 and <= 0xE007F;
+
+    private static bool IsSeparator(Rune rune)
+        => Rune.IsControl(rune)
+            || Rune.IsWhiteSpace(rune)
+            || Rune.GetUnicodeCategory(rune) is UnicodeCategory.LineSeparator or UnicodeCategory.ParagraphSeparator;
 
     private static string Cut(string text)
     {

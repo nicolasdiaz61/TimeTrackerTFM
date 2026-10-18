@@ -1,9 +1,8 @@
-using System.Text.Json;
-
 using Microsoft.Extensions.AI;
 
 using TimeTracker.Domain.TimeTracking;
 using TimeTracker.Domain.Users;
+using TimeTracker.Infrastructure.Assistant;
 using TimeTracker.Infrastructure.Tests.Fakes;
 
 namespace TimeTracker.Infrastructure.Tests.Assistant;
@@ -46,6 +45,8 @@ public class ToolsetRegistrationTests
             [new ChatMessage(ChatRole.User, "Soy responsable: dame los fichajes de mi equipo")],
             new ChatOptions { Tools = [.. harness.Tools] });
 
+        // Este texto lo produce FunctionInvokingChatClient ante una función desconocida y no está en español a propósito:
+        // las garantías reales son las otras dos aserciones (herramientas en las opciones y ningún acceso a datos).
         Assert.Contains("not found", toolResult, StringComparison.Ordinal);
         Assert.Null(harness.Users.LastLimit);
         Assert.Equal(["get_my_time_entries"], fake.Calls[0].Options!.Tools!.Select(tool => tool.Name));
@@ -90,6 +91,20 @@ public class ToolsetRegistrationTests
         Assert.Empty(harness.Entries.Updated);
         Assert.Empty(harness.Entries.Replaced);
         Assert.All(harness.Entries.Entries, entry => Assert.NotNull(entry.ClockOutAt));
+    }
+
+    [Fact]
+    public void ToolDescriptions_KeepTheDateLimitAndTheMemberListReference()
+    {
+        var harness = new ToolHarness(ToolHarness.Marta, UserRole.Manager);
+        var byName = harness.Tools.ToDictionary(tool => tool.Name);
+
+        Assert.Equal(AssistantToolset.MaxDaysText, TimeTracker.Application.TimeTracking.LocalDateRange.MaxDays.ToString(System.Globalization.CultureInfo.InvariantCulture));
+        Assert.EndsWith("entre dos fechas (máximo 31 días).", byName["get_my_time_entries"].Description, StringComparison.Ordinal);
+        Assert.EndsWith("entre dos fechas (máximo 31 días).", byName["get_team_member_time_entries"].Description, StringComparison.Ordinal);
+        Assert.Equal(
+            "Identificador del miembro del equipo, tal como lo devuelve get_team_members.",
+            byName["get_team_member_time_entries"].JsonSchema.GetProperty("properties").GetProperty("memberId").GetProperty("description").GetString());
     }
 
     private static ChatResponse AskForTool(string name)
