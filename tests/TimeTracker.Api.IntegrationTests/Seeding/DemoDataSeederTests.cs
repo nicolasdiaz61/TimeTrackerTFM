@@ -10,6 +10,7 @@ using Microsoft.Extensions.Logging;
 using TimeTracker.Api.IntegrationTests.Postgres;
 using TimeTracker.Api.IntegrationTests.Support;
 using TimeTracker.Application.DemoData;
+using TimeTracker.Application.Time;
 using TimeTracker.Domain.TimeTracking;
 using TimeTracker.Domain.Users;
 
