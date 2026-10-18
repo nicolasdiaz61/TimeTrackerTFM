@@ -102,9 +102,66 @@ public partial class DeliveryArtifactsTests
         Assert.DoesNotContain(active.Values, value => GuidRegex().IsMatch(value) || value.Contains("Password=", StringComparison.OrdinalIgnoreCase));
     }
 
+    private static readonly string[] AiEnvKeys =
+    [
+        "Ai__Provider",
+        "Ai__Model",
+        "Ai__Endpoint",
+        "Ai__ApiKey",
+        "Ai__MaxOutputTokens",
+        "Ai__MaxToolIterations",
+        "Ai__TimeoutSeconds",
+        "Ai__RequestsPerMinute",
+        "Ai__DailyRequestsPerUser",
+    ];
+
     [Fact]
-    public void EnvExample_HasNoActiveAiKeys()
-        => Assert.DoesNotContain(ActiveEnvEntries().Keys, key => key.StartsWith("Ai__", StringComparison.Ordinal));
+    public void EnvExample_DocumentsTheNineAiKeysWithOnlyProviderAndApiKeyActiveAndEmpty()
+    {
+        var example = ReadRepositoryFile(".env.example");
+        var active = ActiveEnvEntries();
+
+        foreach (var key in AiEnvKeys)
+        {
+            Assert.Matches($@"(?m)^#?\s*{key}=", example);
+        }
+
+        // Activas y vacías (asistente deshabilitado por defecto); las otras siete, comentadas.
+        Assert.Equal(["Ai__ApiKey", "Ai__Provider"], active.Keys.Where(key => key.StartsWith("Ai__", StringComparison.Ordinal)).Order(StringComparer.Ordinal));
+        Assert.Equal(string.Empty, active["Ai__Provider"]);
+        Assert.Equal(string.Empty, active["Ai__ApiKey"]);
+        Assert.Contains("# Ai__Endpoint=http://host.docker.internal:11434/", example, StringComparison.Ordinal);
+        foreach (var (key, value) in new[] { ("MaxOutputTokens", "800"), ("MaxToolIterations", "5"), ("TimeoutSeconds", "25"), ("RequestsPerMinute", "5"), ("DailyRequestsPerUser", "50") })
+        {
+            Assert.Contains($"# Ai__{key}={value}", example, StringComparison.Ordinal);
+        }
+    }
+
+    [Fact]
+    public void EnvExample_ExplainsTheDisabledAssistantProvidersAndTheSecretKey()
+    {
+        var comments = string.Join('\n', ReadRepositoryFile(".env.example").Split('\n').Where(line => line.TrimStart().StartsWith('#')));
+
+        Assert.Contains("deshabilitado", comments, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Anthropic", comments, StringComparison.Ordinal);
+        Assert.Contains("Ollama", comments, StringComparison.Ordinal);
+        Assert.Contains("SECRETO", comments, StringComparison.Ordinal);
+        Assert.Contains("nunca se escribe", comments, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void DeliveryFiles_NeverCarryAnApiKeyValue()
+    {
+        foreach (var file in new[] { ".env.example", "docker-compose.yml", "README.md" })
+        {
+            // Solo espacios y tabuladores tras el signo: un salto de línea seguido de otro comentario no es un valor.
+            Assert.DoesNotMatch(@"Ai__ApiKey[ \t]*[=:][ \t]*[^\s`|]", ReadRepositoryFile(file));
+        }
+    }
+
+    [Fact]
+    public void Compose_LetsTheApiReachAnOllamaOnTheHost()
+        => Assert.Contains("\"host.docker.internal:host-gateway\"", ServiceBlock(ReadRepositoryFile("docker-compose.yml"), "api"), StringComparison.Ordinal);
 
     [Fact]
     public void EnvExample_DoesNotDefineEmptyPortKey()
@@ -212,14 +269,14 @@ public partial class DeliveryArtifactsTests
     // --- ADR (SA-20, SA-21, SA-22) ---
 
     [Fact]
-    public void Adr_Directory_HasSixteenAdrsWithFourSections()
+    public void Adr_Directory_HasSeventeenAdrsWithFourSections()
     {
         string[] sections = ["## Contexto", "## Decisión", "## Consecuencias", "## Alternativas"];
         var adrs = Directory.GetFiles(Path.Combine(RepositoryRoot.Path, "docs", "adr"), "0*.md")
             .Order(StringComparer.Ordinal)
             .ToList();
 
-        Assert.Equal(16, adrs.Count);
+        Assert.Equal(17, adrs.Count);
         for (var index = 0; index < adrs.Count; index++)
         {
             var name = Path.GetFileName(adrs[index]);
@@ -231,6 +288,37 @@ public partial class DeliveryArtifactsTests
             var missing = sections.Where(section => !text.Contains(section, StringComparison.Ordinal)).ToList();
             Assert.True(missing.Count == 0, $"{name} no tiene las secciones: {string.Join(", ", missing)}");
         }
+    }
+
+    [Fact]
+    public void Adr0017_RecordsTheAssistantDecisionAndItsConsequences()
+    {
+        var adr = ReadRepositoryFile("docs/adr/0017-asistente-ia-con-herramientas-de-solo-lectura.md");
+
+        string[] required =
+        [
+            "Infrastructure", "alternativa A", "solo lectura", "RGPD", "proveedor en la nube", "datos inventados",
+            "en memoria", "se reinicia con cada despliegue", "no se comparte entre réplicas", "presupuesto",
+            "DD-21", "después de la autorización", "sin `Ai:Provider`", "`503`", "B. IA en Application",
+        ];
+        var missing = required.Where(text => !adr.Contains(text, StringComparison.OrdinalIgnoreCase)).ToList();
+
+        Assert.True(missing.Count == 0, $"El ADR 0017 no menciona: {string.Join(", ", missing)}");
+    }
+
+    [Fact]
+    public void Readme_ExplainsTheAssistant()
+    {
+        var readme = ReadRepositoryFile("README.md");
+
+        string[] required =
+        [
+            "## Asistente de IA", "solo lectura", "Ai__Provider", "Anthropic", "Ollama", "Ai__Endpoint", "Ai__ApiKey",
+            "secreto", "/asistente", "datos personales", "no llaman a ningún modelo real", "0017-asistente-ia-con-herramientas-de-solo-lectura.md",
+        ];
+        var missing = required.Where(text => !readme.Contains(text, StringComparison.OrdinalIgnoreCase)).ToList();
+
+        Assert.True(missing.Count == 0, $"README.md no menciona: {string.Join(", ", missing)}");
     }
 
     [Fact]

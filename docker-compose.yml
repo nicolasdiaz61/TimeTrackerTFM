@@ -32,6 +32,9 @@ services:
       Jwt__SigningKey: ${Jwt__SigningKey:?Defina Jwt__SigningKey en .env}
       Seed__DemoUsers: "true"
       Seed__DemoPassword: ${Seed__DemoPassword:?Defina Seed__DemoPassword en .env (al menos 12 caracteres)}
+    # Para llegar a un Ollama que corre en el anfitrión (Ai__Endpoint=http://host.docker.internal:11434/); en Linux no existe por defecto.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     depends_on:
       postgres:
         condition: service_healthy
