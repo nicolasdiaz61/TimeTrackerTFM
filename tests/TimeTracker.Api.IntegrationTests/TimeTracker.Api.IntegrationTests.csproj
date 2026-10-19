@@ -14,4 +14,10 @@
     <ProjectReference Include="..\..\src\TimeTracker.Api\TimeTracker.Api.csproj" />
   </ItemGroup>
 
+  <!-- Dobles del asistente compartidos por enlace con Infrastructure.Tests (DD-19): ninguna prueba llama a un modelo real. -->
+  <ItemGroup>
+    <Compile Include="..\TimeTracker.Infrastructure.Tests\Fakes\FakeChatClient.cs" Link="Fakes\FakeChatClient.cs" />
+    <Compile Include="..\TimeTracker.Infrastructure.Tests\Fakes\HangingChatClient.cs" Link="Fakes\HangingChatClient.cs" />
+  </ItemGroup>
+
 </Project>

@@ -219,6 +219,25 @@ public class RepositoryConventionsTests
     }
 
     [Fact]
+    public void Src_DoesNotHardcodeModelNames()
+    {
+        // El modelo y el proveedor se eligen solo por configuración (AGENTS §7): ningún nombre de modelo en el código.
+        var modelName = new System.Text.RegularExpressions.Regex(
+            @"claude-|\bgpt-|qwen|gemini-|llama[0-9]|mistral|phi[0-9]|haiku|sonnet|\bopus\b",
+            System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.CultureInvariant);
+        var separators = new[] { $"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}", $"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}" };
+
+        var offenders = Directory.EnumerateFiles(Path.Combine(RepositoryRoot.Path, "src"), "*.*", SearchOption.AllDirectories)
+            .Where(file => file.EndsWith(".cs", StringComparison.Ordinal) || file.EndsWith(".razor", StringComparison.Ordinal) || file.EndsWith(".json", StringComparison.Ordinal))
+            .Where(file => !separators.Any(file.Contains))
+            .Where(file => modelName.IsMatch(File.ReadAllText(file)))
+            .Select(file => Path.GetRelativePath(RepositoryRoot.Path, file))
+            .ToList();
+
+        Assert.True(offenders.Count == 0, $"Nombres de modelo en el código: {string.Join(", ", offenders)}");
+    }
+
+    [Fact]
     public void Solution_DoesNotDependOnAspNetCoreIdentity()
     {
         var offenders = ProjectPaths.Append("Directory.Packages.props")

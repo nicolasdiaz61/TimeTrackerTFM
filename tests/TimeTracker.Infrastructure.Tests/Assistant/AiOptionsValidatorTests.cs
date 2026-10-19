@@ -59,6 +59,40 @@ public sealed class AiOptionsValidatorTests
         Assert.Contains(result.Failures!, failure => failure.StartsWith("Ai:Provider"));
     }
 
+    // El valor numérico del enum (Ai__Provider=1) no es un nombre de proveedor: solo se aceptan nombres.
+    [Theory]
+    [InlineData("0")]
+    [InlineData("1")]
+    [InlineData("2")]
+    [InlineData("3")]
+    [InlineData("-1")]
+    [InlineData(" 1 ")]
+    [InlineData("Anthropic,Ollama")]
+    public void Validate_NumericOrCompositeProvider_FailsWithTheKeyName(string provider)
+    {
+        var options = ValidAnthropic();
+        options.Provider = provider;
+
+        var result = Validator.Validate(null, options);
+
+        Assert.Null(options.ResolvedProvider);
+        Assert.False(options.IsEnabled);
+        Assert.True(result.Failed);
+        Assert.Contains(result.Failures!, failure => failure.StartsWith("Ai:Provider"));
+    }
+
+    [Theory]
+    [InlineData("anthropic", AiProvider.Anthropic)]
+    [InlineData("OLLAMA", AiProvider.Ollama)]
+    [InlineData("  Ollama  ", AiProvider.Ollama)]
+    [InlineData("none", AiProvider.None)]
+    [InlineData("", AiProvider.None)]
+    [InlineData(null, AiProvider.None)]
+    public void ResolvedProvider_AcceptsOnlyNamesIgnoringCase(string? provider, AiProvider expected)
+    {
+        Assert.Equal(expected, new AiOptions { Provider = provider }.ResolvedProvider);
+    }
+
     [Theory]
     [InlineData(null)]
     [InlineData("   ")]

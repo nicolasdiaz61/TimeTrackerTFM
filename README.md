@@ -2,7 +2,7 @@
 
 Aplicación de control de tiempos y ausencias para empresas: fichajes, ausencias, saldo de horas y horas extra, con un asistente de IA que responderá consultas en lenguaje natural sobre esos datos.
 
-> **Estado actual:** la aplicación tiene **autenticación real y roles**. Se inicia sesión en `/login` con un correo y una contraseña; cualquier persona con sesión (empleado o responsable) ficha con el **reproductor del Inicio** (iniciar jornada, pausa, comida, reanudar y finalizar, con cronómetro en vivo), consulta su historial **por mes** en `/fichajes` (una fila por día con una barra de franjas de trabajo, pausas y comidas, en su hora local) y un **responsable** (rol `Manager`) consulta la misma vista mensual de sus reportes directos en `/equipo`. La API emite un JWT propio de 30 minutos (sin renovación) y guarda los usuarios y los fichajes en PostgreSQL con EF Core. La Web tiene una página de inicio en español con enlaces según la sesión y avisa en `/login` cuando la sesión ha caducado. Todavía **no** hay ausencias ni asistente de IA.
+> **Estado actual:** la aplicación tiene **autenticación real y roles**. Se inicia sesión en `/login` con un correo y una contraseña; cualquier persona con sesión (empleado o responsable) ficha con el **reproductor del Inicio** (iniciar jornada, pausa, comida, reanudar y finalizar, con cronómetro en vivo), consulta su historial **por mes** en `/fichajes` (una fila por día con una barra de franjas de trabajo, pausas y comidas, en su hora local) y un **responsable** (rol `Manager`) consulta la misma vista mensual de sus reportes directos en `/equipo`. La API emite un JWT propio de 30 minutos (sin renovación) y guarda los usuarios y los fichajes en PostgreSQL con EF Core. La Web tiene una página de inicio en español con enlaces según la sesión y avisa en `/login` cuando la sesión ha caducado. La API incluye además un **asistente de IA de solo lectura** (`POST /api/asistente`, deshabilitado por defecto; véase «Asistente de IA»). Todavía **no** hay ausencias.
 >
 > **Aviso: usuarios de demostración.** La siembra de cuatro usuarios de prueba (contraseña pública, ver «Usuarios de prueba») está **desactivada por defecto**. No la active en un despliegue real. Ver los [ADR 0011](docs/adr/0011-autenticacion-jwt-roles-y-equipo.md) y [0012](docs/adr/0012-sesion-web-y-riesgo-xss.md). Todos los datos de ejemplo son inventados.
 
@@ -15,7 +15,8 @@ Aplicación de control de tiempos y ausencias para empresas: fichajes, ausencias
 - Autenticación: JWT HS256 propio validado con `JwtBearer` y contraseñas con el hash PBKDF2 de `PasswordHasher` (sin ASP.NET Core Identity; [ADR 0011](docs/adr/0011-autenticacion-jwt-roles-y-equipo.md)).
 - Pruebas: xUnit v2, `WebApplicationFactory`, Testcontainers (PostgreSQL real), Coverlet (cobertura). El motivo de xUnit v2 está en el [ADR 0006](docs/adr/0006-pila-de-pruebas.md).
 - Contenedores: Docker y Docker Compose. Integración continua: GitHub Actions.
-- Previsto en cambios futuros: ausencias y asistente de IA mediante `IChatClient` (Microsoft.Extensions.AI).
+- Asistente de IA: `IChatClient` (Microsoft.Extensions.AI) con Anthropic (nube) u Ollama (local) elegidos por configuración ([ADR 0017](docs/adr/0017-asistente-ia-con-herramientas-de-solo-lectura.md)).
+- Previsto en cambios futuros: ausencias.
 
 ## Requisitos previos
 
@@ -66,6 +67,12 @@ La configuración llega por variables de entorno (nunca en el repositorio). `.en
 | `PORT` | No | Si la plataforma lo define (Railway), la imagen de la API escucha ahí y prevalece sobre `ASPNETCORE_HTTP_PORTS`. |
 | `ForwardedHeaders__Enabled` | No (por defecto `false`) | Con `true`, la API confía en `X-Forwarded-For`/`X-Forwarded-Proto` de un proxy inverso. Solo tras un proxy que la proteja de accesos directos (véase «Despliegue en Railway»). |
 | `ForwardedHeaders__Hops` | No (por defecto `2`) | Saltos de proxy de confianza, contados desde la derecha de `X-Forwarded-For` (Railway: «cliente, borde»). |
+| `Ai__Provider` | No (vacío = asistente deshabilitado) | `Anthropic` u `Ollama` (sin distinguir mayúsculas; `None` o vacío lo deshabilita). Cualquier otro valor, incluido un número, impide arrancar. Véase «Asistente de IA». |
+| `Ai__Model` | Con proveedor | Nombre del modelo (máximo 100 caracteres); es configuración, nunca código. |
+| `Ai__ApiKey` | Con `Anthropic` | Clave de API del proveedor. **Es un secreto**: solo en variables de entorno o en el secreto de la plataforma; nunca en archivos del repositorio. |
+| `Ai__Endpoint` | Con `Ollama` | URL `http`/`https` del servidor de Ollama, por ejemplo `http://host.docker.internal:11434/`. |
+| `Ai__MaxOutputTokens`, `Ai__MaxToolIterations`, `Ai__TimeoutSeconds` | No (800, 5 y 25) | Tokens de salida (64-4096), iteraciones de herramientas (1-10) y tiempo máximo en segundos (5-55). |
+| `Ai__RequestsPerMinute`, `Ai__DailyRequestsPerUser` | No (5 y 50) | Peticiones por minuto (1-60) y por día natural de España (1-1000) por usuario. |
 
 Si falta una clave obligatoria, la API termina al arrancar con un mensaje que nombra la clave (sin imprimir valores). `ASPNETCORE_URLS` y `launchSettings.json` tienen prioridad sobre `ASPNETCORE_HTTP_PORTS`.
 
@@ -135,6 +142,23 @@ La ventana admite como máximo 32 días y no puede empezar en el futuro (`400` e
 
 La migración `AddTimeEntryType` deja los fichajes existentes como `Work` (columna `type` con valor por defecto `Work`) y es reversible; la decisión está en el [ADR 0014](docs/adr/0014-tipos-de-marcaje-pausas-y-comida.md).
 
+## Asistente de IA
+
+El asistente responde en español, en lenguaje natural, a preguntas sobre los fichajes de quien pregunta («¿cuántas horas trabajé la semana pasada?») y, si es responsable (`Manager`), sobre los de sus reportes directos, uno a uno. Es **de solo lectura**: no ficha ni modifica nada, y cada herramienta aplica la autorización de la persona autenticada (la identidad sale siempre del token). Se consulta con `POST /api/asistente` (`{ "message": "…", "history": [...] }`); la página `/asistente` de la Web llegará en un cambio posterior (PR 4). Está **deshabilitado por defecto**: sin `Ai__Provider` la API arranca igual y el endpoint responde `503` «El asistente no está disponible en este entorno.». Las decisiones están en el [ADR 0017](docs/adr/0017-asistente-ia-con-herramientas-de-solo-lectura.md).
+
+**Habilitarlo** (solo configuración, sin cambiar código; el modelo también es configuración):
+
+- **Ollama (local, desarrollo).** Instale [Ollama](https://ollama.com), descargue un modelo con soporte de herramientas (por ejemplo `qwen2.5:7b`) y defina en su `.env` local `Ai__Provider=Ollama`, `Ai__Model=qwen2.5:7b` y `Ai__Endpoint=http://host.docker.internal:11434/` (Compose añade `host.docker.internal` para el contenedor; si ejecuta la API fuera de Docker, use `http://localhost:11434/`). Los modelos pequeños pueden fallar con las herramientas o con el español.
+- **Anthropic (nube, producción).** En Railway: `Ai__Provider=Anthropic`, `Ai__Model=<modelo económico elegido en la consola de Anthropic>` y `Ai__ApiKey` como **secreto**, que usted ejecuta en su terminal sin escribirlo en ningún archivo ni en el historial: `railway variables set Ai__ApiKey --stdin -s api` (y pegue la clave). Fije además un **presupuesto de gasto** en la consola de Anthropic: es el techo real del coste.
+
+**Deshabilitarlo:** quite `Ai__Provider` (o déjelo vacío o `None`); el resto de la API no cambia. Con un proveedor activo, `Ai__*` se valida al arrancar y un valor inválido impide arrancar con un mensaje que nombra la clave (sin imprimir su valor).
+
+**Límites por usuario:** 5 peticiones por minuto (`429` con `Retry-After`), 50 por día natural de España (`Ai__DailyRequestsPerUser`; el contador está en memoria: se reinicia con cada despliegue y no se comparte entre réplicas), cuerpo de 32 KiB como máximo (`413`), mensaje de 500 caracteres, historial de 10 mensajes, 800 tokens de salida, 5 iteraciones de herramientas y 25 s de tiempo máximo.
+
+> **Datos personales.** Con el proveedor en la nube (`Anthropic`), los nombres y las horas de los fichajes consultados se envían a ese proveedor para elaborar la respuesta (RGPD). En una demostración use datos inventados y revise el tratamiento de datos antes de habilitarlo con datos reales; con `Ollama` los datos no salen de su máquina. Los registros del servidor no contienen la pregunta, la respuesta ni la clave.
+
+Las pruebas del asistente **no llaman a ningún modelo real**: usan un `IChatClient` falso. La comprobación con un modelo real es manual y opcional.
+
 ## Docker y Docker Compose
 
 ```powershell
@@ -188,6 +212,7 @@ Variables del servicio `api` (`railway variables set -s api --skip-deploys "CLAV
 | `ForwardedHeaders__Enabled` | `true`: la API está tras el proxy de Railway (véase «Riesgos y decisiones»). |
 | `Seed__DemoUsers` y `Seed__DemoPassword` | `true` y la contraseña de «Usuarios de prueba» (solo para la demostración; véase «Apagar la siembra demo»). |
 | `Seed__DemoData` | `true` para sembrar el historial de un mes (véase «Datos de demostración»); opcional. |
+| `Ai__Provider`, `Ai__Model` y `Ai__ApiKey` | Opcionales: habilitan el asistente (véase «Asistente de IA»). `Ai__ApiKey` es un secreto y se define con `railway variables set Ai__ApiKey --stdin -s api`; nunca en este repositorio. Para deshabilitarlo, quite `Ai__Provider`. |
 
 Variable del servicio `web`: `API_BASE_URL=https://<dominio de la API>` (sin barra final). Al arrancar, el contenedor genera `appsettings.json` con ella y abre la CSP (`connect-src`) solo a ese origen; si falta o no es una URL `http`/`https`, el contenedor no arranca. La URL de la API no se versiona.
 
@@ -267,7 +292,7 @@ Para apagarla basta con `Seed__DemoData=false` (o quitar la variable): no se bor
 src/
   TimeTracker.Domain          Entidades y objetos de valor (TimeEntry, WorkedHours, UserAccount). Sin dependencias.
   TimeTracker.Application     Casos de uso (fichar, listar, iniciar sesión, equipo) y puertos. Depende de Domain.
-  TimeTracker.Infrastructure  EF Core, migraciones y repositorios PostgreSQL. Depende de Application.
+  TimeTracker.Infrastructure  EF Core, migraciones, repositorios PostgreSQL y asistente de IA (herramientas, bucle, proveedores). Depende de Application.
   TimeTracker.Api             Endpoints, autenticación JWT, autorización y composición. Depende de Application e Infrastructure.
   TimeTracker.Web             Blazor WebAssembly (inicio con el reproductor de fichaje, /login, /fichajes y /equipo), independiente.
 tests/                        Pruebas de Domain, Application, Web (formato, sesión, hora local, meses y franjas), Api (integración con PostgreSQL) y de arquitectura.
@@ -297,6 +322,7 @@ openspec/                     Especificaciones y cambios (Spec Driven Developmen
 14. [Tipos de marcaje: pausas y pausas de comida](docs/adr/0014-tipos-de-marcaje-pausas-y-comida.md)
 15. [Datos de demostración de un mes](docs/adr/0015-datos-de-demostracion-de-un-mes.md)
 16. [Vista mensual de fichajes y hora local en la Web](docs/adr/0016-vista-mensual-y-hora-local.md)
+17. [Asistente de IA con herramientas de solo lectura](docs/adr/0017-asistente-ia-con-herramientas-de-solo-lectura.md)
 
 ## Integración continua
 

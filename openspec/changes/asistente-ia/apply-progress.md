@@ -128,3 +128,63 @@ Compatible, con una condición para PR 3. `AssistantToolset` es **scoped** porqu
 
 - Registrar `IAssistantEngine` scoped; `AssistantChatClient` singleton (desechable, lo libera el contenedor); `IAssistantQuota` singleton.
 - `docs/api/openapi.json` sigue regenerándose con ruido de saltos de línea: restaurar con `git checkout`.
+
+---
+
+## PR 3 — Endpoint y proveedores (Api y documentación): completado (tareas 1.1-5.1; la 4.5 se difiere al archivo)
+
+Rama `feat/asistente-ia-pr3-endpoint` (desde `origin/main` con PR 1, 2a y 2b), con Strict TDD. Ninguna prueba llama a un modelo real: `FakeChatClient` y `HangingChatClient` (enlazados desde `Infrastructure.Tests` a `Api.IntegrationTests`). Ninguna clave en disco: `clave-secreta-prueba` es un literal ficticio de las pruebas. La imagen Docker no se construyó (el `Dockerfile` no menciona `Ai__*` ni claves), así que la comprobación con `docker history` queda para la verificación manual.
+
+### Evidencia del ciclo TDD
+
+| Tarea | Archivo de pruebas | RED (mensaje real) | GREEN | REFACTOR / mutación |
+|---|---|---|---|---|
+| Seguimiento 2: `Ai:Provider` numérico | `AiOptionsValidatorTests` | `Assert.Null() Failure: Value of type 'Nullable<AiProvider>' has a value` para `"0"`, `"1"`, `"2"`, `" 1 "` | 53/53 | `ResolvedProvider` compara nombres, sin `Enum.TryParse` |
+| Seguimiento 1: corte por errores de herramienta | `ChatAssistantEngineTests`, `AssistantChatPipelineTests` | `CS0246: The type or namespace name 'AssistantToolFailureException' could not be found` | 159/159 | El origen (invocación de la herramienta) decide, no el tipo de excepción: pruebas con `ArgumentException`/`JsonException` lanzadas por el proveedor siguen dando `null` |
+| 2.1 `ChatClientFactory` | `ChatClientFactoryTests` | `CS0103: The name 'ChatClientFactory' does not exist in the current context` | 8/8 | Mutación temporal: un literal de modelo en la fábrica hace fallar `Src_DoesNotHardcodeModelNames` |
+| 2.2 `AddAssistant` | `AssistantRegistrationTests` | `CS1061: 'OptionsBuilder<AiOptions>' does not contain a definition for 'BindConfiguration'` (falta el paquete `Options.ConfigurationExtensions`) | 175/175 (Infrastructure.Tests) | `ValidateScopes` y `ValidateOnBuild` activos |
+| 3.2/3.3 endpoint | `AssistantEndpointTests` | 39 de 41 fallan con `Assert.Equal() Failure: Values differ` (404 sin ruta) | 41/41 | — |
+| 1.5/3.5 V-5 (413) | `AssistantBodyLimitTests` | Bajo `TestServer`: `Expected: RequestEntityTooLarge / Actual: BadRequest` (el atributo se ignora) | 3/3 con `UseKestrel()` | Mutación: quitar `RequestSizeLimitAttribute` y `ValidateOnStart` hace fallar 18 pruebas |
+| 3.1/3.4 limitador | `AssistantRateLimitTests` (14) | Escritas tras el código; mutación temporal con `UseRateLimiter` antes de la autenticación: fallan `AnonymousRequests_DoNotConsumeAnyUsersQuota` y `Users_AreIndependentEvenFromTheSameAddress` (`LoginRateLimitTests` siguen en verde con ambos órdenes) | 14/14 | Un único `AddRateLimiting()` |
+| 3.6 arranque | `AiStartupTests` (33) | Verde a la primera (el validador ya existía desde 2b): la mutación de quitar `ValidateOnStart` hace fallar los casos de clave y proveedor inválidos | 33/33 | — |
+| 4.1-4.4 contrato y documentos | `OpenApiContractTests`, `DeliveryArtifactsTests` (+8) | Con el `README`, `.env.example`, compose y sin ADR 0017 originales fallan 6 pruebas (`Adr_Directory_HasSeventeenAdrsWithFourSections`, `Adr0017_…`, `Readme_ExplainsTheAssistant`, `EnvExample_DocumentsTheNineAiKeys…`, `EnvExample_Explains…`, `Compose_LetsTheApiReachAnOllamaOnTheHost`) | 85/85 | — |
+
+### Puerta de unidad (reales)
+
+- `RESTORE` y `BUILD -warnaserror`: 0 advertencias, 0 errores (sin NU1903/NU1605/NU1608).
+- `TEST` (Docker en marcha, sin la prueba inestable de arranque en esta ejecución): Domain 67, Application 195, Web 180, **Infrastructure.Tests 175 (+33)**, **Architecture 85 (+8)**, **Api.IntegrationTests 419 (+93)**: todas en verde.
+- `COV-A`: líneas 100,0 %, ramas 99,3 % (mínimo 80). `COV-D`: 100,0 % / 100,0 %.
+- `FORMAT`: exit 0. `VULN`: sin paquetes vulnerables.
+- `docs/api/openapi.json`: **cambio real** (+134 líneas: `/api/asistente` y tres esquemas), conservado y versionado.
+
+### Work Unit Evidence
+
+| Evidencia | Valor |
+|---|---|
+| Prueba enfocada | `dotnet test tests/TimeTracker.Api.IntegrationTests --filter "FullyQualifiedName~Assistant|FullyQualifiedName~AiStartupTests"`: endpoint 42, 413 3, limitador 14, arranque 33; más `T-IF` 175 y `T-AR` 85 |
+| Harness de ejecución | API real (`WebApplicationFactory`) con el pipeline de seguridad completo y el `AssistantChatClient` real montado sobre un `IChatClient` falso; el 413 sobre Kestrel real (`UseKestrel`). Sin proveedor real |
+| Frontera de reversión | Revertir los 4 commits de la rama y restaurar `..\TimeTracker.rollback\pr-3\`; borrar `API/Assistant/`, `INF/Assistant/{ChatClientFactory,AssistantServiceCollectionExtensions,AssistantToolFailureException}.cs`, `IT/Assistant/`, `IT/Startup/AiStartupTests.cs`, `IFT/Assistant/{ChatClientFactory,AssistantRegistration}Tests.cs` y el ADR 0017. Al revertir vuelve el limitador antes de la autenticación |
+
+### Resultados de las verificaciones (detalle en `design.md`, sección 11)
+
+- **V-1 (parte 2):** correcto; hizo falta añadir `Microsoft.Extensions.Options.ConfigurationExtensions` 10.0.12 en Infrastructure para `BindConfiguration`.
+- **V-2:** `AnthropicClient.ApiKey`, `AsIChatClient(model)` en el espacio de nombres `Microsoft.Extensions.AI` (extensión de `IAnthropicClient`), `MaxRetries` (int) y `Timeout` (TimeSpan).
+- **V-4:** `OllamaApiClient(Uri, string)` implementa `IChatClient` directamente.
+- **V-5:** el atributo basta con Kestrel (`413`, también sin `Content-Length`); `TestServer` lo ignora, por eso las pruebas del 413 usan `UseKestrel()`.
+
+### Desviaciones y decisiones
+
+1. **Tamaño**: el diff real es de 1.801 inserciones y 24 borrados (src 235/8, pruebas 1.334/10, `openapi.json` generado 134, documentos y props ≈ 98) frente a las ≈ 430 previstas; supera el umbral de 450 como las unidades anteriores. Las pruebas exigidas por las specs (endpoint, límites, arranque) son la parte grande.
+2. **Seguimiento 1 (corte por errores de herramienta):** `AssistantChatPipeline` instala `FunctionInvoker` y envuelve el fallo en `AssistantToolFailureException`; el motor devuelve el texto fijo con `200` y registra `tool-error` con el nombre del tipo interno. Sustituye la nota 7 de 2b; `design.md` DD-11 actualizado.
+3. **Seguimiento 2:** `Ai:Provider` solo admite nombres (`Anthropic`, `Ollama`, `None`, vacío; sin distinguir mayúsculas).
+4. **Paquete extra** `Microsoft.Extensions.Options.ConfigurationExtensions` 10.0.12 (no de IA) en Infrastructure.
+5. `AddAssistant()` también registra `AskAssistantUseCase` (scoped). El motor y las herramientas son scoped; cliente y cuota, singleton; arrancar sin `Ai:Provider` deja la API operativa y el endpoint en `503`.
+6. El `429` del asistente tiene detalles distintos por minuto y por día; `Retry-After` nunca baja de 1. Con el asistente deshabilitado `Ai:RequestsPerMinute` fuera de rango no rompe el limitador (5 de respaldo).
+7. La tarea 4.5 (`openspec/config.yaml`) queda para el archivo, como indica el propio punto.
+8. Prueba de arranque inestable conocida (`ObjectDisposedException` en `Api.IntegrationTests/Startup`): no apareció en esta ejecución.
+9. Los permisos del entorno impiden leer `.env.example` con las herramientas de lectura: se editó a partir de `git show HEAD:.env.example` y se verificó con `DeliveryArtifactsTests`.
+
+### Para PR 4
+
+- El contrato está en `docs/api/openapi.json`: `POST /api/asistente` con `{ message, history: [{ role, text }] }` → `200 { reply }`; `400`, `429` (con `Retry-After`) y `503` traen `application/problem+json` con `detail` en español (los dos `503` comparten `title` «Asistente no disponible»). El `401` no lleva `detail`. El `413` no está en el contrato.
+- `detail` de `503`: «El asistente no está disponible en este entorno.» (deshabilitado) y «El asistente no está disponible en este momento. Inténtelo de nuevo más tarde.» (fallo).

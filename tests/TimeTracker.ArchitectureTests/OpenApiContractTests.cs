@@ -141,6 +141,39 @@ public class OpenApiContractTests
         Assert.False(RequiresBearer(root, "/health", "get"));
     }
 
+    [Fact]
+    public void ExportedDocument_ContainsOnlyThePostAssistantOperationWithItsResponses()
+    {
+        using var document = LoadDocument();
+        var paths = document.RootElement.GetProperty("paths");
+
+        var assistant = paths.GetProperty("/api/asistente");
+        Assert.Equal(["post"], assistant.EnumerateObject().Select(operation => operation.Name));
+        AssertResponses(paths, "/api/asistente", "post", "200", "400", "401", "429", "503");
+        // El 413 por cuerpo grande lo rechaza el servidor antes de enlazarlo y no se declara.
+        Assert.False(assistant.GetProperty("post").GetProperty("responses").TryGetProperty("413", out _));
+        Assert.True(RequiresBearer(document.RootElement, "/api/asistente", "post"));
+
+        var operationText = assistant.GetRawText();
+        Assert.DoesNotContain("employeeId", operationText, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("memberId", operationText, StringComparison.OrdinalIgnoreCase);
+        Assert.False(assistant.GetProperty("post").TryGetProperty("parameters", out _));
+
+        var schemas = document.RootElement.GetProperty("components").GetProperty("schemas");
+        Assert.Equal(["message", "history"], schemas.GetProperty("AssistantRequest").GetProperty("properties").EnumerateObject().Select(property => property.Name));
+        Assert.Equal(["role", "text"], schemas.GetProperty("AssistantTurnRequest").GetProperty("properties").EnumerateObject().Select(property => property.Name));
+        Assert.Equal(["reply"], schemas.GetProperty("AssistantResponse").GetProperty("properties").EnumerateObject().Select(property => property.Name));
+    }
+
+    [Fact]
+    public void ExportedDocument_NeverMentionsTheProviderApiKey()
+    {
+        var text = File.ReadAllText(Path.Combine(RepositoryRoot.Path, "docs", "api", "openapi.json"));
+
+        Assert.DoesNotContain("apikey", text, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("Ai__", text, StringComparison.Ordinal);
+    }
+
     // Un requisito de la operación sustituye al global; «security: []» en la operación lo deja sin requisitos.
     private static bool RequiresBearer(JsonElement root, string path, string method)
     {

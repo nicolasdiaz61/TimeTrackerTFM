@@ -26,6 +26,7 @@ public sealed class ChatAssistantEngine(
     private const string EmptyOutcome = "empty";
     private const string ErrorOutcome = "error";
     private const string TimeoutOutcome = "timeout";
+    private const string ToolErrorOutcome = "tool-error";
 
     public bool IsEnabled => client.IsEnabled;
 
@@ -60,6 +61,13 @@ public sealed class ChatAssistantEngine(
         {
             // El cliente abortó: no es un fallo del proveedor y no hay a quién responder.
             throw;
+        }
+        catch (AssistantToolFailureException exception)
+        {
+            // El bucle se cortó por errores consecutivos de herramienta (argumentos que el modelo no acierta a dar):
+            // no es un fallo del proveedor, así que se responde con el texto fijo y no con un 503.
+            AssistantLog.QueryFailed(logger, currentUser.EmployeeId, provider, settings.Model, ToolErrorOutcome, ElapsedMs(started), exception.InnerException!.GetType().Name);
+            return FallbackReply;
         }
         catch (Exception exception)
         {

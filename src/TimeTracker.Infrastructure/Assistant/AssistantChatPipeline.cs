@@ -21,8 +21,23 @@ internal static class AssistantChatPipeline
                 client.IncludeDetailedErrors = false;
                 client.AllowConcurrentInvocation = false;
                 client.TerminateOnUnknownCalls = false;
+                client.FunctionInvoker = InvokeToolAsync;
             })
             .Build();
+
+    // Solo se envuelven los fallos de la herramienta: el SDK los relanza tal cual al superar los errores tolerados, y así
+    // el motor los distingue por su origen (no por el tipo de excepción) de un fallo del proveedor.
+    private static async ValueTask<object?> InvokeToolAsync(FunctionInvocationContext context, CancellationToken cancellationToken)
+    {
+        try
+        {
+            return await context.Function.InvokeAsync(context.Arguments, cancellationToken);
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            throw new AssistantToolFailureException(exception);
+        }
+    }
 
     public static ChatOptions CreateChatOptions(AiOptions options, IEnumerable<AITool> tools)
         => new()

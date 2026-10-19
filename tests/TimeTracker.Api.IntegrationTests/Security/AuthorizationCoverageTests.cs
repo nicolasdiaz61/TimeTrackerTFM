@@ -25,6 +25,23 @@ public class AuthorizationCoverageTests
     }
 
     [Fact]
+    public void AssistantEndpoint_IsProtectedLimitedPerUserAndCapsTheBody()
+    {
+        using var factory = new ApiFactory();
+        _ = factory.CreateClient();
+
+        var endpoint = Assert.Single(
+            factory.Services.GetRequiredService<EndpointDataSource>().Endpoints.OfType<RouteEndpoint>(),
+            candidate => candidate.RoutePattern.RawText == "/api/asistente");
+
+        // Sin [AllowAnonymous]: lo protege la política de respaldo (cualquier usuario autenticado).
+        Assert.Null(endpoint.Metadata.GetMetadata<IAllowAnonymous>());
+        Assert.Equal(["POST"], endpoint.Metadata.GetMetadata<IHttpMethodMetadata>()!.HttpMethods);
+        Assert.Equal("assistant", endpoint.Metadata.GetMetadata<Microsoft.AspNetCore.RateLimiting.EnableRateLimitingAttribute>()!.PolicyName);
+        Assert.Equal(32 * 1024, endpoint.Metadata.GetMetadata<Microsoft.AspNetCore.Http.Metadata.IRequestSizeLimitMetadata>()!.MaxRequestBodySize);
+    }
+
+    [Fact]
     public void TeamEndpoints_RequireTheManagerPolicy()
     {
         using var factory = new ApiFactory();

@@ -29,6 +29,11 @@
     <PackageVersion Include="Microsoft.AspNetCore.Components.Authorization" Version="10.0.10" />
     <!-- Versión fijada por openspec/config.yaml (V-1, asistente-ia); Microsoft.Extensions.AI.Abstractions llega transitiva. -->
     <PackageVersion Include="Microsoft.Extensions.AI" Version="10.10.0" />
+    <!-- Enlaza la sección Ai desde Infrastructure (BindConfiguration); misma versión que Options/EF (10.0.12) para evitar NU1605. -->
+    <PackageVersion Include="Microsoft.Extensions.Options.ConfigurationExtensions" Version="10.0.12" />
+    <!-- Proveedores del asistente (V-1 parte 2, asistente-ia): SDK oficial de Anthropic y cliente de Ollama. -->
+    <PackageVersion Include="Anthropic" Version="12.58.0" />
+    <PackageVersion Include="OllamaSharp" Version="5.5.0" />
   </ItemGroup>
 
 </Project>
