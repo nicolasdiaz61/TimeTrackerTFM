@@ -9,9 +9,17 @@ public static class ApiRequest
 {
     public const string GenericErrorMessage = "No se pudo completar la operación. Inténtelo de nuevo más tarde.";
 
-    public static async Task<T> SendAsync<T>(Func<Task<HttpResponseMessage>> send, CancellationToken cancellationToken)
+    private static readonly IReadOnlySet<HttpStatusCode> ConflictOnly = new HashSet<HttpStatusCode> { HttpStatusCode.Conflict };
+
+    // Solo el 409 trae un mensaje de negocio en español; cualquier otro fallo es genérico.
+    public static Task<T> SendAsync<T>(Func<Task<HttpResponseMessage>> send, CancellationToken cancellationToken)
+        => SendAsync<T>(send, ConflictOnly, cancellationToken);
+
+    /// <summary>Como la sobrecarga básica, pero el <c>detail</c> en español de la API solo se reproduce para los estados indicados (DD-18).</summary>
+    public static async Task<T> SendAsync<T>(Func<Task<HttpResponseMessage>> send, IReadOnlySet<HttpStatusCode> detailStatuses, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(send);
+        ArgumentNullException.ThrowIfNull(detailStatuses);
 
         try
         {
@@ -21,8 +29,7 @@ public static class ApiRequest
                 return await response.Content.ReadFromJsonAsync<T>(cancellationToken) ?? throw new ApiRequestException(GenericErrorMessage);
             }
 
-            // Solo el 409 trae un mensaje de negocio en español; cualquier otro fallo es genérico.
-            var detail = response.StatusCode == HttpStatusCode.Conflict ? await ReadDetailAsync(response, cancellationToken) : null;
+            var detail = detailStatuses.Contains(response.StatusCode) ? await ReadDetailAsync(response, cancellationToken) : null;
             throw new ApiRequestException(string.IsNullOrWhiteSpace(detail) ? GenericErrorMessage : detail, response.StatusCode);
         }
         catch (Exception exception) when (exception is HttpRequestException or JsonException or NotSupportedException
