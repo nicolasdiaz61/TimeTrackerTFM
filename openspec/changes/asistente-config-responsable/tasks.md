@@ -74,6 +74,15 @@ La previsión de carga de revisión está al final («Review Workload Forecast»
 
 ---
 
+## PR 2.1 — Correcciones de la revisión de la PR 2 (≈ 150 líneas)
+
+- [x] 2.1.1 RED+GREEN `AssistantSettingsInput`/`SaveAssistantSettingsCommand`: `ToString()` sin la clave.
+- [x] 2.1.2 RED+GREEN una sola regla de «clave guardada utilizable» (`UsableCredential`) en Validate, resolver y prueba; Save y Test rechazan en `credential`.
+- [x] 2.1.3 RED+GREEN recifrado oportunista tolera `CredentialProtectionUnavailableException` y conserva `existing`.
+- [x] 2.1.4 RED+GREEN la prueba de conexión no valida lo heredado del entorno (esfuerzo, tiempo, tokens); sin código muerto ni `!`.
+- [x] 2.1.5 Aserciones no vacuas, fake de cifrado sin texto legible, renombre de prueba y parseo de enums por nombre unificado.
+
+
 ## PR 3a — Cifrado y opciones de entorno (≈ 220 líneas)
 
 **Objetivo:** `AesGcmCredentialProtector` y `AiOptions`/validador con las claves nuevas. **Rollback:** borrar el protector y revertir `AiOptions*`/`AiProvider`. **Comando:** `T-IF` + pruebas de arranque en `IT`.

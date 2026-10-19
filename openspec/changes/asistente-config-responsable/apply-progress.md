@@ -98,3 +98,17 @@ Decidido por el usuario tras la revisión: guardar una clave nueva con el provee
 | `AssistantSettingsRulesTests.Credential_WithProviderNone_...` | Falla: la regla no devolvía error | Rama `else if` en `AssistantSettingsRules.Validate` |
 | `SaveAssistantSettingsUseCaseTests.ANewKeyWithProviderNone_...` | Falla: se guardaba y se auditaba | Misma regla |
 | `BlankCredential_WithProviderNone_...`, `ExplicitlyTestingProviderNone_...`, `ACandidateKeyWithProviderNone_...` | Ya en verde (comportamiento ya cubierto por el código); fijan el contrato | Sin cambios |
+
+## PR 2.1 — Correcciones de la revisión de la PR 2 (rama `fix/asistente-config-pr2-1-revision`)
+
+| # | Commit | RED (motivo) | GREEN |
+|---|---|---|---|
+| 1 | c7963d1 | `ToString()` de `AssistantSettingsInput` y del comando contenía `Credential = clave-prueba-123456` | `PrintMembers` privado que imprime `[clave redactada]` |
+| 2 | 99d897d | Save y Test aceptaban una clave guardada no descifrable (Validate solo comprobaba que existiera) | `UsableCredential.FromStored/FromEnvironment` usado por Validate (ahora recibe el protector), vista/resolver y `FindCredential` |
+| 3 | a20bdb1 | `CredentialProtectionUnavailableException` escapaba de `Save` (fake `FailProtectAfterAvailabilityCheck`) | `ReEncryptOrKeep` captura la excepción y conserva `existing` |
+| 4 | 5425d59 | Proveedor `None` con esfuerzo heredado daba error en `effort` (y `effort`+`credential` con clave); entorno con timeout/tokens fuera de rango fallaba la prueba | `Complete` solo completa proveedor y modelo; esfuerzo heredado se aplica tras validar solo si el proveedor es el mismo y lo admite |
+| 5 | 555c98a | Esfuerzo `"  low "` rechazado; aserción de ciphertext sobre fake que guardaba la clave legible | `ParseByName<T>` único con recorte; `FakeProtector` con XOR; aserciones corregidas; prueba renombrada a `TheTest_NeverWritesOrAuditsAnythingEvenWithAStoredRow` |
+
+Puerta: build `-warnaserror` 0/0; `dotnet format --verify-no-changes` limpio; Application 314, Architecture 94, Domain 67, Infrastructure 182, Web 223, Api.IntegrationTests 422 (Docker disponible, sin tocar contenedores). `docs/api/openapi.json` restaurado y fuera de los commits.
+
+Fuera de alcance (siguen pendientes): token de concurrencia en Reset (almacén real/PR 3b) y log de recarga (PR 5).
