@@ -25,9 +25,20 @@ public sealed class AesGcmCredentialProtector : IAssistantCredentialProtector
 
     public AesGcmCredentialProtector(IOptions<AiOptions> options)
     {
+        var seen = new HashSet<short>();
         foreach (var (version, encoded) in options.Value.MasterKeys)
         {
-            if (TryParseVersion(version, out var parsed) && TryDecodeMasterKey(encoded, out var key))
+            if (!TryParseVersion(version, out var parsed))
+            {
+                continue;
+            }
+
+            // "1" y "01" son la misma versión: no se elige una al azar, ninguna de las dos queda disponible.
+            if (!seen.Add(parsed))
+            {
+                _masterKeys.Remove(parsed);
+            }
+            else if (TryDecodeMasterKey(encoded, out var key))
             {
                 _masterKeys[parsed] = key;
             }

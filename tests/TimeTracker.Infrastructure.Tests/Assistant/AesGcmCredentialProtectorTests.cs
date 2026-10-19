@@ -126,6 +126,27 @@ public sealed class AesGcmCredentialProtectorTests
         Assert.Throws<CredentialProtectionUnavailableException>(() => Protect(protector));
     }
 
+    [Theory]
+    [InlineData("1", "01")]
+    [InlineData("01", "1")]
+    public void VersionsThatNormalizeToTheSameNumber_MakeThatVersionUnavailable(string first, string second)
+    {
+        var protector = Create("1", (first, KeyOne), (second, KeyTwo));
+
+        Assert.False(protector.IsAvailable);
+        Assert.Throws<CredentialProtectionUnavailableException>(() => Protect(protector));
+    }
+
+    [Fact]
+    public void ADuplicatedVersion_DoesNotAffectOtherVersions()
+    {
+        var protector = Create("2", ("1", KeyOne), ("01", KeyTwo), ("2", KeyTwo));
+        var old = Protect(Create("1", ("1", KeyOne)));
+
+        Assert.True(protector.IsAvailable);
+        Assert.False(protector.TryUnprotect(old, AssistantProvider.Anthropic, out _));
+    }
+
     [Fact]
     public void WithoutMasterKeys_NothingIsAvailableOrDecryptable()
     {
