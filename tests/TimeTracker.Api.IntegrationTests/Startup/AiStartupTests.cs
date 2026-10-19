@@ -51,9 +51,11 @@ public class AiStartupTests
         => DatabaseStartupTests.AssertStartupFailsNamingKey(StartWith(("Ai:Provider", "Anthropic"), ("Ai:Model", "modelo-ficticio")), "Ai:ApiKey");
 
     [Theory]
-    [InlineData("Gemini")]
+    [InlineData("GitHubModels")]
     [InlineData("1")]
     [InlineData("2")]
+    [InlineData("3")]
+    [InlineData("4")]
     public void UnknownOrNumericProvider_FailsNamingTheKey(string provider)
         => DatabaseStartupTests.AssertStartupFailsNamingKey(StartWith(("Ai:Provider", provider), ("Ai:Model", "m"), ("Ai:ApiKey", SecretKey)), "Ai:Provider");
 

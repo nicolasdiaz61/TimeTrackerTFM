@@ -1,11 +1,18 @@
+using TimeTracker.Application.Assistant.Configuration;
+
 namespace TimeTracker.Infrastructure.Assistant;
 
-/// <summary>Proveedores de modelo admitidos por la configuración (<c>Ai:Provider</c>).</summary>
+/// <summary>
+/// Proveedores admitidos por la configuración (<c>Ai:Provider</c>). Los nombres coinciden con <c>AssistantProvider</c>
+/// de Application (una prueba lo fija); los valores existentes no se renumeran.
+/// </summary>
 public enum AiProvider
 {
     None = 0,
     Anthropic = 1,
     Ollama = 2,
+    OpenAI = 3,
+    Gemini = 4,
 }
 
 /// <summary>Sección <c>Ai</c> de la configuración (variables <c>Ai__*</c>). Sin proveedor el asistente queda deshabilitado.</summary>
@@ -20,6 +27,19 @@ public sealed class AiOptions
     public string? ApiKey { get; set; }
 
     public string? Endpoint { get; set; }
+
+    public string? Effort { get; set; }
+
+    /// <summary>Lista separada por comas de proveedores seleccionables por un Manager (DD-4).</summary>
+    public string? AllowedProviders { get; set; }
+
+    /// <summary>Claves maestras en Base64 por versión (<c>Ai__MasterKeys__1</c>). No se validan al arrancar: sin ellas el cifrado no está disponible.</summary>
+    public Dictionary<string, string?> MasterKeys { get; set; } = [];
+
+    // Texto y no entero: un valor no numérico dejaría el cifrado no disponible en vez de impedir el arranque al enlazar.
+    public string? ActiveMasterKeyVersion { get; set; }
+
+    public int SettingsPollSeconds { get; set; } = 30;
 
     public int MaxOutputTokens { get; set; } = 800;
 
@@ -37,5 +57,10 @@ public sealed class AiOptions
         : Enum.GetValues<AiProvider>().Cast<AiProvider?>().FirstOrDefault(
             candidate => string.Equals(candidate.ToString(), Provider.Trim(), StringComparison.OrdinalIgnoreCase));
 
-    public bool IsEnabled => ResolvedProvider is AiProvider.Anthropic or AiProvider.Ollama;
+    public bool IsEnabled => ResolvedProvider is not (null or AiProvider.None);
+
+    /// <summary>Esfuerzo configurado por nombre, o <c>null</c> si falta o no es <c>low</c>, <c>medium</c> o <c>high</c> (nunca por número).</summary>
+    public AssistantEffort? ResolvedEffort
+        => Enum.GetValues<AssistantEffort>().Cast<AssistantEffort?>().FirstOrDefault(
+            candidate => string.Equals(candidate.ToString(), Effort?.Trim(), StringComparison.OrdinalIgnoreCase));
 }

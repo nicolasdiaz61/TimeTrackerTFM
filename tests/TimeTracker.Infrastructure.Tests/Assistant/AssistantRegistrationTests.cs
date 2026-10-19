@@ -89,7 +89,7 @@ public sealed class AssistantRegistrationTests
 
     [Theory]
     [InlineData("Anthropic", null, "Ai:ApiKey")]
-    [InlineData("Gemini", "x", "Ai:Provider")]
+    [InlineData("GitHubModels", "x", "Ai:Provider")]
     [InlineData("1", "x", "Ai:Provider")]
     public async Task WithAnInvalidConfiguration_TheOptionsFailWithTheKeyName(string provider, string? apiKey, string expectedKey)
     {

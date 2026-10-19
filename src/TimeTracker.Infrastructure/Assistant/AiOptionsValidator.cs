@@ -1,55 +1,76 @@
 using Microsoft.Extensions.Options;
 
+using TimeTracker.Application.Assistant.Configuration;
+
 namespace TimeTracker.Infrastructure.Assistant;
 
 /// <summary>
-/// Valida <c>Ai:*</c> al arrancar. Sin proveedor no se comprueba nada más; los mensajes nombran la clave y nunca
-/// repiten el valor configurado (puede ser una clave de API).
+/// Valida <c>Ai:*</c> al arrancar. Sin proveedor solo se comprueba <c>Ai:AllowedProviders</c>; los mensajes nombran la
+/// clave y nunca repiten el valor configurado (puede ser una clave de API). Las claves maestras no se validan.
 /// </summary>
 public sealed class AiOptionsValidator : IValidateOptions<AiOptions>
 {
-    private const int MaxModelLength = 100;
+    private const int MinSettingsPollSeconds = 1;
+    private const int MaxSettingsPollSeconds = 300;
 
     public ValidateOptionsResult Validate(string? name, AiOptions options)
     {
         var provider = options.ResolvedProvider;
         if (provider is null)
         {
-            return ValidateOptionsResult.Fail("Ai:Provider: el valor no es válido. Use Anthropic, Ollama o déjelo vacío para deshabilitar el asistente.");
-        }
-
-        if (provider == AiProvider.None)
-        {
-            return ValidateOptionsResult.Success;
+            return ValidateOptionsResult.Fail("Ai:Provider: el valor no es válido. Use Anthropic, OpenAI, Gemini, Ollama o déjelo vacío para deshabilitar el asistente.");
         }
 
         var failures = new List<string>();
+        CheckAllowedProviders(failures, options, provider.Value);
+        if (provider == AiProvider.None)
+        {
+            return failures.Count == 0 ? ValidateOptionsResult.Success : ValidateOptionsResult.Fail(failures);
+        }
+
+        var traits = AssistantProviderTraits.For(provider.Value.ToAssistantProvider());
         if (string.IsNullOrWhiteSpace(options.Model))
         {
             failures.Add("Ai:Model: debe definirse con el nombre del modelo.");
         }
-        else if (options.Model.Length > MaxModelLength)
+        else if (options.Model.Length > AssistantSettingsLimits.MaxModelLength)
         {
-            failures.Add($"Ai:Model: debe tener como máximo {MaxModelLength} caracteres.");
+            failures.Add($"Ai:Model: debe tener como máximo {AssistantSettingsLimits.MaxModelLength} caracteres.");
         }
 
-        if (provider == AiProvider.Anthropic && string.IsNullOrWhiteSpace(options.ApiKey))
+        if (traits.RequiresCredential && string.IsNullOrWhiteSpace(options.ApiKey))
         {
             failures.Add("Ai:ApiKey: debe definirse con la clave de API del proveedor.");
         }
 
-        if (provider == AiProvider.Ollama && !IsHttpUri(options.Endpoint))
+        if (traits.RequiresEnvironmentEndpoint && !IsHttpUri(options.Endpoint))
         {
             failures.Add("Ai:Endpoint: debe ser una dirección http o https absoluta.");
         }
 
-        CheckRange(failures, nameof(AiOptions.MaxOutputTokens), options.MaxOutputTokens, 64, 4096);
+        if (!string.IsNullOrWhiteSpace(options.Effort) && options.ResolvedEffort is null)
+        {
+            failures.Add("Ai:Effort: debe ser low, medium o high.");
+        }
+
+        CheckRange(failures, nameof(AiOptions.MaxOutputTokens), options.MaxOutputTokens, AssistantSettingsLimits.MinOutputTokens, AssistantSettingsLimits.MaxOutputTokens);
         CheckRange(failures, nameof(AiOptions.MaxToolIterations), options.MaxToolIterations, 1, 10);
-        CheckRange(failures, nameof(AiOptions.TimeoutSeconds), options.TimeoutSeconds, 5, 55);
+        CheckRange(failures, nameof(AiOptions.TimeoutSeconds), options.TimeoutSeconds, AssistantSettingsLimits.MinTimeoutSeconds, AssistantSettingsLimits.MaxTimeoutSeconds);
         CheckRange(failures, nameof(AiOptions.RequestsPerMinute), options.RequestsPerMinute, 1, 60);
         CheckRange(failures, nameof(AiOptions.DailyRequestsPerUser), options.DailyRequestsPerUser, 1, 1000);
+        CheckRange(failures, nameof(AiOptions.SettingsPollSeconds), options.SettingsPollSeconds, MinSettingsPollSeconds, MaxSettingsPollSeconds);
 
         return failures.Count == 0 ? ValidateOptionsResult.Success : ValidateOptionsResult.Fail(failures);
+    }
+
+    // La lista limita lo que un Manager puede elegir aunque el entorno no tenga proveedor, así que se valida siempre.
+    private static void CheckAllowedProviders(List<string> failures, AiOptions options, AiProvider provider)
+    {
+        var environment = new AssistantEnvironmentDefaults(provider.ToAssistantProvider(), null, 0, 0, null, null, false, options.AllowedProviders);
+        if (AllowedProviders.Resolve(environment).Error is { } error)
+        {
+            failures.Add(error);
+        }
     }
 
     private static bool IsHttpUri(string? value)
