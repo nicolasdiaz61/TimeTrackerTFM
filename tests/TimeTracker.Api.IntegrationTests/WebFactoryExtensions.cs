@@ -19,27 +19,33 @@ internal static class WebFactoryExtensions
     private const int MaxStartAttempts = 10;
 
     /// <summary>
-    /// Arranca la fábrica y devuelve la excepción de arranque (o <c>null</c> si arrancó). Con minimal hosting,
-    /// <c>WebApplicationFactory</c> ejecuta <c>app.Run()</c> en otro hilo; cuando el arranque falla (justo lo que
-    /// comprueban las pruebas de arranque) ese hilo destruye el proveedor de servicios y, según la planificación de
-    /// hilos, el hilo de la prueba puede tocarlo antes de recibir el error real y ver un
-    /// <see cref="ObjectDisposedException"/> del <c>IServiceProvider</c> en vez de la validación de opciones. Es una carrera del
-    /// propio framework (sin estado compartido entre pruebas), que aparece con la CPU saturada. Solo ese resultado se
-    /// reintenta, con la misma fábrica; cualquier otra excepción, o la ausencia de ella, se devuelve tal cual.
+    /// Arranca la fábrica y devuelve la excepción de arranque (o <c>null</c> si arrancó). La carrera de
+    /// <c>WebApplicationFactory</c> con minimal hosting (el hilo de la aplicación destruye el proveedor de servicios antes
+    /// de que el hilo de la prueba reciba el error real y este ve un <see cref="ObjectDisposedException"/>) se resuelve en
+    /// <see cref="ApiFactory"/> recuperando el error real (<see cref="DeferredHostFailure"/>). Si aun así llegara el
+    /// <see cref="ObjectDisposedException"/> (otra fábrica, o el framework cambió), se reintenta con la misma fábrica un
+    /// número acotado de veces; si todos los intentos acaban así se devuelve un <see cref="AggregateException"/> con todas
+    /// las excepciones vistas, para que el fallo sea diagnosticable. Cualquier otra excepción, o la ausencia de ella, se
+    /// devuelve tal cual en el primer intento: las aserciones no se debilitan.
     /// </summary>
     public static Exception? StartExpectingFailure(this WebApplicationFactory<Program> factory)
     {
-        Exception? exception = null;
+        var raced = new List<Exception>();
         for (var attempt = 0; attempt < MaxStartAttempts; attempt++)
         {
-            exception = Record.Exception(() => factory.CreateClient());
+            var exception = Record.Exception(() => factory.CreateClient());
             if (!IsHostDisposalRace(exception))
             {
                 return exception;
             }
+
+            raced.Add(exception!);
+            Thread.Sleep(attempt * 10);
         }
 
-        return exception;
+        return new AggregateException(
+            $"El arranque devolvió {MaxStartAttempts} veces seguidas ObjectDisposedException en lugar del error real.",
+            raced);
     }
 
     private static bool IsHostDisposalRace(Exception? exception)

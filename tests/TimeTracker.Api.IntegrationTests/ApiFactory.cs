@@ -1,10 +1,12 @@
 using System.Net.Http.Headers;
+using System.Runtime.ExceptionServices;
 
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Time.Testing;
 
 namespace TimeTracker.Api.IntegrationTests;
@@ -54,6 +56,30 @@ public class ApiFactory : WebApplicationFactory<Program>
         builder.UseSetting("ConnectionStrings:Default", ValidConnectionString);
         builder.UseSetting("Jwt:SigningKey", ValidSigningKey);
         builder.ConfigureTestServices(services => services.Replace(ServiceDescriptor.Singleton<TimeProvider>(Clock)));
+    }
+
+    /// <summary>Gancho entre la construcción del host y su arranque; solo lo usan las pruebas de la carrera de arranque.</summary>
+    protected virtual void OnHostBuilt(IHost host)
+    {
+    }
+
+    protected override IHost CreateHost(IHostBuilder builder)
+    {
+        var host = builder.Build();
+        OnHostBuilt(host);
+        try
+        {
+            host.Start();
+        }
+        catch (ObjectDisposedException disposed) when (disposed.ObjectName == "IServiceProvider"
+            && DeferredHostFailure.TryGet(host, out var realFailure))
+        {
+            // Carrera del framework: el hilo de la aplicación falló y destruyó el host antes de que DeferredHost.StartAsync
+            // lo tocara. El error real sí se guardó (EntryPointCompleted): se entrega en lugar del ObjectDisposedException.
+            ExceptionDispatchInfo.Capture(realFailure).Throw();
+        }
+
+        return host;
     }
 
     protected override void ConfigureClient(HttpClient client)
