@@ -47,7 +47,7 @@ internal sealed class InMemorySettingsStore : IAssistantSettingsStore
     }
 }
 
-/// <summary>Cifrado de juguete reversible: el texto cifrado lleva proveedor y versión para poder simular fallos de autenticación.</summary>
+/// <summary>Cifrado de juguete reversible (XOR, sin texto legible): el texto cifrado lleva proveedor y versión para poder simular fallos de autenticación.</summary>
 internal sealed class FakeProtector : IAssistantCredentialProtector
 {
     public bool Available { get; set; } = true;
@@ -61,15 +61,17 @@ internal sealed class FakeProtector : IAssistantCredentialProtector
 
     public bool IsAvailable => Available;
 
+    private static byte[] Scramble(byte[] data) => [.. data.Select(b => (byte)(b ^ 0x5A))];
+
     public EncryptedCredential Protect(AssistantCredential plaintext, AssistantProvider provider)
         => Available && !FailProtectAfterAvailabilityCheck
-            ? new EncryptedCredential(Encoding.UTF8.GetBytes($"{provider}|{plaintext.Value}"), new byte[12], ActiveVersion)
+            ? new EncryptedCredential(Scramble(Encoding.UTF8.GetBytes($"{provider}|{plaintext.Value}")), new byte[12], ActiveVersion)
             : throw new CredentialProtectionUnavailableException();
 
     public bool TryUnprotect(EncryptedCredential stored, AssistantProvider provider, [NotNullWhen(true)] out AssistantCredential? plaintext)
     {
         plaintext = null;
-        var text = Encoding.UTF8.GetString(stored.Ciphertext);
+        var text = Encoding.UTF8.GetString(Scramble(stored.Ciphertext));
         var prefix = $"{provider}|";
         if (RetiredVersions.Contains(stored.KeyVersion) || !text.StartsWith(prefix, StringComparison.Ordinal))
         {

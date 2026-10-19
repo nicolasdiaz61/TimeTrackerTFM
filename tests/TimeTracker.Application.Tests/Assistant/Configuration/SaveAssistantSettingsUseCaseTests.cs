@@ -1,3 +1,5 @@
+using System.Text;
+
 using Microsoft.Extensions.Time.Testing;
 
 using TimeTracker.Application.Assistant.Configuration;
@@ -78,7 +80,7 @@ public class SaveAssistantSettingsUseCaseTests
         await Save(Input(provider: "OpenAI", credential: SecretKey));
 
         Assert.Equal((short)2, _store.Row!.Credential!.KeyVersion);
-        Assert.DoesNotContain(SecretKey, _store.Row.Credential.ToString());
+        Assert.DoesNotContain(SecretKey, Encoding.UTF8.GetString(_store.Row.Credential.Ciphertext));
         Assert.True(_store.Audits.Single().CredentialChanged);
     }
 

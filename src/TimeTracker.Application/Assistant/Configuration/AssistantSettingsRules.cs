@@ -35,9 +35,7 @@ public static class AssistantSettingsRules
 
     private static AssistantProvider? ParseProvider(string? value, AssistantEnvironmentDefaults environment, List<FieldError> errors)
     {
-        var provider = Enum.GetValues<AssistantProvider>()
-            .Cast<AssistantProvider?>()
-            .FirstOrDefault(p => string.Equals(p.ToString(), value?.Trim(), StringComparison.OrdinalIgnoreCase));
+        var provider = ParseByName<AssistantProvider>(value);
         if (provider is null)
         {
             errors.Add(new FieldError("provider", "El campo provider debe ser un proveedor del catálogo."));
@@ -49,6 +47,11 @@ public static class AssistantSettingsRules
 
         return provider;
     }
+
+    /// <summary>Un solo criterio para los enums por nombre: sin distinguir mayúsculas y recortando espacios; nunca acepta números.</summary>
+    private static T? ParseByName<T>(string? value)
+        where T : struct, Enum
+        => Enum.GetValues<T>().Cast<T?>().FirstOrDefault(e => string.Equals(e.ToString(), value?.Trim(), StringComparison.OrdinalIgnoreCase));
 
     private static string? ValidateModel(string? model, List<FieldError> errors)
     {
@@ -86,9 +89,7 @@ public static class AssistantSettingsRules
             return null;
         }
 
-        var effort = Enum.GetValues<AssistantEffort>()
-            .Cast<AssistantEffort?>()
-            .FirstOrDefault(e => string.Equals(e.ToString(), value, StringComparison.OrdinalIgnoreCase));
+        var effort = ParseByName<AssistantEffort>(value);
         if (effort is null)
         {
             errors.Add(new FieldError("effort", "El campo effort debe ser low, medium o high."));

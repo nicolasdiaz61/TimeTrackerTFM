@@ -96,7 +96,7 @@ public class TestAssistantConnectionUseCaseTests
     }
 
     [Fact]
-    public async Task WhenNothingIsStored_NothingChangesAfterTheTest()
+    public async Task TheTest_NeverWritesOrAuditsAnythingEvenWithAStoredRow()
     {
         _store.Row = Stored(model: "db-m");
         var before = _store.Row;

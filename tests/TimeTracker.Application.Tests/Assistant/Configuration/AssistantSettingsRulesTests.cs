@@ -54,7 +54,7 @@ public class AssistantSettingsRulesTests
 
         Assert.Equal("model", error.Field);
         Assert.Contains("model", error.Message);
-        Assert.DoesNotContain(model.Trim() + "\"", error.Message);
+        Assert.True(model.Trim().Length == 0 || !error.Message.Contains(model.Trim(), StringComparison.Ordinal), "El mensaje no debe repetir el valor recibido.");
     }
 
     [Fact]
@@ -78,6 +78,7 @@ public class AssistantSettingsRulesTests
     [Theory]
     [InlineData("low")]
     [InlineData("Medium")]
+    [InlineData("  low ")]
     [InlineData("HIGH")]
     public void Effort_WithAKnownLevel_IsAcceptedWithoutCaseSensitivity(string effort)
     {
