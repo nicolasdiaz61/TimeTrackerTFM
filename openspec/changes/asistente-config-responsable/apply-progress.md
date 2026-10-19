@@ -112,3 +112,51 @@ Decidido por el usuario tras la revisión: guardar una clave nueva con el provee
 Puerta: build `-warnaserror` 0/0; `dotnet format --verify-no-changes` limpio; Application 314, Architecture 94, Domain 67, Infrastructure 182, Web 223, Api.IntegrationTests 422 (Docker disponible, sin tocar contenedores). `docs/api/openapi.json` restaurado y fuera de los commits.
 
 Fuera de alcance (siguen pendientes): token de concurrencia en Reset (almacén real/PR 3b) y log de recarga (PR 5).
+
+## PR 3a — Cifrado y opciones de entorno (rama `feat/asistente-config-pr3a-cifrado`)
+
+Modo: Strict TDD. Copia previa en `..\TimeTracker.rollback\pr-3a\`.
+
+| Tarea | Estado | Evidencia |
+|---|---|---|
+| 3a.1 Copia previa | Hecha | `AiOptions.cs`, `AiOptionsValidator.cs`, `AssistantServiceCollectionExtensions.cs`, `TestAssistantConnectionUseCase(+Tests)`, `AiOptionsValidatorTests`, `AiStartupTests`, `design.md`, `tasks.md`, `apply-progress.md` (`AiProvider` vive en `AiOptions.cs`) |
+| 3a.2 V-4 | Hecha | `AesGcm(key, 16)` verificado en .NET 10.0.10 (Windows) y en `mcr.microsoft.com/dotnet/aspnet:10.0-alpine` (.NET 10.0.13, Alpine 3.24): ida y vuelta, AAD y etiqueta alterada rechazada. Un solo contenedor `tt-pr3a-alpine-check` con `--rm`. Anotado en `design.md` |
+| 3a.3 Protector | Hecha | 18 pruebas `AesGcmCredentialProtectorTests`; 100 % de líneas del protector |
+| 3a.4 Opciones y validador | Hecha | `AiOptionsValidatorTests` ampliada (de 62 a 80 con el mapeo) |
+| 3a.5 Mapeo de proveedores | Hecha | `AssistantProviderMappingTests` (nombres iguales y números sin renumerar) |
+| 3a.6 Arranque | Hecha | `AiStartupTests` (+9 casos) y `ProtectionStatusLogTests` (3), sin Docker |
+| 3a.7 Refactor y puerta | Hecha | ver «Puerta del PR 3a» |
+| Extra PR 2.1 | Hecho | commit `d24ae9b`, ver abajo |
+
+### TDD Cycle Evidence (PR 3a)
+
+| Tarea | Archivo de prueba | Capa | RED | GREEN | TRIANGULAR | REFACTOR |
+|---|---|---|---|---|---|---|
+| Extra | `TestAssistantConnectionUseCaseTests.AnInheritedModelOutsideTheRules_IsNotValidatedAsManagerInput` | Application | `Assert.IsType() Failure`: devolvía `Invalid` (error en `model`) con el modelo de entorno de 101 caracteres | 147/147 (`Assistant`) | Modelo de entorno largo con cuerpo vacío | `Complete` solo completa el proveedor; el modelo efectivo entra por `env with { Model = effective.Model }` |
+| Extra | `ACandidateKeyWithProviderNone_...` (aserción reforzada: campo `credential`) | Application | Verde a la primera: el comportamiento ya existía; solo fija el campo | 147/147 | Dos casos (`None` explícito y entorno deshabilitado) | Sin cambios |
+| 3a.4/3a.5 | `AiOptionsValidatorTests`, `AssistantProviderMappingTests` | Infrastructure | No compila: `AiProvider` no contiene `OpenAI`/`Gemini`, `AiOptions` no tiene `Effort`, `AllowedProviders`, `MasterKeys`, `SettingsPollSeconds` | 80/80 (filtro) y 209/209 (proyecto) | OpenAI/Gemini con y sin clave/modelo, `GitHubModels` sin imprimir el valor, esfuerzo `low/Medium/ HIGH /extreme/1`, lista permitida válida/inválida con y sin proveedor, poll 0/1/300/301, claves maestras inválidas no fallan | Validador reutiliza `AssistantSettingsLimits`, `AssistantProviderTraits` y `AllowedProviders.Resolve`; sin literales duplicados |
+| 3a.3 | `AesGcmCredentialProtectorTests` | Infrastructure | No compila: `AesGcmCredentialProtector` inexistente | 18/18 | Ida y vuelta, nonce único, byte alterado (2 posiciones), registro truncado, otro proveedor, otra versión con la misma clave, Base64/longitud inválidos, versión activa nula/ausente/0/32768/texto, sin claves, rotación, versión retirada | Mutación temporal (AAD sin versión) → falla `AnotherKeyVersionWithTheSameKeyMaterial_FailsAuthentication` |
+| 3a.6 | `ProtectionStatusLogTests` | Api.IntegrationTests | 3 fallos: no había ninguna línea «protección de claves» | 47/47 (`AiStartupTests`+`ProtectionStatusLog`) | Con clave válida, sin claves, con clave inválida (sin imprimirla) | Nada |
+| 3a.6 | `AiStartupTests` (OpenAI/Gemini válidos, sin clave o modelo, claves maestras inválidas, lista permitida inválida) | Api.IntegrationTests | Verde a la primera: lo cubre el validador de 3a.4; fijan el contrato de arranque (la prueba existente `Gemini` desconocido pasó a `GitHubModels`) | 47/47 | 2+2+3+2 casos | Nada |
+| 3a.6 | `AssistantRegistrationTests.TheProtector_IsASingleton...` | Infrastructure | No compila hasta registrar el protector (`GetRequiredService` sin registro) | 228/228 | Con y sin claves maestras | Nada |
+
+### Work Unit Evidence (PR 3a)
+
+| Evidencia | Valor |
+|---|---|
+| Prueba focal | `dotnet test tests/TimeTracker.Infrastructure.Tests --filter "FullyQualifiedName~AesGcm|FullyQualifiedName~AiOptions|FullyQualifiedName~AssistantProviderMapping"` y `dotnet test tests/TimeTracker.Api.IntegrationTests --filter "FullyQualifiedName~AiStartupTests|FullyQualifiedName~ProtectionStatusLog"` = 47/47 |
+| Arnés de ejecución | Arranque real de la API con `WebApplicationFactory` (sin Docker) y `AesGcm` en la imagen Alpine del Dockerfile |
+| Límite de rollback | Borrar `AesGcmCredentialProtector.cs`, `AiProviderMapping.cs`, `Api/Assistant/ProtectionStatusLogger.cs`; revertir `AiOptions*`, el registro en `AssistantServiceCollectionExtensions` y `Program.cs`; el extra de Application es un commit aparte (`d24ae9b`) |
+
+### Puerta del PR 3a (ejecutada)
+
+RESTORE ok; BUILD `-warnaserror` 0 advertencias 0 errores; FORMAT sin cambios; TEST: Domain 67, Application 315, Web 223, Infrastructure 228, Architecture 94, Api.IntegrationTests 436 (Docker disponible, sin tocar contenedores existentes), todo en verde; COV-A 99,7 % líneas / 96,5 % ramas; COV-D 100 %. VULN no ejecutado (no se añadieron paquetes). `docs/api/openapi.json` restaurado y fuera de los commits.
+
+### Decisiones fuera de spec (PR 3a)
+
+- `AiOptions.ActiveMasterKeyVersion` es `string?` y no `int?` (DD-18): un valor no numérico con `int?` haría fallar el enlace de opciones al arrancar, contra «el arranque no falla por la clave maestra».
+- La línea de estado de la protección la emite `Api/Assistant/ProtectionStatusLogger` (servicio hospedado, `Information` en ambos estados): Infrastructure no referencia `Microsoft.Extensions.Hosting.Abstractions` y no se añadió un paquete. El protector se registra en `AddAssistant`.
+- Orden de commits: 3a.4/3a.5 (opciones) antes que 3a.3 (protector), porque el protector lee `AiOptions.MasterKeys`.
+- `AiOptions.IsEnabled` pasa a «proveedor real» (incluye OpenAI y Gemini); hasta la PR 4 `ChatClientFactory.Create` devuelve `null` para ellos (asistente sin cliente) sin fallar.
+- `AiProviderMapping` (interno) convierte `AiProvider` en `AssistantProvider` por nombre para reutilizar `AllowedProviders.Resolve` y `AssistantProviderTraits` en el validador.
+- Tamaño: ≈ 640 líneas añadidas (≈ 210 de producción y ≈ 430 de pruebas) frente a las ≈ 220 estimadas.
