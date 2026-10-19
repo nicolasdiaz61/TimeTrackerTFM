@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Components.Web;
 using Microsoft.AspNetCore.Components.WebAssembly.Hosting;
 using Microsoft.JSInterop;
 using TimeTracker.Web;
+using TimeTracker.Web.Assistant;
 using TimeTracker.Web.Auth;
 using TimeTracker.Web.Team;
 using TimeTracker.Web.Time;
@@ -38,6 +39,7 @@ builder.Services.AddScoped<AuthenticationStateProvider>(sp => sp.GetRequiredServ
 builder.Services.AddScoped(sp => new AuthApiClient(new HttpClient { BaseAddress = apiBaseUri }));
 builder.Services.AddScoped(sp => new TimeEntriesApiClient(CreateAuthorizedClient(sp, apiBaseUri)));
 builder.Services.AddScoped(sp => new TeamApiClient(CreateAuthorizedClient(sp, apiBaseUri)));
+builder.Services.AddScoped(sp => new AssistantApiClient(CreateAuthorizedClient(sp, apiBaseUri)));
 
 await builder.Build().RunAsync();
 

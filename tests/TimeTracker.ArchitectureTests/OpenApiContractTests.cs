@@ -163,6 +163,10 @@ public class OpenApiContractTests
         Assert.Equal(["message", "history"], schemas.GetProperty("AssistantRequest").GetProperty("properties").EnumerateObject().Select(property => property.Name));
         Assert.Equal(["role", "text"], schemas.GetProperty("AssistantTurnRequest").GetProperty("properties").EnumerateObject().Select(property => property.Name));
         Assert.Equal(["reply"], schemas.GetProperty("AssistantResponse").GetProperty("properties").EnumerateObject().Select(property => property.Name));
+
+        // «history» es opcional (ausente equivale a vacío); mensaje, rol y texto sí son obligatorios.
+        Assert.Equal(["message"], schemas.GetProperty("AssistantRequest").GetProperty("required").EnumerateArray().Select(name => name.GetString()));
+        Assert.Equal(["role", "text"], schemas.GetProperty("AssistantTurnRequest").GetProperty("required").EnumerateArray().Select(name => name.GetString()));
     }
 
     [Fact]

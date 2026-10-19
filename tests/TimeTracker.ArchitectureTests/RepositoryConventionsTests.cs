@@ -118,6 +118,53 @@ public class RepositoryConventionsTests
         Assert.True(offenders.Count == 0, $"URL de la API fija en el código: {string.Join(", ", offenders)}");
     }
 
+    [Fact]
+    public void Web_DeclaresNoAiPackagesNorUsesTheirNamespaces()
+    {
+        var packages = Load("src/TimeTracker.Web/TimeTracker.Web.csproj").Descendants("PackageReference")
+            .Select(reference => (string?)reference.Attribute("Include"))
+            .Where(name => name is not null
+                && (name.StartsWith("Microsoft.Extensions.AI", StringComparison.Ordinal)
+                    || name.Equals("Anthropic", StringComparison.Ordinal)
+                    || name.Equals("OllamaSharp", StringComparison.Ordinal)))
+            .ToList();
+        Assert.True(packages.Count == 0, $"La Web declara paquetes de IA: {string.Join(", ", packages)}");
+
+        // La Web solo llama a POST /api/asistente: ningún código suyo toca el SDK de un proveedor.
+        var offenders = WebSourceFiles()
+            .Where(file => File.ReadAllText(file).Split('\n').Any(line =>
+                line.TrimStart().StartsWith("using ", StringComparison.Ordinal)
+                && (line.Contains("Microsoft.Extensions.AI", StringComparison.Ordinal)
+                    || line.Contains("Anthropic", StringComparison.Ordinal)
+                    || line.Contains("OllamaSharp", StringComparison.Ordinal))))
+            .Select(file => Path.GetRelativePath(RepositoryRoot.Path, file))
+            .ToList();
+        Assert.True(offenders.Count == 0, $"La Web usa espacios de nombres de IA: {string.Join(", ", offenders)}");
+    }
+
+    [Fact]
+    public void Web_HasTheAssistantPageForAnyRoleWithPlainTextAndNoBrowserStorage()
+    {
+        var page = ReadWeb("Pages/Assistant.razor");
+
+        Assert.Contains("@page \"/asistente\"", page, StringComparison.Ordinal);
+        Assert.Contains("@attribute [Authorize]", page, StringComparison.Ordinal);
+        Assert.DoesNotContain("Roles", page, StringComparison.Ordinal);
+        Assert.Contains("class=\"assistant-text\"", page, StringComparison.Ordinal);
+        Assert.Contains("role=\"status\"", page, StringComparison.Ordinal);
+        Assert.Contains("white-space: pre-wrap", ReadWeb("wwwroot/css/app.css"), StringComparison.Ordinal);
+
+        // Conversación solo en memoria del componente: ni almacenamiento del navegador ni URL (la prueba general ya veta localStorage).
+        var assistantSources = WebSourceFiles()
+            .Where(file => file.Contains($"{Path.DirectorySeparatorChar}Assistant", StringComparison.Ordinal))
+            .Select(file => File.ReadAllText(file));
+        Assert.DoesNotContain(assistantSources.Append(page), text => text.Contains("sessionStorage", StringComparison.Ordinal)
+            || text.Contains("IJSRuntime", StringComparison.Ordinal));
+
+        var menu = ReadWeb("Layout/NavMenu.razor");
+        Assert.Contains("href=\"asistente\"", menu, StringComparison.Ordinal);
+    }
+
     private static string ReadWeb(string relativePath)
         => File.ReadAllText(Path.Combine(RepositoryRoot.Path, "src", "TimeTracker.Web", relativePath));
 

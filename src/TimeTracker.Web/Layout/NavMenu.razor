@@ -25,6 +25,12 @@
                         <svg class="nav-icon" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6" /><path d="M8 4.5V8l2.5 1.5" /></svg> Fichajes
                     </NavLink>
                 </div>
+                @* Visible para toda sesión y aunque el asistente esté deshabilitado: la API decide y la página muestra el aviso. *@
+                <div class="nav-item px-3">
+                    <NavLink class="nav-link" href="asistente">
+                        <svg class="nav-icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 3.5h11v7h-6L4.5 13v-2.5h-2z" /><path d="M5.5 6h5M5.5 8h3" /></svg> Asistente
+                    </NavLink>
+                </div>
                 <AuthorizeView Roles="Manager" Context="manager">
                     <div class="nav-item px-3">
                         <NavLink class="nav-link" href="equipo">

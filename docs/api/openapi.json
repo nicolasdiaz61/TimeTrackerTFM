@@ -573,8 +573,7 @@
     "schemas": {
       "AssistantRequest": {
         "required": [
-          "message",
-          "history"
+          "message"
         ],
         "type": "object",
         "properties": {

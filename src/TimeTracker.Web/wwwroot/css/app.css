@@ -527,3 +527,12 @@ code {
 .tick-k-22 { --k: 22; }
 .tick-k-23 { --k: 23; }
 .tick-k-24 { --k: 24; }
+
+/* Asistente (/asistente): la respuesta se muestra como texto plano; pre-wrap conserva los saltos de línea. */
+.assistant-conversation { display: flex; flex-direction: column; gap: 0.75rem; margin-bottom: 1rem; }
+.assistant-turn { max-width: 48rem; padding: 0.5rem 0.75rem; border-radius: 0.5rem; border: 1px solid #dee2e6; }
+.assistant-turn-user { align-self: flex-end; background-color: #e7f1ff; }
+.assistant-turn-assistant { align-self: flex-start; background-color: #f8f9fa; }
+.assistant-author { display: block; font-size: 0.8rem; font-weight: 600; color: #495057; }
+.assistant-text { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.assistant-form { max-width: 48rem; }
