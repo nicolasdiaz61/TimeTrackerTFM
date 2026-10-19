@@ -188,3 +188,33 @@ Rama `feat/asistente-ia-pr3-endpoint` (desde `origin/main` con PR 1, 2a y 2b), c
 
 - El contrato está en `docs/api/openapi.json`: `POST /api/asistente` con `{ message, history: [{ role, text }] }` → `200 { reply }`; `400`, `429` (con `Retry-After`) y `503` traen `application/problem+json` con `detail` en español (los dos `503` comparten `title` «Asistente no disponible»). El `401` no lleva `detail`. El `413` no está en el contrato.
 - `detail` de `503`: «El asistente no está disponible en este entorno.» (deshabilitado) y «El asistente no está disponible en este momento. Inténtelo de nuevo más tarde.» (fallo).
+
+---
+
+## PR 4 — Web: completado salvo 3.2 (tareas 1.1-3.1; la 3.2 queda pendiente: verificación manual en navegador)
+
+Rama `feat/asistente-ia-pr4-web`, con Strict TDD.
+
+### Evidencia del ciclo TDD
+
+| Tarea | RED (mensaje real) | GREEN |
+|---|---|---|
+| Seguimiento PR 3 (`required` del contrato) | `OpenApiContractTests`: `Assert.Equal() Failure: Collections differ. Expected: ["message"]; Actual: ["message", "history"]` | `AssistantRequest(string? Message, IReadOnlyList<AssistantTurnRequest>? History = null)`: el exportador deja de marcar `history` como obligatorio; `required` = `message` en la petición y `role`, `text` en el turno. El contrato regenerado cambió de verdad (1 línea añadida, 2 quitadas) y se conserva |
+| 1.2 | `CS1501: Ninguna sobrecarga para el método 'SendAsync' toma 3 argumentos` | Sobrecarga con `IReadOnlySet<HttpStatusCode>`; la existente delega con `{ Conflict }`. 12 pruebas nuevas en `WT/Http/ApiRequestTests.cs` (el 409 de fichajes y equipo sigue igual) |
+| 1.3 | `CS0246: 'AssistantConversation' no se encontró` | `AssistantConversation` (clase pura) + 26 pruebas |
+| 1.4 | `CS0246: 'AssistantApiClient' no se encontró` (comprobado retirando el archivo) | `AssistantApiClient`, `AssistantDtos`, registro en `Program.cs` con `CreateAuthorizedClient` (BearerTokenHandler, `ApiBaseUrl`). 4 pruebas con un `HttpMessageHandler` falso |
+| 2.1-2.3 | `Web_HasTheAssistantPageForAnyRoleWithPlainTextAndNoBrowserStorage` falla (falta `Assistant.razor`) | Página, enlace de menú y CSS. `Web_DeclaresNoAiPackagesNorUsesTheirNamespaces` pasó a la primera (el veto de paquetes de IA ya existía para `src/`); mutación temporal con `using Anthropic;` en un archivo de la Web: falla con «La Web usa espacios de nombres de IA» |
+
+### Puerta de unidad (reales)
+
+`RESTORE` ok · `BUILD -warnaserror` 0 advertencias, 0 errores · `TEST` Domain 67, Web 223, Application 195, Infrastructure 175, Architecture 87, Api.IntegrationTests 419 (Docker en marcha, 7 min 22 s), todo en verde y sin que apareciera la prueba de arranque inestable · `COV-A` líneas 100,0 % / ramas 99,3 % · `COV-D` 100 % / 100 % · `FORMAT --verify-no-changes` ok (tras corregir el orden de `using` en `AssistantConversation.cs`) · `VULN` sin paquetes vulnerables.
+
+### Desviaciones y decisiones
+
+1. **Retry-After**: `ApiRequestException` no lleva cabeceras. `AssistantApiClient.AskAsync` no lanza: devuelve `AssistantCallResult(Reply, Error, RetryAfterSeconds)`; la página pasa el error y los segundos a `AssistantConversation.Fail`. Solo se admite la forma en segundos.
+2. **Hallazgo (CORS)**: la API no declara `WithExposedHeaders("Retry-After")`; con la Web en otro origen el navegador no deja leer `Retry-After`, así que en la práctica el 429 se mostrará sin tiempo de espera. La lógica ya lo cubre; exponer la cabecera es un cambio de la API fuera de este PR (candidato a seguimiento).
+3. **Turno largo en el historial**: la API acepta turnos de hasta 2000 caracteres y la respuesta del asistente podría superarlos; al construir la petición el texto de un turno se trunca a 2000 (la pantalla conserva el texto completo). No lo fija la spec; evita un 400 en cadena.
+4. El aviso del 503 (`Notice`) permanece hasta una respuesta 200; el 503 no genera `ErrorMessage`.
+5. El `401` produce el mensaje genérico en la conversación; el cierre de sesión y la navegación a `/login?returnUrl=` los hace el `BearerTokenHandler`, como en el resto de clientes.
+6. Pendiente: tarea 3.2 (verificación manual en navegador, `verify-report.md`).
+7. Rollback: copia previa en `..\TimeTracker.rollback\pr-4\` (ApiRequest, Program, NavMenu, app.css, AssistantRequest, openapi.json y las dos pruebas de arquitectura modificadas).
