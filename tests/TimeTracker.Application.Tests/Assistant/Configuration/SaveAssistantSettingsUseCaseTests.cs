@@ -95,6 +95,19 @@ public class SaveAssistantSettingsUseCaseTests
     }
 
     [Fact]
+    public async Task KeepingTheKey_WhenTheMasterKeyIsLostBeforeReEncrypting_KeepsTheStoredOneAndSaves()
+    {
+        var original = StoreKeyFor(AssistantProvider.OpenAI, keyVersion: 1);
+        _store.Row = Stored(AssistantProvider.OpenAI, model: "viejo", credential: original);
+        _protector.FailProtectAfterAvailabilityCheck = true;
+
+        Saved(await Save(Input(provider: "OpenAI", model: "nuevo"), _store.Row.Version));
+
+        Assert.Equal("nuevo", _store.Row!.Model);
+        Assert.Same(original, _store.Row.Credential);
+    }
+
+    [Fact]
     public async Task KeepingTheKeyWithoutAProtector_LeavesItUntouched()
     {
         var original = StoreKeyFor(AssistantProvider.OpenAI, keyVersion: 1);

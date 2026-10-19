@@ -54,12 +54,15 @@ internal sealed class FakeProtector : IAssistantCredentialProtector
 
     public short ActiveVersion { get; set; } = 1;
 
+    /// <summary>Simula que la clave maestra se pierde entre <c>IsAvailable</c> y <c>Protect</c>.</summary>
+    public bool FailProtectAfterAvailabilityCheck { get; set; }
+
     public HashSet<short> RetiredVersions { get; } = [];
 
     public bool IsAvailable => Available;
 
     public EncryptedCredential Protect(AssistantCredential plaintext, AssistantProvider provider)
-        => Available
+        => Available && !FailProtectAfterAvailabilityCheck
             ? new EncryptedCredential(Encoding.UTF8.GetBytes($"{provider}|{plaintext.Value}"), new byte[12], ActiveVersion)
             : throw new CredentialProtectionUnavailableException();
 

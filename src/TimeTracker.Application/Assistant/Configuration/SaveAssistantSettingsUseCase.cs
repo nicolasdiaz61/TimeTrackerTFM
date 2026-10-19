@@ -86,10 +86,20 @@ public sealed class SaveAssistantSettingsUseCase(
             return (null, stored?.Credential is not null);
         }
 
-        var reEncrypted = protector.IsAvailable && protector.TryUnprotect(existing, value.Provider, out var plain)
-            ? protector.Protect(plain, value.Provider)
-            : existing;
-        return (reEncrypted, false);
+        return (ReEncryptOrKeep(existing, value.Provider), false);
+    }
+
+    /// <summary>Recifrado oportunista con la clave maestra activa; si no se puede (ni descifrar ni cifrar), se conserva la guardada.</summary>
+    private EncryptedCredential ReEncryptOrKeep(EncryptedCredential existing, AssistantProvider provider)
+    {
+        try
+        {
+            return protector.IsAvailable && protector.TryUnprotect(existing, provider, out var plain) ? protector.Protect(plain, provider) : existing;
+        }
+        catch (CredentialProtectionUnavailableException)
+        {
+            return existing;
+        }
     }
 }
 
