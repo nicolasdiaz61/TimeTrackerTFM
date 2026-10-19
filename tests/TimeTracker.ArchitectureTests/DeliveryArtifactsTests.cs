@@ -149,6 +149,46 @@ public partial class DeliveryArtifactsTests
         Assert.Contains("nunca se escribe", comments, StringComparison.Ordinal);
     }
 
+    private static readonly string[] ManagerConfigEnvKeys =
+    [
+        "Ai__Effort",
+        "Ai__AllowedProviders",
+        "Ai__MasterKeys__1",
+        "Ai__ActiveMasterKeyVersion",
+        "Ai__SettingsPollSeconds",
+    ];
+
+    [Fact]
+    public void EnvExample_DocumentsTheManagerConfigKeysAsComments()
+    {
+        var example = ReadRepositoryFile(".env.example");
+
+        foreach (var key in ManagerConfigEnvKeys)
+        {
+            Assert.Matches($@"(?m)^#\s*{key}=", example);
+            Assert.DoesNotMatch($@"(?m)^{key}=", example);
+        }
+    }
+
+    [Fact]
+    public void EnvExample_NeverCarriesAMasterKeyValue()
+        => Assert.DoesNotMatch(@"(?m)^#?\s*Ai__MasterKeys__\d+[ \t]*=[ \t]*[^\s]", ReadRepositoryFile(".env.example"));
+
+    [Fact]
+    public void EnvExample_ExplainsHowToGenerateTheMasterKey()
+        => Assert.Contains("32 bytes aleatorios en Base64", ReadRepositoryFile(".env.example"), StringComparison.Ordinal);
+
+    [Fact]
+    public void EnvExample_ListsEverySupportedProvider()
+    {
+        var comments = string.Join('\n', ReadRepositoryFile(".env.example").Split('\n').Where(line => line.TrimStart().StartsWith('#')));
+
+        foreach (var provider in new[] { "Anthropic", "OpenAI", "Gemini", "Ollama" })
+        {
+            Assert.Contains(provider, comments, StringComparison.Ordinal);
+        }
+    }
+
     [Fact]
     public void DeliveryFiles_NeverCarryAnApiKeyValue()
     {

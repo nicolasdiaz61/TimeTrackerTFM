@@ -47,11 +47,11 @@ La previsión de carga de revisión está al final («Review Workload Forecast»
 
 - [x] 1.1 **Copia previa** de `AGENTS.md`, `.env.example`, `README.md`, `docker-compose.yml`, `AR/DeliveryArtifactsTests.cs`.
 - [x] 1.2 RED `DeliveryArtifactsTests`: 18 ADR; `0018-configuracion-del-asistente-por-el-responsable.md` con las cuatro secciones (Contexto, Decisión, Consecuencias, Alternativas) y mención de que modifica AGENTS §1/§7 y matiza el ADR 0017. Falla: «esperado 18 ADR, hay 17». Cubre DD-19.
-- [ ] 1.3 **(BLOQUEADA: los permisos del entorno deniegan leer y editar `.env.example`; pendiente de que el usuario lo habilite o lo haga a mano)** RED `DeliveryArtifactsTests`: `.env.example` contiene `Ai__Effort`, `Ai__AllowedProviders`, `Ai__MasterKeys__1`, `Ai__ActiveMasterKeyVersion`, `Ai__SettingsPollSeconds` con `#` inicial; ninguna clave maestra con valor; comentario «32 bytes aleatorios en Base64»; valores admitidos `Anthropic`, `OpenAI`, `Gemini`, `Ollama`. Cubre SC «Claves nuevas de IA documentadas», «Nota del asistente deshabilitado», «Claves de IA documentadas» (DD-18).
+- [x] 1.3 RED `DeliveryArtifactsTests`: `.env.example` contiene `Ai__Effort`, `Ai__AllowedProviders`, `Ai__MasterKeys__1`, `Ai__ActiveMasterKeyVersion`, `Ai__SettingsPollSeconds` con `#` inicial; ninguna clave maestra con valor; comentario «32 bytes aleatorios en Base64»; valores admitidos `Anthropic`, `OpenAI`, `Gemini`, `Ollama`. Cubre SC «Claves nuevas de IA documentadas», «Nota del asistente deshabilitado», «Claves de IA documentadas» (DD-18).
 - [x] 1.4 GREEN: crear `docs/adr/0018-configuracion-del-asistente-por-el-responsable.md` (contexto, decisión, consecuencias, alternativas descartadas de DD-19; GitHub Models y OpenCode Zen fuera; datos personales a un tercero; JWT con rol obsoleto aceptado).
 - [x] 1.5 GREEN: `AGENTS.md` §1 («proveedor y modelo por configuración de entorno o guardada por un Manager») y §7 (cambio de proveedor por `Ai:*` o configuración guardada, ADR 0018). Sin editar el ADR 0017.
-- [ ] 1.6 **(PARCIAL: README hecho; `.env.example` bloqueado como 1.3; `docker-compose.yml` no consume `Ai__*` nuevas, sin cambio)** GREEN: `.env.example` con las claves nuevas comentadas y `Ai__Provider` documentando `OpenAI`/`Gemini`; `README.md` (configuración por el Manager, guía de rotación de clave maestra, aviso de datos personales); `docker-compose.yml` solo si consume `Ai__*` (DD-19, DD-7).
-- [ ] 1.7 REFACTOR y puerta de PR.
+- [x] 1.6 GREEN: `.env.example` con las claves nuevas comentadas y `Ai__Provider` documentando `OpenAI`/`Gemini`; `README.md` (configuración por el Manager, guía de rotación de clave maestra, aviso de datos personales); `docker-compose.yml` solo si consume `Ai__*` (DD-19, DD-7).
+- [x] 1.7 REFACTOR y puerta de PR.
 
 ---
 
