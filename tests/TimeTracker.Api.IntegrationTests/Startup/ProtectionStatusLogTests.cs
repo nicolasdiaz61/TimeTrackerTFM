@@ -42,14 +42,37 @@ public class ProtectionStatusLogTests
         var line = Assert.Single(StartAndCapture());
 
         Assert.Contains("no disponible", line, StringComparison.Ordinal);
+        Assert.Contains("motivo: sin versión activa configurada", line, StringComparison.Ordinal);
     }
 
     [Fact]
     public void WithAnInvalidMasterKey_LogsUnavailableWithoutPrintingIt()
     {
-        var line = Assert.Single(StartAndCapture(("Ai:MasterKeys:1", "esto-no-es-base64-secreto"), ("Ai:ActiveMasterKeyVersion", "1")));
+        var line = Assert.Single(StartAndCapture(("Ai:MasterKeys:7", "esto-no-es-base64-secreto"), ("Ai:ActiveMasterKeyVersion", "7")));
 
         Assert.Contains("no disponible", line, StringComparison.Ordinal);
+        Assert.Contains("motivo: clave maestra inválida o duplicada", line, StringComparison.Ordinal);
         Assert.DoesNotContain("esto-no-es-base64-secreto", line, StringComparison.Ordinal);
+        Assert.DoesNotContain("7", line, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void WithADuplicatedActiveVersion_LogsTheDuplicateReasonWithoutKeysOrVersions()
+    {
+        var line = Assert.Single(StartAndCapture(("Ai:MasterKeys:7", MasterKey), ("Ai:MasterKeys:07", MasterKey), ("Ai:ActiveMasterKeyVersion", "7")));
+
+        Assert.Contains("motivo: clave maestra inválida o duplicada", line, StringComparison.Ordinal);
+        Assert.DoesNotContain(MasterKey, line, StringComparison.Ordinal);
+        Assert.DoesNotContain("7", line, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void WithAnActiveVersionWithoutAKey_LogsThatReasonWithoutTheVersion()
+    {
+        var line = Assert.Single(StartAndCapture(("Ai:MasterKeys:1", MasterKey), ("Ai:ActiveMasterKeyVersion", "9")));
+
+        Assert.Contains("motivo: la versión activa no tiene clave", line, StringComparison.Ordinal);
+        Assert.DoesNotContain(MasterKey, line, StringComparison.Ordinal);
+        Assert.DoesNotContain("9", line, StringComparison.Ordinal);
     }
 }

@@ -26,6 +26,7 @@ public sealed class AesGcmCredentialProtector : IAssistantCredentialProtector
     public AesGcmCredentialProtector(IOptions<AiOptions> options)
     {
         var seen = new HashSet<short>();
+        var unusable = new HashSet<short>();
         foreach (var (version, encoded) in options.Value.MasterKeys)
         {
             if (!TryParseVersion(version, out var parsed))
@@ -37,20 +38,34 @@ public sealed class AesGcmCredentialProtector : IAssistantCredentialProtector
             if (!seen.Add(parsed))
             {
                 _masterKeys.Remove(parsed);
+                unusable.Add(parsed);
             }
             else if (TryDecodeMasterKey(encoded, out var key))
             {
                 _masterKeys[parsed] = key;
             }
+            else
+            {
+                unusable.Add(parsed);
+            }
         }
 
-        if (TryParseVersion(options.Value.ActiveMasterKeyVersion, out var active) && _masterKeys.ContainsKey(active))
+        var hasActive = TryParseVersion(options.Value.ActiveMasterKeyVersion, out var active);
+        if (hasActive && _masterKeys.ContainsKey(active))
         {
             _activeVersion = active;
+        }
+        else
+        {
+            UnavailableReason = string.IsNullOrWhiteSpace(options.Value.ActiveMasterKeyVersion) ? ProtectionUnavailableReason.NoActiveVersionConfigured
+                : hasActive && unusable.Contains(active) ? ProtectionUnavailableReason.InvalidOrDuplicateMasterKey
+                : ProtectionUnavailableReason.ActiveVersionWithoutKey;
         }
     }
 
     public bool IsAvailable => _activeVersion is not null;
+
+    public ProtectionUnavailableReason UnavailableReason { get; } = ProtectionUnavailableReason.None;
 
     public EncryptedCredential Protect(AssistantCredential plaintext, AssistantProvider provider)
     {

@@ -10,6 +10,9 @@ public interface IAssistantCredentialProtector
     /// <summary>Hay una clave maestra activa y válida.</summary>
     bool IsAvailable { get; }
 
+    /// <summary>Por qué no está disponible (<c>None</c> si lo está); categórico, sin valores ni versiones.</summary>
+    ProtectionUnavailableReason UnavailableReason { get; }
+
     /// <exception cref="CredentialProtectionUnavailableException">No hay clave maestra activa utilizable.</exception>
     EncryptedCredential Protect(AssistantCredential plaintext, AssistantProvider provider);
 

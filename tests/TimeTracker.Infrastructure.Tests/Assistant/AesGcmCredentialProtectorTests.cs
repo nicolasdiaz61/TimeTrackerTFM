@@ -148,6 +148,26 @@ public sealed class AesGcmCredentialProtectorTests
     }
 
     [Fact]
+    public void AvailableProtector_HasNoUnavailableReason()
+        => Assert.Equal(ProtectionUnavailableReason.None, Create("1", ("1", KeyOne)).UnavailableReason);
+
+    [Theory]
+    [InlineData(null, ProtectionUnavailableReason.NoActiveVersionConfigured)]
+    [InlineData("", ProtectionUnavailableReason.NoActiveVersionConfigured)]
+    [InlineData("2", ProtectionUnavailableReason.ActiveVersionWithoutKey)]
+    [InlineData("abc", ProtectionUnavailableReason.ActiveVersionWithoutKey)]
+    public void UnavailableReason_DistinguishesTheActiveVersionProblem(string? active, ProtectionUnavailableReason expected)
+        => Assert.Equal(expected, Create(active, ("1", KeyOne)).UnavailableReason);
+
+    [Fact]
+    public void AnInvalidActiveKey_IsReportedAsInvalidOrDuplicate()
+        => Assert.Equal(ProtectionUnavailableReason.InvalidOrDuplicateMasterKey, Create("1", ("1", "no-es-base64")).UnavailableReason);
+
+    [Fact]
+    public void ADuplicatedActiveVersion_IsReportedAsInvalidOrDuplicate()
+        => Assert.Equal(ProtectionUnavailableReason.InvalidOrDuplicateMasterKey, Create("1", ("1", KeyOne), ("01", KeyTwo)).UnavailableReason);
+
+    [Fact]
     public void WithoutMasterKeys_NothingIsAvailableOrDecryptable()
     {
         var withKey = Create("1", ("1", KeyOne));
