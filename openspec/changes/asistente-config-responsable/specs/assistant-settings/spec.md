@@ -117,7 +117,7 @@ El servidor DEBE mantener un catálogo fijo de proveedores `Anthropic`, `OpenAI`
 
 ### Requirement: Guardado con validación
 
-`PUT /api/asistente/configuracion` DEBE aceptar únicamente las propiedades `provider`, `model`, `timeoutSeconds`, `maxOutputTokens`, `effort`, `credential` y `concurrencyToken`; cualquier propiedad desconocida (por ejemplo `url` o `endpoint`) DEBE responder `400`. DEBE validar: `provider` en el catálogo y en la lista permitida (o `None` para deshabilitar); `model` texto libre de 1 a 100 caracteres con un juego de caracteres restringido (letras ASCII, dígitos y `. _ - : / @`); `timeoutSeconds` de 5 a 55; `maxOutputTokens` de 64 a 4096 (extremos incluidos); `effort` opcional con valores `low`, `medium` o `high`, solo si el proveedor lo admite (el servidor no conoce las capacidades de cada modelo). Los errores DEBEN responder `400` con mensajes en español, nombrando el campo y la razón, sin valores secretos. Una clave nueva es opcional: si se omite, se conserva la guardada.
+`PUT /api/asistente/configuracion` DEBE aceptar únicamente las propiedades `provider`, `model`, `timeoutSeconds`, `maxOutputTokens`, `effort`, `credential` y `concurrencyToken`; cualquier propiedad desconocida (por ejemplo `url` o `endpoint`) DEBE responder `400`. DEBE validar: `provider` en el catálogo y en la lista permitida (o `None` para deshabilitar); `model` texto libre de 1 a 100 caracteres con un juego de caracteres restringido (letras ASCII, dígitos y `. _ - : / @`); `timeoutSeconds` de 5 a 55; `maxOutputTokens` de 64 a 4096 (extremos incluidos); `effort` opcional con valores `low`, `medium` o `high`, solo si el proveedor lo admite (el servidor no conoce las capacidades de cada modelo). Los errores DEBEN responder `400` con mensajes en español, nombrando el campo y la razón, sin valores secretos. Una clave nueva es opcional: si se omite, se conserva la guardada. Una clave nueva con el proveedor `None` DEBE rechazarse con un error en `credential` (no se descarta en silencio).
 
 #### Scenario: Guardado válido
 - DADO un `PUT` con proveedor permitido, modelo, `timeoutSeconds` 25, `maxOutputTokens` 800 y token de concurrencia vigente
@@ -158,6 +158,11 @@ El servidor DEBE mantener un catálogo fijo de proveedores `Anthropic`, `OpenAI`
 - DADO una clave guardada y un `PUT` sin clave nueva
 - CUANDO se procesa
 - ENTONCES `credentialConfigured` sigue siendo `true`
+
+#### Scenario: Clave con proveedor None
+- DADO un `PUT` con `provider` = `None` y una clave nueva en `credential`
+- CUANDO se valida
+- ENTONCES responde `400` con un error en el campo `credential` en español que no incluye el valor, y no se guarda ni se audita nada
 
 ### Requirement: Concurrencia optimista
 
@@ -235,6 +240,11 @@ La configuración efectiva DEBE resolverse como fila guardada sobre entorno. Un 
 - DADO una prueba con `timeoutSeconds` 4
 - CUANDO se invoca
 - ENTONCES responde `400` con el campo `timeoutSeconds` y no se contacta con el proveedor
+
+#### Scenario: Sin proveedor efectivo
+- DADO una prueba cuyo proveedor efectivo es `None` (explícito, o heredado de un entorno o fila deshabilitados), con o sin clave candidata
+- CUANDO se invoca
+- ENTONCES responde `400` (error en `provider`, o en `credential` si hay clave candidata) y no se contacta con el proveedor
 
 #### Scenario: Sin eco del proveedor
 - DADO un fallo cuyo mensaje contiene `https://api.ejemplo.test/v1` y `clave-prueba-123456`

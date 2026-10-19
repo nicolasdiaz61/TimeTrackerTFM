@@ -106,6 +106,26 @@ public class TestAssistantConnectionUseCaseTests
     }
 
     [Fact]
+    public async Task ExplicitlyTestingProviderNone_IsRejectedOnTheProviderFieldWithoutCallingTheTester()
+    {
+        var result = await Test(Empty with { Provider = "None" });
+
+        Assert.Equal(["provider"], Assert.IsType<TestAssistantConnectionResult.Invalid>(result).Errors.Select(e => e.Field));
+        Assert.Empty(_tester.Received);
+    }
+
+    [Fact]
+    public async Task ACandidateKeyWithProviderNone_IsRejectedWithoutCallingTheTester()
+    {
+        var explicitNone = await Test(Empty with { Provider = "None", Credential = SecretKey });
+        _env = Env(provider: AssistantProvider.None);
+        var disabledEnvironment = await Test(Empty with { Credential = SecretKey });
+
+        Assert.All([explicitNone, disabledEnvironment], r => Assert.IsType<TestAssistantConnectionResult.Invalid>(r));
+        Assert.Empty(_tester.Received);
+    }
+
+    [Fact]
     public async Task TheProviderOutcome_IsReturnedAsIs()
     {
         var failing = new FakeTester(new ConnectionTestResult("authentication", "El proveedor rechazó la clave."));

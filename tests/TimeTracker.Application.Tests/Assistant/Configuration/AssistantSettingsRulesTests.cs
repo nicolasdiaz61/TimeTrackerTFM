@@ -124,6 +124,20 @@ public class AssistantSettingsRulesTests
     }
 
     [Fact]
+    public void Credential_WithProviderNone_IsRejectedNamingTheFieldWithoutTheValue()
+    {
+        var error = Assert.Single(Validate(Input(provider: "None", model: null, timeoutSeconds: null, maxOutputTokens: null, credential: SecretKey)).Errors);
+
+        Assert.Equal("credential", error.Field);
+        Assert.Contains("credential", error.Message);
+        Assert.DoesNotContain(SecretKey, error.Message);
+    }
+
+    [Fact]
+    public void BlankCredential_WithProviderNone_IsTreatedAsOmitted()
+        => Assert.True(Validate(Input(provider: "None", model: null, timeoutSeconds: null, maxOutputTokens: null, credential: "  ")).IsValid);
+
+    [Fact]
     public void Credential_WhenTheProviderNeedsOneAndNoneExists_IsRejected()
         => Assert.Equal(["credential"], Fields(Validate(Input(provider: "Anthropic"), Env(apiKey: null))));
 

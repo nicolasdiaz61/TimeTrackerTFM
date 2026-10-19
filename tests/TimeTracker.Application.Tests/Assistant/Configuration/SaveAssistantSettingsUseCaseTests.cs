@@ -48,6 +48,17 @@ public class SaveAssistantSettingsUseCaseTests
     }
 
     [Fact]
+    public async Task ANewKeyWithProviderNone_IsRejectedWithoutWritingOrAuditing()
+    {
+        var result = await Save(Input(provider: "None", model: null, timeoutSeconds: null, maxOutputTokens: null, credential: SecretKey));
+
+        Assert.Equal(["credential"], InvalidFields(result));
+        Assert.Null(_store.Row);
+        Assert.Empty(_store.Audits);
+        Assert.Equal(0, _reloader.Calls);
+    }
+
+    [Fact]
     public async Task OmittingTheKey_KeepsTheStoredOneAndDoesNotMarkItAsChanged()
     {
         _store.Row = Stored(AssistantProvider.OpenAI, credential: StoreKeyFor(AssistantProvider.OpenAI));

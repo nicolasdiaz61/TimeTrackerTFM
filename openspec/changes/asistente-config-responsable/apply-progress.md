@@ -88,3 +88,13 @@ RESTORE ok; BUILD `-warnaserror` 0 advertencias 0 errores; FORMAT sin cambios; T
 - `AssistantEnvironmentDefaults` incluye la clave del entorno (`AssistantCredential?`, redactada) y `HasEndpoint`; el endpoint de Ollama no entra en Application.
 - La recarga fallida tras confirmar se traga sin registrar (Application no tiene registro); el cargador de PR 5 deja el aviso.
 - La vista (`AssistantSettingsView`) devuelve `UpdatedBy` como `Guid?`; la API (PR 6b) resolverá el nombre visible.
+
+## Decisión posterior: clave con proveedor None (PR 2)
+
+Decidido por el usuario tras la revisión: guardar una clave nueva con el proveedor `None` ya no se descarta en silencio, sino que falla la validación con un error en `credential` (sin valores) y no escribe ni audita. La prueba de conexión sin proveedor efectivo `None` sigue rechazada con error en `provider` sin llamar al probador, y con clave candidata también se rechaza.
+
+| Prueba | RED | GREEN |
+|---|---|---|
+| `AssistantSettingsRulesTests.Credential_WithProviderNone_...` | Falla: la regla no devolvía error | Rama `else if` en `AssistantSettingsRules.Validate` |
+| `SaveAssistantSettingsUseCaseTests.ANewKeyWithProviderNone_...` | Falla: se guardaba y se auditaba | Misma regla |
+| `BlankCredential_WithProviderNone_...`, `ExplicitlyTestingProviderNone_...`, `ACandidateKeyWithProviderNone_...` | Ya en verde (comportamiento ya cubierto por el código); fijan el contrato | Sin cambios |

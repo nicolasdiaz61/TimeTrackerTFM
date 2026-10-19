@@ -17,6 +17,10 @@ public static class AssistantSettingsRules
         {
             ValidateProviderRequirements(selected, input.Model is null ? environment.Model : model, credential, environment, stored, errors);
         }
+        else if (provider == AssistantProvider.None && credential is not null)
+        {
+            errors.Add(new FieldError("credential", "El campo credential no puede indicarse con el proveedor None: no hay conexión que use una clave."));
+        }
 
         return errors.Count > 0
             ? new SettingsValidation(errors, null)
