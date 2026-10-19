@@ -160,3 +160,42 @@ RESTORE ok; BUILD `-warnaserror` 0 advertencias 0 errores; FORMAT sin cambios; T
 - `AiOptions.IsEnabled` pasa a «proveedor real» (incluye OpenAI y Gemini); hasta la PR 4 `ChatClientFactory.Create` devuelve `null` para ellos (asistente sin cliente) sin fallar.
 - `AiProviderMapping` (interno) convierte `AiProvider` en `AssistantProvider` por nombre para reutilizar `AllowedProviders.Resolve` y `AssistantProviderTraits` en el validador.
 - Tamaño: ≈ 640 líneas añadidas (≈ 210 de producción y ≈ 430 de pruebas) frente a las ≈ 220 estimadas.
+
+## PR 3a.1 — Correcciones de la revisión de la PR 3a
+
+| Tarea | Estado | Commit |
+|---|---|---|
+| 3a.1.1 Versión de clave duplicada | Hecha | `c1982d0` |
+| 3a.1.2 Motivo de «no disponible» | Hecha | `b20bac5` |
+| 3a.1.3 Log de proveedor sin adaptador | Hecha | `eaab59a` |
+| 3a.1.4 Constantes y `AllowedProviders.Validate` | Hecha | `eccd4f4` |
+| 3a.1.5 Pequeñas | Hecha | `7a98e47` |
+
+### TDD Cycle Evidence (PR 3a.1)
+
+| Tarea | Archivo de prueba | Capa | RED | GREEN | TRIANGULAR | REFACTOR |
+|---|---|---|---|---|---|---|
+| 3a.1.1 | `AesGcmCredentialProtectorTests.VersionsThatNormalizeToTheSameNumber_...` | Infrastructure | 2 fallos: `IsAvailable` verdadero, la última versión sobrescribía a la primera | 21/21 | `1`/`01` y `01`/`1`; otras versiones no se ven afectadas | `seen` + descarte de la versión duplicada |
+| 3a.1.2 | `AesGcmCredentialProtectorTests` (motivo) y `ProtectionStatusLogTests` | Infrastructure, Api.IntegrationTests | No compila (`UnavailableReason` inexistente); 4 fallos de log sin «motivo:» | 28/28 y 5/5 | Sin versión activa (nula/vacía), versión sin clave (`2`/`abc`), clave inválida, duplicada; la línea no contiene clave ni versión | Enum en Application, texto fijo por motivo en el logger |
+| 3a.1.3 | `ProviderAdapterLogTests` | Api.IntegrationTests | 2 fallos: ninguna línea «adaptador» | 47/47 (con `AiStartupTests`) | OpenAI, Gemini y Anthropic (sin línea); sin clave ni modelo en el texto | `ChatClientFactory.LacksAdapter` |
+| 3a.1.4 | `AllowedProvidersTests.Validate_*` | Application | No compila (`Validate` inexistente) | 321/321 y 242/242 | Vacía/espacios/válida y nombres desconocidos sin imprimir el valor | Constantes `Min/Max*` públicas usadas por las pruebas |
+| 3a.1.5 | `MasterKeyOfAnotherLength_...`, `TheHighestVersion_...` | Infrastructure | Verdes a la primera: fijan comportamiento ya existente | 32/32 | 31/33/64 bytes y 32767/32768 | `ZeroMemory`, comentario del margen de 3 bytes, rama `ModelRequired` fuera |
+
+### Work Unit Evidence (PR 3a.1)
+
+| Evidencia | Valor |
+|---|---|
+| Prueba focal | `dotnet test tests/TimeTracker.Infrastructure.Tests --filter FullyQualifiedName~AesGcm` = 32/32; `dotnet test tests/TimeTracker.Api.IntegrationTests --filter "FullyQualifiedName~ProtectionStatusLog|FullyQualifiedName~ProviderAdapterLog"` = 8/8 |
+| Arnés de ejecución | Arranque real de la API con `WebApplicationFactory` capturando el registro |
+| Límite de rollback | Un commit por corrección (`c1982d0`, `b20bac5`, `eaab59a`, `eccd4f4`, `7a98e47`) |
+
+### Puerta del PR 3a.1 (ejecutada)
+
+BUILD `-warnaserror` 0 advertencias 0 errores; FORMAT sin cambios; TEST: Domain 67, Application 321, Web 223, Infrastructure 242, Architecture 94, Api.IntegrationTests 441 (Docker disponible, sin tocar contenedores), todo en verde. `docs/api/openapi.json` restaurado y fuera de los commits.
+
+### Decisiones fuera de spec (PR 3a.1)
+
+- `IAssistantCredentialProtector` gana `UnavailableReason` (enum `ProtectionUnavailableReason`): `NoActiveVersionConfigured`, `ActiveVersionWithoutKey` (inexistente o versión activa no numérica) e `InvalidOrDuplicateMasterKey`.
+- El aviso de proveedor sin adaptador es un servicio hospedado propio (`ProviderAdapterLogger`) y `ChatClientFactory.LacksAdapter` desaparece con la PR 4.
+- La rama `ModelRequired` se sustituyó por `?? throw InvalidOperationException` (invariante): el compilador necesita un modelo no nulo y las reglas ya lo garantizan; sin `!`.
+- Las constantes de límites del validador son `public` para que las pruebas las usen.
