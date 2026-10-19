@@ -8,11 +8,11 @@ Fecha: 2026-10-19 · Modo: Strict TDD · Rama: `feat/asistente-config-pr1-adr` (
 |---|---|---|
 | 1.1 Copia previa | Hecha | `..\TimeTracker.rollback\pr-1\` (AGENTS, README, docker-compose, DeliveryArtifactsTests); `.env.example` no se pudo copiar (acceso denegado) |
 | 1.2 RED 18 ADR | Hecha | 4 pruebas fallaron antes del código (18 ADR esperados, hay 17; ADR 0018, AGENTS y README) |
-| 1.3 RED `.env.example` | BLOQUEADA | Permisos del entorno denegaron leer/editar `.env.example` |
+| 1.3 RED `.env.example` | Hecha | 4 pruebas nuevas; 2 fallaron antes (comentario de 32 bytes y proveedor OpenAI), 30/30 en verde tras GREEN |
 | 1.4 GREEN ADR 0018 | Hecha | `docs/adr/0018-...md` |
 | 1.5 GREEN AGENTS §1/§7 | Hecha | ADR 0017 sin editar |
-| 1.6 GREEN docs | PARCIAL | README hecho; `.env.example` bloqueado; `docker-compose.yml` no consume `Ai__*` nuevas |
-| 1.7 Refactor y puerta | Puerta ejecutada | Sin refactor necesario; PR no cerrable hasta 1.3/1.6 |
+| 1.6 GREEN docs | Hecha | README y `.env.example` hechos; `docker-compose.yml` no consume `Ai__*` nuevas |
+| 1.7 Refactor y puerta | Hecha | Sin refactor necesario; revisión acotada aprobada |
 
 ## TDD Cycle Evidence
 
@@ -30,4 +30,4 @@ BUILD -warnaserror 0 advertencias 0 errores; TEST: Domain 67, Web 223, Applicati
 
 ## Pendiente
 
-1.3 y la parte `.env.example` de 1.6 (ver tabla). Una vez disponible el acceso: añadir pruebas de `.env.example` (claves `Ai__Effort`, `Ai__AllowedProviders`, `Ai__MasterKeys__1`, `Ai__ActiveMasterKeyVersion`, `Ai__SettingsPollSeconds` comentadas y sin valor; comentario «32 bytes aleatorios en Base64»; proveedores `Anthropic`, `OpenAI`, `Gemini`, `Ollama`). Ojo: la prueba existente `EnvExample_DocumentsTheNineAiKeys...` exige que solo `Ai__ApiKey` y `Ai__Provider` estén activas y cita los proveedores; las claves nuevas deben ir comentadas.
+Nada del PR 1. Antes de abrir la PR, ejecutar `Api.IntegrationTests` con Docker disponible y las pruebas E2E previas a Railway.
