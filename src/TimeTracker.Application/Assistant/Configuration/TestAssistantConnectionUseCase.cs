@@ -20,7 +20,6 @@ public sealed class TestAssistantConnectionUseCase(
     IAssistantConnectionTester tester)
 {
     private static readonly FieldError NothingToTest = new("provider", "El campo provider debe indicar un proveedor: con el asistente deshabilitado no hay conexión que probar.");
-    private static readonly FieldError ModelRequired = new("model", "El campo model es obligatorio: no hay modelo guardado ni en el entorno.");
 
     public async Task<TestAssistantConnectionResult> ExecuteAsync(AssistantSettingsInput input, CancellationToken cancellationToken)
     {
@@ -39,10 +38,8 @@ public sealed class TestAssistantConnectionUseCase(
             return new TestAssistantConnectionResult.Invalid([NothingToTest]);
         }
 
-        if ((value.Model ?? effective.Model) is not { } model)
-        {
-            return new TestAssistantConnectionResult.Invalid([ModelRequired]);
-        }
+        // Las reglas ya exigieron un modelo efectivo no vacío para cualquier proveedor real; no es un caso de entrada.
+        var model = value.Model ?? effective.Model ?? throw new InvalidOperationException("Las reglas de validación dejaron pasar un proveedor sin modelo.");
 
         var candidate = new AssistantConnectionCandidate(
             value.Provider,

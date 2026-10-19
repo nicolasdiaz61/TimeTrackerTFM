@@ -147,6 +147,23 @@ public sealed class AesGcmCredentialProtectorTests
         Assert.False(protector.TryUnprotect(old, AssistantProvider.Anthropic, out _));
     }
 
+    [Theory]
+    [InlineData(31)]
+    [InlineData(33)]
+    [InlineData(64)]
+    public void MasterKeyOfAnotherLength_MakesThatVersionUnavailable(int bytes)
+        => Assert.False(Create("1", ("1", Convert.ToBase64String(RandomNumberGenerator.GetBytes(bytes)))).IsAvailable);
+
+    [Fact]
+    public void TheHighestVersion_IsUsableAndTheNextOneIsNot()
+    {
+        var protector = Create("32767", ("32767", KeyOne));
+
+        Assert.True(protector.IsAvailable);
+        Assert.Equal((short)32767, Protect(protector).KeyVersion);
+        Assert.False(Create("32768", ("32768", KeyOne)).IsAvailable);
+    }
+
     [Fact]
     public void AvailableProtector_HasNoUnavailableReason()
         => Assert.Equal(ProtectionUnavailableReason.None, Create("1", ("1", KeyOne)).UnavailableReason);
