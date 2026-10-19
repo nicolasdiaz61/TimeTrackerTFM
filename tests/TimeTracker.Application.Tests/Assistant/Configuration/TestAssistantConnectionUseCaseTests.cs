@@ -108,6 +108,40 @@ public class TestAssistantConnectionUseCaseTests
     }
 
     [Fact]
+    public async Task ADisabledAssistantWithAnInheritedEffort_IsRejectedOnTheProviderFieldOnly()
+    {
+        _env = Env(provider: AssistantProvider.None, effort: AssistantEffort.Medium);
+
+        var result = await Test(Empty);
+
+        Assert.Equal(["provider"], Assert.IsType<TestAssistantConnectionResult.Invalid>(result).Errors.Select(e => e.Field));
+    }
+
+    [Fact]
+    public async Task ACandidateKeyOnADisabledAssistantWithAnInheritedEffort_IsRejectedOnTheCredentialFieldOnly()
+    {
+        _env = Env(provider: AssistantProvider.None, effort: AssistantEffort.Medium);
+
+        var result = await Test(Empty with { Credential = SecretKey });
+
+        Assert.Equal(["credential"], Assert.IsType<TestAssistantConnectionResult.Invalid>(result).Errors.Select(e => e.Field));
+    }
+
+    [Theory]
+    [InlineData(1, 1024)]
+    [InlineData(30, 99999)]
+    public async Task OutOfRangeEnvironmentValues_DoNotFailTheTestWhenTheManagerDidNotSendThem(int timeoutSeconds, int maxOutputTokens)
+    {
+        _env = Env(timeoutSeconds: timeoutSeconds, maxOutputTokens: maxOutputTokens);
+
+        var result = await Test(Empty);
+
+        Assert.IsType<TestAssistantConnectionResult.Completed>(result);
+        var candidate = Assert.Single(_tester.Received);
+        Assert.Equal((timeoutSeconds, maxOutputTokens), (candidate.TimeoutSeconds, candidate.MaxOutputTokens));
+    }
+
+    [Fact]
     public async Task ADisabledAssistant_CannotBeTested()
     {
         _env = Env(provider: AssistantProvider.None);

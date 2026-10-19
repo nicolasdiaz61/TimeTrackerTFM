@@ -20,6 +20,7 @@ public sealed class TestAssistantConnectionUseCase(
     IAssistantConnectionTester tester)
 {
     private static readonly FieldError NothingToTest = new("provider", "El campo provider debe indicar un proveedor: con el asistente deshabilitado no hay conexión que probar.");
+    private static readonly FieldError ModelRequired = new("model", "El campo model es obligatorio: no hay modelo guardado ni en el entorno.");
 
     public async Task<TestAssistantConnectionResult> ExecuteAsync(AssistantSettingsInput input, CancellationToken cancellationToken)
     {
@@ -38,28 +39,31 @@ public sealed class TestAssistantConnectionUseCase(
             return new TestAssistantConnectionResult.Invalid([NothingToTest]);
         }
 
+        if (value.Model is not { } model)
+        {
+            return new TestAssistantConnectionResult.Invalid([ModelRequired]);
+        }
+
         var candidate = new AssistantConnectionCandidate(
             value.Provider,
-            value.Model ?? env.Model!,
+            model,
             value.TimeoutSeconds ?? effective.TimeoutSeconds,
             value.MaxOutputTokens ?? effective.MaxOutputTokens,
-            value.Effort,
+            value.Effort ?? InheritedEffort(value.Provider, effective),
             value.Credential ?? FindCredential(value.Provider, env, stored));
         return new TestAssistantConnectionResult.Completed(await tester.TestAsync(candidate, cancellationToken));
     }
 
+    /// <summary>Solo completa proveedor y modelo: lo heredado del entorno (esfuerzo, tiempo, tokens) no se valida como si lo enviara el Manager.</summary>
     private static AssistantSettingsInput Complete(AssistantSettingsInput input, EffectiveAssistantSettings effective)
-    {
-        var sameProvider = input.Provider is null || string.Equals(input.Provider, effective.Provider.ToString(), StringComparison.OrdinalIgnoreCase);
-        return input with
+        => input with
         {
             Provider = input.Provider ?? effective.Provider.ToString(),
             Model = input.Model ?? effective.Model,
-            TimeoutSeconds = input.TimeoutSeconds ?? effective.TimeoutSeconds,
-            MaxOutputTokens = input.MaxOutputTokens ?? effective.MaxOutputTokens,
-            Effort = input.Effort ?? (sameProvider ? effective.Effort?.ToString() : null),
         };
-    }
+
+    private static AssistantEffort? InheritedEffort(AssistantProvider provider, EffectiveAssistantSettings effective)
+        => provider == effective.Provider && AssistantProviderTraits.For(provider).SupportsEffort ? effective.Effort : null;
 
     private AssistantCredential? FindCredential(AssistantProvider provider, AssistantEnvironmentDefaults env, AssistantSettings? stored)
         => UsableCredential.FromStored(stored, provider, protector) ?? UsableCredential.FromEnvironment(env, provider);
