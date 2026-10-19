@@ -49,6 +49,17 @@ public class TestAssistantConnectionUseCaseTests
     }
 
     [Fact]
+    public async Task AnInheritedModelOutsideTheRules_IsNotValidatedAsManagerInput()
+    {
+        _env = Env(model: new string('m', AssistantSettingsLimits.MaxModelLength + 1));
+
+        var result = await Test(Empty);
+
+        Assert.IsType<TestAssistantConnectionResult.Completed>(result);
+        Assert.Equal(AssistantSettingsLimits.MaxModelLength + 1, Assert.Single(_tester.Received).Model.Length);
+    }
+
+    [Fact]
     public async Task AnInvalidCandidate_ReportsFieldErrorsWithoutCallingTheProvider()
     {
         var result = await Test(Empty with { TimeoutSeconds = 4 });
@@ -168,7 +179,7 @@ public class TestAssistantConnectionUseCaseTests
         _env = Env(provider: AssistantProvider.None);
         var disabledEnvironment = await Test(Empty with { Credential = SecretKey });
 
-        Assert.All([explicitNone, disabledEnvironment], r => Assert.IsType<TestAssistantConnectionResult.Invalid>(r));
+        Assert.All([explicitNone, disabledEnvironment], r => Assert.Equal(["credential"], Assert.IsType<TestAssistantConnectionResult.Invalid>(r).Errors.Select(e => e.Field)));
         Assert.Empty(_tester.Received);
     }
 

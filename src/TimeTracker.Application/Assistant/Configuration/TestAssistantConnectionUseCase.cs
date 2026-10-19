@@ -28,7 +28,7 @@ public sealed class TestAssistantConnectionUseCase(
         var stored = await store.GetAsync(cancellationToken);
         var effective = AssistantSettingsView.Build(env, protector, stored).Effective;
 
-        var validation = AssistantSettingsRules.Validate(Complete(input, effective), env, stored, protector);
+        var validation = AssistantSettingsRules.Validate(Complete(input, effective), env with { Model = effective.Model }, stored, protector);
         if (validation.Value is not { } value)
         {
             return new TestAssistantConnectionResult.Invalid(validation.Errors);
@@ -39,7 +39,7 @@ public sealed class TestAssistantConnectionUseCase(
             return new TestAssistantConnectionResult.Invalid([NothingToTest]);
         }
 
-        if (value.Model is not { } model)
+        if ((value.Model ?? effective.Model) is not { } model)
         {
             return new TestAssistantConnectionResult.Invalid([ModelRequired]);
         }
@@ -54,12 +54,11 @@ public sealed class TestAssistantConnectionUseCase(
         return new TestAssistantConnectionResult.Completed(await tester.TestAsync(candidate, cancellationToken));
     }
 
-    /// <summary>Solo completa proveedor y modelo: lo heredado del entorno (esfuerzo, tiempo, tokens) no se valida como si lo enviara el Manager.</summary>
+    /// <summary>Solo completa el proveedor: lo heredado (modelo, esfuerzo, tiempo, tokens) no se valida como si lo enviara el Manager; el modelo efectivo llega a las reglas por el entorno, que es lo que consultan cuando el Manager no envía modelo.</summary>
     private static AssistantSettingsInput Complete(AssistantSettingsInput input, EffectiveAssistantSettings effective)
         => input with
         {
             Provider = input.Provider ?? effective.Provider.ToString(),
-            Model = input.Model ?? effective.Model,
         };
 
     private static AssistantEffort? InheritedEffort(AssistantProvider provider, EffectiveAssistantSettings effective)

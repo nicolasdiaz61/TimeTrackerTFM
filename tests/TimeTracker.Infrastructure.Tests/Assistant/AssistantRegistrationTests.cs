@@ -4,6 +4,7 @@ using Microsoft.Extensions.Options;
 using Microsoft.Extensions.Time.Testing;
 
 using TimeTracker.Application.Assistant;
+using TimeTracker.Application.Assistant.Configuration;
 using TimeTracker.Application.Identity;
 using TimeTracker.Application.Team;
 using TimeTracker.Application.Tests.Fakes;
@@ -87,9 +88,22 @@ public sealed class AssistantRegistrationTests
         Assert.NotSame(first.ServiceProvider.GetRequiredService<AskAssistantUseCase>(), second.ServiceProvider.GetRequiredService<AskAssistantUseCase>());
     }
 
+    [Fact]
+    public async Task TheProtector_IsASingletonThatReflectsTheMasterKeys()
+    {
+        await using var without = Build();
+        await using var with = Build(("Ai:MasterKeys:1", Convert.ToBase64String(new byte[32])), ("Ai:ActiveMasterKeyVersion", "1"));
+
+        var protector = without.GetRequiredService<IAssistantCredentialProtector>();
+
+        Assert.Same(protector, without.GetRequiredService<IAssistantCredentialProtector>());
+        Assert.False(protector.IsAvailable);
+        Assert.True(with.GetRequiredService<IAssistantCredentialProtector>().IsAvailable);
+    }
+
     [Theory]
     [InlineData("Anthropic", null, "Ai:ApiKey")]
-    [InlineData("Gemini", "x", "Ai:Provider")]
+    [InlineData("GitHubModels", "x", "Ai:Provider")]
     [InlineData("1", "x", "Ai:Provider")]
     public async Task WithAnInvalidConfiguration_TheOptionsFailWithTheKeyName(string provider, string? apiKey, string expectedKey)
     {

@@ -51,7 +51,7 @@ public sealed class AiOptionsValidatorTests
     public void Validate_UnknownProvider_FailsWithTheKeyName()
     {
         var options = ValidAnthropic();
-        options.Provider = "Gemini";
+        options.Provider = "GitHubModels";
 
         var result = Validator.Validate(null, options);
 
@@ -65,6 +65,7 @@ public sealed class AiOptionsValidatorTests
     [InlineData("1")]
     [InlineData("2")]
     [InlineData("3")]
+    [InlineData("4")]
     [InlineData("-1")]
     [InlineData(" 1 ")]
     [InlineData("Anthropic,Ollama")]
@@ -85,6 +86,8 @@ public sealed class AiOptionsValidatorTests
     [InlineData("anthropic", AiProvider.Anthropic)]
     [InlineData("OLLAMA", AiProvider.Ollama)]
     [InlineData("  Ollama  ", AiProvider.Ollama)]
+    [InlineData("openai", AiProvider.OpenAI)]
+    [InlineData("GEMINI", AiProvider.Gemini)]
     [InlineData("none", AiProvider.None)]
     [InlineData("", AiProvider.None)]
     [InlineData(null, AiProvider.None)]
@@ -217,10 +220,138 @@ public sealed class AiOptionsValidatorTests
     [Fact]
     public void Validate_UnknownProvider_NeverPrintsTheProviderValue()
     {
-        var options = new AiOptions { Provider = "Gemini-secreto" };
+        var options = new AiOptions { Provider = "GitHubModels-secreto" };
 
         var text = string.Join('\n', Validator.Validate(null, options).Failures!);
 
-        Assert.DoesNotContain("Gemini-secreto", text);
+        Assert.DoesNotContain("GitHubModels-secreto", text);
     }
+    [Theory]
+    [InlineData("OpenAI")]
+    [InlineData("gemini")]
+    public void Validate_CloudProviders_AreValidWithKeyAndModel(string provider)
+    {
+        var options = ValidAnthropic();
+        options.Provider = provider;
+
+        Assert.True(Validator.Validate(null, options).Succeeded);
+        Assert.True(options.IsEnabled);
+    }
+
+    [Theory]
+    [InlineData("OpenAI", "Ai:ApiKey")]
+    [InlineData("Gemini", "Ai:ApiKey")]
+    [InlineData("OpenAI", "Ai:Model")]
+    [InlineData("Gemini", "Ai:Model")]
+    public void Validate_OpenAIOrGeminiWithoutKeyOrModel_FailsWithTheKeyName(string provider, string missing)
+    {
+        var options = ValidAnthropic();
+        options.Provider = provider;
+        if (missing == "Ai:ApiKey")
+        {
+            options.ApiKey = null;
+        }
+        else
+        {
+            options.Model = null;
+        }
+
+        Assert.Contains(Validator.Validate(null, options).Failures!, failure => failure.StartsWith(missing));
+    }
+
+    [Fact]
+    public void Validate_GitHubModelsProvider_FailsWithTheKeyNameAndNeverPrintsTheValue()
+    {
+        var options = ValidAnthropic();
+        options.Provider = "GitHubModels";
+
+        var text = string.Join('\n', Validator.Validate(null, options).Failures!);
+
+        Assert.Contains("Ai:Provider", text);
+        Assert.DoesNotContain("GitHubModels", text);
+        Assert.DoesNotContain(SecretKey, text);
+    }
+
+    [Theory]
+    [InlineData("low", true)]
+    [InlineData("Medium", true)]
+    [InlineData(" HIGH ", true)]
+    [InlineData(null, true)]
+    [InlineData("extreme", false)]
+    [InlineData("1", false)]
+    public void Validate_Effort_AcceptsOnlyTheThreeLevelsByName(string? effort, bool valid)
+    {
+        var options = ValidAnthropic();
+        options.Effort = effort;
+
+        var result = Validator.Validate(null, options);
+
+        Assert.Equal(valid, result.Succeeded);
+        if (!valid)
+        {
+            Assert.StartsWith("Ai:Effort", result.Failures!.Single());
+            Assert.DoesNotContain(effort!, result.Failures!.Single());
+        }
+    }
+
+    [Theory]
+    [InlineData("Anthropic,GitHubModels")]
+    [InlineData("None")]
+    [InlineData("Anthropic,,OpenAI,desconocido-secreto")]
+    public void Validate_InvalidAllowedProviders_FailsWithTheKeyNameWithOrWithoutProvider(string list)
+    {
+        var withProvider = ValidAnthropic();
+        withProvider.AllowedProviders = list;
+        var withoutProvider = new AiOptions { AllowedProviders = list };
+
+        foreach (var options in new[] { withProvider, withoutProvider })
+        {
+            var text = string.Join('\n', Validator.Validate(null, options).Failures!);
+
+            Assert.Contains("Ai:AllowedProviders", text);
+            Assert.DoesNotContain("GitHubModels", text);
+            Assert.DoesNotContain("desconocido-secreto", text);
+        }
+    }
+
+    [Fact]
+    public void Validate_ValidAllowedProviders_Succeeds()
+    {
+        var options = ValidAnthropic();
+        options.AllowedProviders = " anthropic, OpenAI ,Gemini,Ollama,openai";
+
+        Assert.True(Validator.Validate(null, options).Succeeded);
+    }
+
+    [Theory]
+    [InlineData(0, false)]
+    [InlineData(1, true)]
+    [InlineData(300, true)]
+    [InlineData(301, false)]
+    public void Validate_SettingsPollSeconds_IsBetween1And300(int seconds, bool valid)
+    {
+        var options = ValidAnthropic();
+        options.SettingsPollSeconds = seconds;
+
+        var result = Validator.Validate(null, options);
+
+        Assert.Equal(valid, result.Succeeded);
+        Assert.All(result.Failures ?? [], failure => Assert.StartsWith("Ai:SettingsPollSeconds", failure));
+    }
+
+    [Fact]
+    public void NewKeys_HaveDefaultsAndTheMasterKeysAreNeverValidated()
+    {
+        var options = ValidAnthropic();
+        options.MasterKeys["1"] = "esto-no-es-base64-secreto";
+        options.ActiveMasterKeyVersion = "no-es-un-numero";
+
+        var result = Validator.Validate(null, options);
+
+        Assert.True(result.Succeeded);
+        Assert.Equal(30, options.SettingsPollSeconds);
+        Assert.Null(options.Effort);
+        Assert.Null(options.AllowedProviders);
+    }
+
 }

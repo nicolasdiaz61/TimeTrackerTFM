@@ -51,11 +51,45 @@ public class AiStartupTests
         => DatabaseStartupTests.AssertStartupFailsNamingKey(StartWith(("Ai:Provider", "Anthropic"), ("Ai:Model", "modelo-ficticio")), "Ai:ApiKey");
 
     [Theory]
-    [InlineData("Gemini")]
+    [InlineData("GitHubModels")]
     [InlineData("1")]
     [InlineData("2")]
+    [InlineData("3")]
+    [InlineData("4")]
     public void UnknownOrNumericProvider_FailsNamingTheKey(string provider)
         => DatabaseStartupTests.AssertStartupFailsNamingKey(StartWith(("Ai:Provider", provider), ("Ai:Model", "m"), ("Ai:ApiKey", SecretKey)), "Ai:Provider");
+
+    [Theory]
+    [InlineData("OpenAI")]
+    [InlineData("Gemini")]
+    public Task NewCloudProviders_StartWithoutContactingTheProvider(string provider)
+        => AssertStartsAsync(("Ai:Provider", provider), ("Ai:Model", "modelo-ficticio"), ("Ai:ApiKey", SecretKey));
+
+    [Theory]
+    [InlineData("OpenAI", "Ai:ApiKey")]
+    [InlineData("Gemini", "Ai:Model")]
+    public void NewCloudProviders_WithoutKeyOrModel_FailNamingTheKey(string provider, string missing)
+        => DatabaseStartupTests.AssertStartupFailsNamingKey(
+            StartWith(("Ai:Provider", provider), ("Ai:Model", missing == "Ai:Model" ? null : "m"), ("Ai:ApiKey", missing == "Ai:ApiKey" ? null : SecretKey)),
+            missing);
+
+    [Theory]
+    [InlineData("esto-no-es-base64-secreto", "1")]
+    [InlineData("YWJj", "9")]
+    [InlineData("YWJj", "no-es-un-numero")]
+    public Task InvalidMasterKeys_DoNotStopTheStartup(string masterKey, string active)
+        => AssertStartsAsync(("Ai:Provider", "Gemini"), ("Ai:Model", "m"), ("Ai:ApiKey", SecretKey), ("Ai:MasterKeys:1", masterKey), ("Ai:ActiveMasterKeyVersion", active));
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("Gemini")]
+    public void InvalidAllowedProviders_FailNamingTheKeyWithOrWithoutProvider(string? provider)
+    {
+        var exception = StartWith(("Ai:Provider", provider), ("Ai:Model", "m"), ("Ai:ApiKey", SecretKey), ("Ai:AllowedProviders", "GitHubModels"));
+
+        DatabaseStartupTests.AssertStartupFailsNamingKey(exception, "Ai:AllowedProviders");
+        Assert.DoesNotContain("GitHubModels", StartupFailure.AllMessages(exception), StringComparison.Ordinal);
+    }
 
     [Fact]
     public Task Ollama_WithValidConfiguration_StartsWithoutAServer()

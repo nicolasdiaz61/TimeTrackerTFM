@@ -382,6 +382,10 @@ Si la estrategia de entrega no admite excepción, se mantienen los cortes 3a/3b 
 | V-7 | `JsonUnmappedMemberHandling.Disallow` en Minimal API produce `400` y no `500`, y `ValidationProblem` se documenta bien en OpenAPI | Validar la lista de propiedades a mano en el endpoint |
 | V-8 | Referencias a `TeamEndpoints.ManagerPolicy` en `src/` y `tests/` tras moverla a `AuthorizationPolicies` | Cambio mecánico de referencias |
 
+### Resultados de V-n en apply
+
+- **V-4 (PR 3a, verificado)**: `new AesGcm(key, 16)` con `tagSizeInBytes` explícito, cifrado/descifrado con AAD y rechazo de una etiqueta alterada (`CryptographicException`) funcionan igual en .NET 10.0.10 sobre Windows y en la imagen de ejecución del Dockerfile `mcr.microsoft.com/dotnet/aspnet:10.0-alpine` (.NET 10.0.13, Alpine 3.24, `AesGcm.IsSupported=True`, tamaños de etiqueta admitidos 12-16). Se ejecutó un único contenedor efímero `tt-pr3a-alpine-check` (`--rm`) con una aplicación de consola publicada fuera del repositorio. El diseño no cambia.
+
 ## 13. Preguntas abiertas
 
 - [ ] Confirmar con el product owner la política de provisión de la clave maestra en Railway (quién la genera y cómo se custodia la copia de seguridad).
