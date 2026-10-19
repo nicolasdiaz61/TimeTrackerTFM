@@ -10,6 +10,12 @@ namespace TimeTracker.Infrastructure.Assistant;
 /// </summary>
 public sealed class AiOptionsValidator : IValidateOptions<AiOptions>
 {
+    public const int MinToolIterations = 1;
+    public const int MaxToolIterations = 10;
+    public const int MinRequestsPerMinute = 1;
+    public const int MaxRequestsPerMinute = 60;
+    public const int MinDailyRequestsPerUser = 1;
+    public const int MaxDailyRequestsPerUser = 1000;
     private const int MinSettingsPollSeconds = 1;
     private const int MaxSettingsPollSeconds = 300;
 
@@ -22,7 +28,7 @@ public sealed class AiOptionsValidator : IValidateOptions<AiOptions>
         }
 
         var failures = new List<string>();
-        CheckAllowedProviders(failures, options, provider.Value);
+        CheckAllowedProviders(failures, options);
         if (provider == AiProvider.None)
         {
             return failures.Count == 0 ? ValidateOptionsResult.Success : ValidateOptionsResult.Fail(failures);
@@ -54,20 +60,19 @@ public sealed class AiOptionsValidator : IValidateOptions<AiOptions>
         }
 
         CheckRange(failures, nameof(AiOptions.MaxOutputTokens), options.MaxOutputTokens, AssistantSettingsLimits.MinOutputTokens, AssistantSettingsLimits.MaxOutputTokens);
-        CheckRange(failures, nameof(AiOptions.MaxToolIterations), options.MaxToolIterations, 1, 10);
+        CheckRange(failures, nameof(AiOptions.MaxToolIterations), options.MaxToolIterations, MinToolIterations, MaxToolIterations);
         CheckRange(failures, nameof(AiOptions.TimeoutSeconds), options.TimeoutSeconds, AssistantSettingsLimits.MinTimeoutSeconds, AssistantSettingsLimits.MaxTimeoutSeconds);
-        CheckRange(failures, nameof(AiOptions.RequestsPerMinute), options.RequestsPerMinute, 1, 60);
-        CheckRange(failures, nameof(AiOptions.DailyRequestsPerUser), options.DailyRequestsPerUser, 1, 1000);
+        CheckRange(failures, nameof(AiOptions.RequestsPerMinute), options.RequestsPerMinute, MinRequestsPerMinute, MaxRequestsPerMinute);
+        CheckRange(failures, nameof(AiOptions.DailyRequestsPerUser), options.DailyRequestsPerUser, MinDailyRequestsPerUser, MaxDailyRequestsPerUser);
         CheckRange(failures, nameof(AiOptions.SettingsPollSeconds), options.SettingsPollSeconds, MinSettingsPollSeconds, MaxSettingsPollSeconds);
 
         return failures.Count == 0 ? ValidateOptionsResult.Success : ValidateOptionsResult.Fail(failures);
     }
 
     // La lista limita lo que un Manager puede elegir aunque el entorno no tenga proveedor, así que se valida siempre.
-    private static void CheckAllowedProviders(List<string> failures, AiOptions options, AiProvider provider)
+    private static void CheckAllowedProviders(List<string> failures, AiOptions options)
     {
-        var environment = new AssistantEnvironmentDefaults(provider.ToAssistantProvider(), null, 0, 0, null, null, false, options.AllowedProviders);
-        if (AllowedProviders.Resolve(environment).Error is { } error)
+        if (AllowedProviders.Validate(options.AllowedProviders) is { } error)
         {
             failures.Add(error);
         }

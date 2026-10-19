@@ -7,6 +7,12 @@ public static class AllowedProviders
 {
     public const string ConfigurationKey = "Ai:AllowedProviders";
 
+    private const string InvalidListError = ConfigurationKey + " contiene un nombre que no es un proveedor del catálogo.";
+
+    /// <summary>Solo valida la lista (vacía es válida): devuelve el error, que nombra la clave y nunca el valor, o <c>null</c>.</summary>
+    public static string? Validate(string? raw)
+        => string.IsNullOrWhiteSpace(raw) || TryParseList(raw, out _) ? null : InvalidListError;
+
     public static AllowedProvidersResult Resolve(AssistantEnvironmentDefaults environment)
     {
         IEnumerable<AssistantProvider> providers;
@@ -16,7 +22,7 @@ public static class AllowedProviders
         }
         else if (!TryParseList(environment.AllowedProviders, out var listed))
         {
-            return new AllowedProvidersResult([], $"{ConfigurationKey} contiene un nombre que no es un proveedor del catálogo.");
+            return new AllowedProvidersResult([], InvalidListError);
         }
         else
         {
