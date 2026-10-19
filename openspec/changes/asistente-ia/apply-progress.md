@@ -218,3 +218,27 @@ Rama `feat/asistente-ia-pr4-web`, con Strict TDD.
 5. El `401` produce el mensaje genérico en la conversación; el cierre de sesión y la navegación a `/login?returnUrl=` los hace el `BearerTokenHandler`, como en el resto de clientes.
 6. Pendiente: tarea 3.2 (verificación manual en navegador, `verify-report.md`).
 7. Rollback: copia previa en `..\TimeTracker.rollback\pr-4\` (ApiRequest, Program, NavMenu, app.css, AssistantRequest, openapi.json y las dos pruebas de arquitectura modificadas).
+
+## Mejoras tras verificación 5.2
+
+Rama `feat/asistente-ia-fechas-y-equipo` (desde `main`), con Strict TDD. Origen: `verify-report.md`, donde ni `qwen2.5:3b` ni `7b` resolvían fechas relativas, el flujo nombre → id → fichajes ni la conversión de minutos.
+
+### Evidencia del ciclo TDD
+
+| Cambio | RED (mensaje real) | GREEN |
+|---|---|---|
+| C: textos precalculados | `CS0103: El nombre 'DurationText' no existe en el contexto actual`; `CS1061: "DaySummary" no contiene una definición para "WorkedText"`; en la herramienta, `SevenDayPeriod_ReturnsTheSummaryByDay` falla por falta de `workedText` | `DurationText.Format` («X h Y min») y propiedades `WorkedText`, `BreakText`, `MealBreakText` en `DaySummary` y `DailySummaryResult`, serializadas como `workedText`, etc. El contrato anterior (`workedMinutes`...) no cambia |
+| A: tabla de fechas | `Assert.Contains() Failure: Sub-string not found` (hoy/ayer/semana pasada...) y `Assert.Equal() Failure: Expected: 4 / Actual: 0` en el barrido de 365 días | `AssistantPrompt.Build` con referencias (lunes→hoy, lunes→domingo, 1→hoy, mes pasado) e instrucciones; el barrido comprueba fin ≤ hoy y ≤ 31 días |
+| B: descripciones | `ToolDescriptions_KeepTheDateLimitAndTheMemberListReference`: `Assert.Contains() Failure: Sub-string not found` | `memberId`: identificador (GUID) obtenido SOLO de `get_team_members`, nunca el nombre; ambas herramientas de equipo indican llamar antes a `get_team_members` |
+| REFACTOR | Un primer GREEN rompió `Assert.EndsWith` de la descripción de la herramienta de equipo (la instrucción iba al final) | La instrucción pasa al principio de la descripción y se conserva el sufijo «entre dos fechas (máximo 31 días).» |
+
+### Puerta de unidad (reales)
+
+`RESTORE` ok · `FORMAT --verify-no-changes` exit 0 · `BUILD -c Release -warnaserror` 0 advertencias, 0 errores · `TEST` Domain 67, Application 201, Web 223, Infrastructure 182, Architecture 87, Api.IntegrationTests 422 (Docker en marcha), todo en verde · `COV-D` 100,0 % / 100,0 % · `COV-A` líneas 100,0 % / ramas 99,3 % · `VULN` sin paquetes vulnerables. `docs/api/openapi.json` solo cambió en finales de línea y se restauró con `git checkout`.
+
+### Decisiones y desviaciones
+
+1. (D) Sin cambios de política: el nombre en `memberId` sigue dando la respuesta uniforme de no encontrado; la identidad nunca es parámetro; solo lectura.
+2. Los textos son siempre «X h Y min» (también «0 h 45 min» y «1 h 0 min») para que el formato sea predecible.
+3. Las fechas de referencia nunca superan 31 días ni terminan después de hoy por construcción; el aviso de recorte a hoy se indica igualmente al modelo.
+4. 5.2 queda marcada como ejecutada; la repetición con el modelo tras estos cambios queda pendiente (M.6): no hay verificación con modelo real de las mejoras.

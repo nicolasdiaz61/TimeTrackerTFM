@@ -129,6 +129,11 @@ Las herramientas `get_team_members` y `get_team_member_time_entries` DEBEN estar
 - CUANDO se ejecuta `get_team_member_time_entries`
 - ENTONCES el repositorio de fichajes no recibe ninguna llamada
 
+#### Scenario: Descripciones que guían al modelo hacia el identificador
+- DADO un responsable
+- CUANDO se listan las herramientas ofrecidas al modelo
+- ENTONCES la descripción de `memberId` dice que es un identificador (GUID) obtenido SOLO de `get_team_members` y que no se pasa el nombre, y las descripciones de `get_team_members` y `get_team_member_time_entries` indican llamar siempre antes a `get_team_members`; un nombre en `memberId` sigue dando la misma respuesta uniforme de no encontrado
+
 #### Scenario: Identificador mal formado
 - DADO `memberId` = `abc`
 - CUANDO el asistente de `marta` ejecuta la herramienta
@@ -180,12 +185,17 @@ Las herramientas `get_team_members` y `get_team_member_time_entries` DEBEN estar
 
 ### Requirement: Resumen compacto por día calculado en código
 
-Las herramientas de fichajes DEBEN devolver un resumen por día en hora local, no la lista cruda de intervalos: por cada día con actividad (solo esos), primer inicio y último fin locales y minutos trabajados, de descanso y de comida; además del total del periodo por tipo, el `Status` actual (`Idle`, `Working`, `OnBreak`, `OnMealBreak`, tomado siempre del listado de fichajes), un indicador `truncated` y, si el intervalo abierto está entre los consultados, un bloque `open` con su tipo, fecha y hora local de inicio y los minutos transcurridos hasta «ahora». Los totales DEBEN calcularse en código, solo con intervalos cerrados, y NO DEBEN delegarse al modelo. Cada intervalo cerrado DEBE recortarse a cada día local que abarque (un intervalo que cruza la medianoche local se reparte entre ambos días), con los minutos de cada tramo como `floor(segundos/60)` y los totales como suma de los tramos, de modo que totales y días son coherentes por construcción (pueden diferir en hasta 1 minuto por intervalo partido respecto a `/api/time-entries`). `truncated` DEBE ser verdadero cuando el listado alcanza la ventana máxima de entradas. El resultado NO DEBE superar un tamaño acotado con independencia del número de intervalos del periodo.
+Las herramientas de fichajes DEBEN devolver un resumen por día en hora local, no la lista cruda de intervalos: por cada día con actividad (solo esos), primer inicio y último fin locales y minutos trabajados, de descanso y de comida, cada uno con su texto precalculado «X h Y min» (`workedText`, `breakText`, `mealBreakText`); además del total del periodo por tipo, el `Status` actual (`Idle`, `Working`, `OnBreak`, `OnMealBreak`, tomado siempre del listado de fichajes), un indicador `truncated` y, si el intervalo abierto está entre los consultados, un bloque `open` con su tipo, fecha y hora local de inicio y los minutos transcurridos hasta «ahora». Los totales (minutos y texto «X h Y min») DEBEN calcularse en código, solo con intervalos cerrados, y NO DEBEN delegarse al modelo: el modelo no suma ni convierte minutos. Cada intervalo cerrado DEBE recortarse a cada día local que abarque (un intervalo que cruza la medianoche local se reparte entre ambos días), con los minutos de cada tramo como `floor(segundos/60)` y los totales como suma de los tramos, de modo que totales y días son coherentes por construcción (pueden diferir en hasta 1 minuto por intervalo partido respecto a `/api/time-entries`). `truncated` DEBE ser verdadero cuando el listado alcanza la ventana máxima de entradas. El resultado NO DEBE superar un tamaño acotado con independencia del número de intervalos del periodo.
 
 #### Scenario: Totales por tipo
 - DADO un día con 60 y 30 minutos de trabajo cerrados, 15 de descanso y 20 de comida
 - CUANDO se ejecuta `get_my_time_entries` para ese día
 - ENTONCES el día muestra 90 minutos de trabajo, 15 de descanso y 20 de comida, y el total del periodo coincide
+
+#### Scenario: Totales con texto de horas y minutos
+- DADO un periodo con 2342 minutos de trabajo cerrados
+- CUANDO se ejecuta `get_my_time_entries` o `get_team_member_time_entries`
+- ENTONCES el resultado trae `workedMinutes` = 2342 y `workedText` = «39 h 2 min», y cada día trae su propio texto
 
 #### Scenario: Día en hora local
 - DADO un intervalo con `ClockInAt` = `2026-07-14T22:30:00Z` (00:30 del 15 de julio en hora local de verano)

@@ -126,12 +126,32 @@ El servidor DEBE tratar el historial como entrada no confiable: solo se aceptan 
 
 ### Requirement: Instrucciones del sistema
 
-El servidor DEBE enviar un único mensaje `system` que incluya la fecha de «hoy» en hora local de España peninsular con su día de la semana (obtenida del reloj de la aplicación), el rol del usuario del token e indique que las respuestas son en español y en texto plano. NO DEBE incluir secretos (claves, tokens, cadena de conexión) ni lógica de seguridad de la que dependa la autorización.
+El servidor DEBE enviar un único mensaje `system` que incluya la fecha de «hoy» en hora local de España peninsular con su día de la semana (obtenida del reloj de la aplicación), el rol del usuario del token e indique que las respuestas son en español y en texto plano. DEBE incluir además una tabla de fechas de referencia ya calculadas en hora de España y formato `yyyy-MM-dd` (hoy; ayer; esta semana, de lunes a hoy; semana pasada, de lunes a domingo; este mes, del día 1 a hoy; mes pasado completo), cada periodo con `fromDate` y `toDate`, sin superar nunca los 31 días ni terminar después de hoy, y las instrucciones de usarlas literalmente, de no inventar ni calcular fechas y de copiar los totales precalculados sin sumar ni convertir minutos. Al responsable DEBE indicarle que llame siempre antes a `get_team_members` y que pase el identificador (GUID) como `memberId`, nunca el nombre. NO DEBE incluir secretos (claves, tokens, cadena de conexión) ni lógica de seguridad de la que dependa la autorización.
 
 #### Scenario: Hoy y español
 - DADO un reloj fijado en `2026-10-18T10:00:00Z` y un modelo falso que captura los mensajes
 - CUANDO se envía una petición válida
 - ENTONCES el mensaje `system` contiene la fecha local `2026-10-18` con su día de la semana (domingo) y la instrucción de responder en español y en texto plano
+
+#### Scenario: Tabla de fechas de referencia
+- DADO «hoy» domingo `2026-10-18`
+- CUANDO se construye el mensaje `system`
+- ENTONCES contiene hoy `2026-10-18`, ayer `2026-10-17`, esta semana `2026-10-12` a `2026-10-18`, semana pasada `2026-10-05` a `2026-10-11`, este mes `2026-10-01` a `2026-10-18` y mes pasado `2026-09-01` a `2026-09-30`
+
+#### Scenario: Lunes y cambio de año
+- DADO «hoy» lunes `2026-10-19`, o `2027-01-01`
+- CUANDO se construye el mensaje `system`
+- ENTONCES esta semana es solo el lunes, la semana pasada es `2026-10-12` a `2026-10-18` y, el 1 de enero, ayer y el mes pasado pertenecen al año anterior
+
+#### Scenario: Ningún periodo de referencia es inválido
+- DADO cualquier día de un año
+- CUANDO se construye el mensaje `system`
+- ENTONCES ningún periodo termina después de hoy, ninguno empieza después de su fin y ninguno supera 31 días
+
+#### Scenario: Instrucciones para modelos pequeños
+- DADO un responsable
+- CUANDO se construye el mensaje `system`
+- ENTONCES pide usar las fechas literalmente, no inventar ni calcular fechas, copiar los totales (`workedText`) y llamar antes a `get_team_members` con el GUID como `memberId`, nunca el nombre; el del empleado no menciona herramientas de equipo
 
 #### Scenario: Sin secretos en el prompt
 - DADO `Ai:ApiKey` y `Jwt:SigningKey` con valores reconocibles
