@@ -1,0 +1,189 @@
+# Delta para assistant-configuration
+
+Cambio: `asistente-config-responsable`. Capacidad EXISTENTE definida por el cambio `asistente-ia` (claves `Ai:*` del entorno); este delta solo contiene bloques `MODIFIED`. Orden de archivo: archivar `asistente-ia` primero, para que `openspec/specs/assistant-configuration/` exista cuando se archive este cambio; si no fuera posible, fusionar estos deltas a mano en el informe de archivo y avisar antes de fusionar deltas que cambian escenarios vigentes.
+
+> Aviso de delta que cambia un escenario vigente: el escenario «Proveedor desconocido» de «Validación de las claves Ai con proveedor activo» usaba `Gemini`, que pasa a ser un proveedor válido; el valor desconocido pasa a ser `GitHubModels`.
+
+Las claves nuevas (`Ai:Effort`, `Ai:AllowedProviders`, `Ai:MasterKeys:{versión}`, `Ai:ActiveMasterKeyVersion`, `Ai:SettingsPollSeconds`) y el comportamiento de la configuración guardada por el Manager se especifican en `assistant-settings` y `assistant-credential-protection`. Las claves maestras NO se validan al arrancar (el arranque no falla por ellas).
+
+## MODIFIED Requirements
+
+### Requirement: Claves de configuración del asistente
+
+La API DEBE leer de variables de entorno las nueve claves `Ai:Provider`, `Ai:Model`, `Ai:Endpoint`, `Ai:ApiKey`, `Ai:MaxOutputTokens`, `Ai:MaxToolIterations`, `Ai:TimeoutSeconds`, `Ai:RequestsPerMinute` y `Ai:DailyRequestsPerUser` (variables `Ai__Provider`, etc.). `Ai:Provider` admite `Anthropic`, `OpenAI`, `Gemini`, `Ollama` o ausente/`None`/en blanco (asistente deshabilitado). Las claves numéricas DEBEN tener estos valores por defecto cuando no se definen: `Ai:MaxOutputTokens` 800, `Ai:MaxToolIterations` 5, `Ai:TimeoutSeconds` 25, `Ai:RequestsPerMinute` 5 y `Ai:DailyRequestsPerUser` 50. La API TAMBIÉN DEBE leer, de forma opcional, `Ai:Effort`, `Ai:AllowedProviders`, `Ai:MasterKeys:{versión}`, `Ai:ActiveMasterKeyVersion` y `Ai:SettingsPollSeconds` (valor por defecto 30). Ninguna clave `Ai:*` DEBE figurar en `appsettings*.json`, en el código ni en la imagen Docker.
+(Previously: `Ai:Provider` admitía solo `Anthropic`, `Ollama` o ausente/`None`/en blanco, y no se leían claves adicionales)
+
+#### Scenario: Valores tomados del entorno
+- DADO `Ai__Provider=Ollama`, `Ai__Model=m`, `Ai__Endpoint=http://localhost:11434/` en el entorno
+- CUANDO se enlazan las opciones
+- ENTONCES las opciones contienen esos valores
+
+#### Scenario: Valores numéricos por defecto
+- DADO un entorno con `Ai__Provider=Ollama`, `Ai__Model` y `Ai__Endpoint` válidos y sin claves numéricas
+- CUANDO se enlazan las opciones
+- ENTONCES `MaxOutputTokens` = 800, `MaxToolIterations` = 5, `TimeoutSeconds` = 25, `RequestsPerMinute` = 5, `DailyRequestsPerUser` = 50 y `SettingsPollSeconds` = 30
+
+#### Scenario: Proveedores admitidos
+- DADO `Ai__Provider` con cada uno de los valores `Anthropic`, `OpenAI`, `Gemini` y `Ollama` y el resto de la configuración válida
+- CUANDO se enlazan las opciones
+- ENTONCES cada uno se reconoce como proveedor activo
+
+#### Scenario: Ausente, None o en blanco
+- DADO `Ai:Provider` sin definir, con valor `None` y con valor en blanco
+- CUANDO se enlazan las opciones
+- ENTONCES las tres son el estado «deshabilitado»
+
+#### Scenario: Claves adicionales opcionales
+- DADO `Ai__Effort`, `Ai__AllowedProviders`, `Ai__MasterKeys__1` y `Ai__ActiveMasterKeyVersion` definidas en el entorno
+- CUANDO se enlazan las opciones
+- ENTONCES las opciones contienen esos valores y, si no se definen, son «sin valor»
+
+#### Scenario: No versionadas
+- DADO los archivos `appsettings*.json`
+- CUANDO se buscan claves `Ai`
+- ENTONCES no existe ninguna
+
+### Requirement: Asistente deshabilitado sin proveedor
+
+Sin `Ai:Provider` (ausente, `None` o en blanco) la API DEBE arrancar, el resto de endpoints DEBE funcionar y NO DEBE exigirse ninguna otra clave `Ai:*` ni validarse (un `Ai:ApiKey` o `Ai:Model` ausentes o inválidos no impiden el arranque), con la única excepción de `Ai:AllowedProviders`: si se define, se valida siempre, porque limita lo que un Manager puede seleccionar aunque el entorno no tenga proveedor. Ningún cliente de modelo DEBE construirse a partir del entorno y ninguna conexión con un proveedor DEBE abrirse; una configuración guardada por un Manager PUEDE activar un proveedor (ver `assistant-settings`). El endpoint del asistente responde `503` mientras la configuración efectiva sea «deshabilitado» (ver `assistant-endpoint`).
+(Previously: no se validaba ninguna otra clave `Ai:*` y no existía la configuración guardada por el Manager)
+
+#### Scenario: Arranque sin proveedor
+- DADO el entorno `Production` con `Cors__AllowedOrigins__0`, `ConnectionStrings__Default` y `Jwt__SigningKey` válidos y sin ninguna clave `Ai__*`
+- CUANDO la API arranca
+- ENTONCES arranca y `GET /health` responde `200`
+
+#### Scenario: Otras claves ignoradas
+- DADO `Ai__Provider` sin definir, `Ai__MaxOutputTokens` = `-5` y `Ai__TimeoutSeconds` = `999`
+- CUANDO la API arranca
+- ENTONCES arranca sin error
+
+#### Scenario: Lista permitida inválida sin proveedor
+- DADO `Ai__Provider` sin definir y `Ai__AllowedProviders=GitHubModels`
+- CUANDO la API intenta arrancar
+- ENTONCES el arranque falla con un mensaje que contiene `Ai:AllowedProviders`
+
+#### Scenario: Sin cliente de modelo
+- DADO la API sin `Ai:Provider` y sin configuración guardada
+- CUANDO se resuelve la composición del asistente
+- ENTONCES no se construye ningún cliente de proveedor
+
+### Requirement: Selección de proveedor solo por configuración
+
+El proveedor y el modelo DEBEN elegirse únicamente por configuración: la del entorno (`Ai:*`) o, con prioridad sobre ella, la configuración guardada por un Manager (ADR 0018; ver `assistant-settings`), nunca por código. Con `Ai:Provider` = `Anthropic`, `OpenAI` o `Gemini` se usa el proveedor en la nube con `Ai:ApiKey` y `Ai:Model`; con `Ollama`, un servidor local en `Ai:Endpoint` con `Ai:Model`. El nombre del modelo NO DEBE estar escrito en el código. Cambiar de uno a otro NO DEBE requerir cambios de código ni recompilar.
+(Previously: solo `Anthropic` y `Ollama`, y la elección dependía únicamente de variables de entorno)
+
+#### Scenario: Anthropic
+- DADO `Ai__Provider=Anthropic`, una clave y un modelo válidos
+- CUANDO se construye el cliente de chat
+- ENTONCES el cliente es el de Anthropic configurado con ese modelo y esa clave
+
+#### Scenario: OpenAI
+- DADO `Ai__Provider=OpenAI`, una clave y un modelo válidos
+- CUANDO se construye el cliente de chat
+- ENTONCES el cliente es el compatible con OpenAI con ese modelo y esa clave, sin endpoint personalizado
+
+#### Scenario: Gemini
+- DADO `Ai__Provider=Gemini`, una clave y un modelo válidos
+- CUANDO se construye el cliente de chat
+- ENTONCES el cliente es el compatible con OpenAI apuntando al endpoint fijo de Gemini definido en el servidor, con ese modelo y esa clave
+
+#### Scenario: Ollama
+- DADO `Ai__Provider=Ollama`, `Ai__Endpoint` y `Ai__Model` válidos
+- CUANDO se construye el cliente de chat
+- ENTONCES el cliente es el de Ollama apuntando a ese endpoint y ese modelo
+
+#### Scenario: La configuración guardada tiene prioridad
+- DADO `Ai__Provider=Anthropic` y una fila guardada por un Manager con proveedor permitido `OpenAI`
+- CUANDO se resuelve la configuración efectiva
+- ENTONCES el proveedor efectivo es `OpenAI`, sin cambiar código ni variables de entorno
+
+#### Scenario: Solo configuración
+- DADO el código fuente de `src/`
+- CUANDO se buscan literales de nombres de modelo de proveedores
+- ENTONCES no hay ninguno
+
+### Requirement: Validación de las claves Ai con proveedor activo
+
+Con `Ai:Provider` = `Anthropic`, `OpenAI`, `Gemini` u `Ollama`, la API DEBE validar al arrancar: `Ai:Model` obligatorio y de 100 caracteres como máximo; con `Anthropic`, `OpenAI` o `Gemini`, `Ai:ApiKey` obligatoria y no en blanco; con `Ollama`, `Ai:Endpoint` obligatorio y URL absoluta `http` o `https`; y los rangos (ambos extremos incluidos) `Ai:MaxOutputTokens` 64 a 4096, `Ai:MaxToolIterations` 1 a 10, `Ai:TimeoutSeconds` 5 a 55, `Ai:RequestsPerMinute` 1 a 60, `Ai:DailyRequestsPerUser` 1 a 1000 y `Ai:SettingsPollSeconds` 1 a 300. Si se define, `Ai:Effort` DEBE ser `low`, `medium` o `high`. Si se define, `Ai:AllowedProviders` DEBE ser una lista separada por comas de nombres del catálogo (`Anthropic`, `OpenAI`, `Gemini`, `Ollama`); un nombre desconocido (incluidos `None` o `GitHubModels`) DEBE impedir el arranque con un mensaje que nombre `Ai:AllowedProviders`. Un `Ai:Provider` con un valor no reconocido DEBE impedir el arranque. Las claves maestras (`Ai:MasterKeys:*`, `Ai:ActiveMasterKeyVersion`) NO DEBEN validarse al arrancar: su ausencia o invalidez no impide el arranque. Cada mensaje DEBE estar en español, nombrar la clave afectada y la razón, y NO DEBE imprimir valores (en particular `Ai:ApiKey` ni las claves maestras).
+(Previously: solo `Anthropic` y `Ollama`; `Gemini` era un proveedor desconocido; no existían `Ai:Effort`, `Ai:AllowedProviders` ni `Ai:SettingsPollSeconds`; `Ai:ApiKey` obligatoria solo con `Anthropic`)
+
+#### Scenario: Proveedor desconocido
+- DADO `Ai__Provider` = `GitHubModels`
+- CUANDO la API intenta arrancar
+- ENTONCES el arranque falla con un mensaje que contiene `Ai:Provider`
+
+#### Scenario: Anthropic sin clave
+- DADO `Ai__Provider=Anthropic`, `Ai__Model` válido y sin `Ai:ApiKey` (y otro caso con la clave en blanco)
+- CUANDO la API intenta arrancar
+- ENTONCES el arranque falla con un mensaje que contiene `Ai:ApiKey`
+
+#### Scenario: OpenAI o Gemini sin clave o sin modelo
+- DADO `Ai__Provider=OpenAI` y, por separado, `Ai__Provider=Gemini`, cada uno sin `Ai:ApiKey` (otro caso sin `Ai:Model`)
+- CUANDO la API intenta arrancar en cada caso
+- ENTONCES cada arranque falla con un mensaje que contiene `Ai:ApiKey` o `Ai:Model` según el caso
+
+#### Scenario: OpenAI o Gemini válidos
+- DADO `Ai__Provider=Gemini` (y otro caso con `OpenAI`), `Ai__ApiKey` y `Ai__Model` válidos
+- CUANDO la API arranca
+- ENTONCES arranca y `GET /health` responde `200` sin conectar con el proveedor
+
+#### Scenario: Ollama sin endpoint o con endpoint inválido
+- DADO `Ai__Provider=Ollama` sin `Ai:Endpoint`, y otro con `Ai__Endpoint=no-es-una-url`
+- CUANDO la API intenta arrancar en cada caso
+- ENTONCES cada arranque falla con un mensaje que contiene `Ai:Endpoint`
+
+#### Scenario: Sin modelo
+- DADO `Ai__Provider=Ollama`, `Ai__Endpoint` válido y sin `Ai:Model`
+- CUANDO la API intenta arrancar
+- ENTONCES el arranque falla con un mensaje que contiene `Ai:Model`
+
+#### Scenario: Límites numéricos
+- DADO `Ai__MaxOutputTokens` = `63`, `Ai__MaxToolIterations` = `0`, `Ai__RequestsPerMinute` = `0`, `Ai__DailyRequestsPerUser` = `0`, `Ai__TimeoutSeconds` = `4` y `Ai__SettingsPollSeconds` = `0`, cada uno por separado con el resto válido
+- CUANDO la API intenta arrancar en cada caso
+- ENTONCES cada arranque falla con un mensaje que contiene la clave afectada
+
+#### Scenario: Límites superiores
+- DADO `Ai__MaxOutputTokens` = `4097`, `Ai__MaxToolIterations` = `11`, `Ai__RequestsPerMinute` = `61`, `Ai__DailyRequestsPerUser` = `1001`, `Ai__TimeoutSeconds` = `56` y `Ai__SettingsPollSeconds` = `301`, cada uno por separado con el resto válido
+- CUANDO la API intenta arrancar en cada caso
+- ENTONCES cada arranque falla con un mensaje que contiene la clave afectada
+
+#### Scenario: Extremos válidos
+- DADO `Ai__MaxOutputTokens` = `64` o `4096`, `Ai__MaxToolIterations` = `1` o `10`, `Ai__RequestsPerMinute` = `1` o `60`, `Ai__DailyRequestsPerUser` = `1` o `1000`, `Ai__TimeoutSeconds` = `5` o `55` y `Ai__SettingsPollSeconds` = `1` o `300`, cada uno por separado
+- CUANDO la API arranca con cada uno
+- ENTONCES arranca
+
+#### Scenario: Esfuerzo inválido
+- DADO `Ai__Provider=Anthropic` con clave y modelo válidos y `Ai__Effort` = `extreme`
+- CUANDO la API intenta arrancar
+- ENTONCES el arranque falla con un mensaje que contiene `Ai:Effort`; con `low`, `medium` o `high` arranca
+
+#### Scenario: Lista de proveedores permitidos con nombre desconocido
+- DADO `Ai__AllowedProviders=Anthropic,GitHubModels`
+- CUANDO la API intenta arrancar
+- ENTONCES el arranque falla con un mensaje que contiene `Ai:AllowedProviders`
+
+#### Scenario: Lista de proveedores permitidos válida
+- DADO `Ai__AllowedProviders=anthropic, OpenAI` (sin distinguir mayúsculas y con espacios)
+- CUANDO la API arranca
+- ENTONCES arranca
+
+#### Scenario: Claves maestras no validadas al arrancar
+- DADO `Ai__MasterKeys__1` con un Base64 inválido o `Ai__ActiveMasterKeyVersion` sin versión correspondiente, y el resto de la configuración válida
+- CUANDO la API arranca
+- ENTONCES arranca sin error y la protección de claves queda «no disponible»
+
+#### Scenario: Modelo demasiado largo
+- DADO `Ai__Model` de 101 caracteres con un proveedor activo
+- CUANDO la API intenta arrancar
+- ENTONCES el arranque falla con un mensaje que contiene `Ai:Model`
+
+#### Scenario: Configuración completa válida
+- DADO `Ai__Provider=Ollama`, `Ai__Endpoint=http://localhost:11434/` y `Ai__Model` válidos
+- CUANDO la API arranca
+- ENTONCES arranca y `GET /health` responde `200` sin conectar con el servidor de Ollama
+
+#### Scenario: El valor no se imprime
+- DADO `Ai__Provider=Anthropic`, `Ai__ApiKey` = `clave-secreta-prueba` y `Ai__Model` en blanco
+- CUANDO la API falla al arrancar
+- ENTONCES la excepción (y sus internas) no contiene `clave-secreta-prueba`

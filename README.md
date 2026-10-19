@@ -159,6 +159,26 @@ El asistente responde en español, en lenguaje natural, a preguntas sobre los fi
 
 Las pruebas del asistente **no llaman a ningún modelo real**: usan un `IChatClient` falso. La comprobación con un modelo real es manual y opcional.
 
+### Configuración del asistente por el responsable
+
+Además de las variables de entorno, un responsable (`Manager`) podrá elegir el proveedor, el modelo, el tiempo máximo, los tokens de salida y el esfuerzo de razonamiento, aportar su propia clave de API, probar la conexión y deshabilitar el asistente desde la página `/asistente/configuracion` (llegará en un cambio posterior de la misma serie). Lo guardado se fusiona sobre el entorno, vale para toda la empresa y se restablece al entorno borrando la configuración. Las decisiones están en el [ADR 0018](docs/adr/0018-configuracion-del-asistente-por-el-responsable.md).
+
+Claves de entorno nuevas (todas opcionales; se documentan en `.env.example`):
+
+| Clave | Uso |
+|---|---|
+| `Ai__AllowedProviders` | Proveedores que el responsable puede elegir, separados por comas: `Anthropic`, `OpenAI`, `Gemini`, `Ollama`. Sin ella, solo el proveedor del entorno. |
+| `Ai__Effort` | Esfuerzo de razonamiento por defecto: `low`, `medium` o `high`. |
+| `Ai__MasterKeys__1` | **Secreto.** Clave maestra de 32 bytes aleatorios en Base64 que cifra la clave de API guardada. Sin ella, el responsable no puede guardar una clave nueva (el asistente sigue funcionando con el entorno). |
+| `Ai__ActiveMasterKeyVersion` | Versión de la clave maestra con la que se cifra (por ejemplo `1`). |
+| `Ai__SettingsPollSeconds` | Cada cuántos segundos cada instancia revisa la configuración guardada (30 por defecto). |
+
+`OpenAI` y `Gemini` se suman a `Anthropic` y `Ollama`: el proveedor del entorno (`Ai__Provider`) puede ser cualquiera de los cuatro, y los dos nuevos exigen `Ai__ApiKey` y `Ai__Model`. La URL de cada proveedor en la nube la fija el servidor; solo `Ollama` usa `Ai__Endpoint`.
+
+**Rotación de la clave maestra.** Añada `Ai__MasterKeys__2`, cambie `Ai__ActiveMasterKeyVersion` a `2` y redespliegue: las claves guardadas con la versión 1 siguen descifrándose mientras exista `Ai__MasterKeys__1`. Un guardado del responsable sin clave nueva recifra la conservada con la versión activa. Retire la versión 1 solo cuando ninguna fila la use (`credential_key_version` en `assistant_settings`). Defina la clave maestra **antes** de que un responsable guarde una clave de API y nunca la escriba en archivos del repositorio.
+
+> **Datos personales y alcance.** Con una clave aportada por el responsable, los nombres y las horas de los fichajes consultados se envían a ese proveedor externo (RGPD), y un cambio afecta a toda la empresa. Revise el tratamiento de datos antes de habilitar un proveedor en la nube con datos reales.
+
 ## Docker y Docker Compose
 
 ```powershell
@@ -323,6 +343,7 @@ openspec/                     Especificaciones y cambios (Spec Driven Developmen
 15. [Datos de demostración de un mes](docs/adr/0015-datos-de-demostracion-de-un-mes.md)
 16. [Vista mensual de fichajes y hora local en la Web](docs/adr/0016-vista-mensual-y-hora-local.md)
 17. [Asistente de IA con herramientas de solo lectura](docs/adr/0017-asistente-ia-con-herramientas-de-solo-lectura.md)
+18. [Configuración del asistente por el responsable](docs/adr/0018-configuracion-del-asistente-por-el-responsable.md)
 
 ## Integración continua
 
