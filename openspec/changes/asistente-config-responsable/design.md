@@ -69,7 +69,7 @@ Manager     Endpoint PUT     SaveUseCase          Store(EF)        Protector    
 | `timeoutSeconds` | 5-55 si se envía. |
 | `maxOutputTokens` | 64-4096 si se envía. |
 | `effort` | Nulo o `low`/`medium`/`high` (sin distinguir mayúsculas). Solo si el proveedor lo admite (DD-12); con `None`, 400. |
-| `credential` | Opcional. Si el proveedor requiere clave, tras el guardado debe existir una (nueva, guardada del **mismo** proveedor, o de entorno si el proveedor es el del entorno). Cambiar de proveedor descarta la clave guardada anterior. Rechazada si no hay clave maestra (DD-7). |
+| `credential` | Opcional. Si el proveedor requiere clave, tras el guardado debe existir una (nueva, guardada del **mismo** proveedor, o de entorno si el proveedor es el del entorno). Cambiar de proveedor descarta la clave guardada anterior. Con proveedor `None` una clave nueva se rechaza con error en `credential`. Rechazada si no hay clave maestra (DD-7). |
 | `concurrencyToken` | Obligatorio; cadena numérica (`"0"` = sin fila). |
 
 El juego de caracteres del modelo es seguro porque el modelo viaja en el cuerpo JSON de la petición al proveedor, nunca se concatena en una URL ni en una ruta. Los límites numéricos coinciden con los de `AiOptionsValidator` (una única fuente: constantes en Application que el validador de Infrastructure reutiliza).
