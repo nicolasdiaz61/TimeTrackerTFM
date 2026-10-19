@@ -12,12 +12,12 @@ Fuera de alcance: ausencias, IA, despliegue en Railway, hooks de Git, CI ejecuta
 
 ### Requirement: Estructura de proyectos y destino de plataforma
 
-La solución DEBE ser `TimeTracker.sln` en formato clásico e incluir en `src/` `TimeTracker.Domain`, `TimeTracker.Application`, `TimeTracker.Infrastructure`, `TimeTracker.Api` y `TimeTracker.Web`, y en `tests/` `TimeTracker.Domain.Tests`, `TimeTracker.Application.Tests`, `TimeTracker.Api.IntegrationTests` y `TimeTracker.ArchitectureTests`. Todos los proyectos DEBEN apuntar a `net10.0`. `global.json` DEBE fijar el SDK `10.0.302` con `rollForward: latestFeature`; NO DEBE seleccionar un ejecutor de pruebas distinto del predeterminado del SDK (VSTest).
+La solución DEBE ser `TimeTracker.sln` en formato clásico e incluir en `src/` `TimeTracker.Domain`, `TimeTracker.Application`, `TimeTracker.Infrastructure`, `TimeTracker.Api` y `TimeTracker.Web`, y en `tests/` `TimeTracker.Domain.Tests`, `TimeTracker.Application.Tests`, `TimeTracker.Infrastructure.Tests`, `TimeTracker.Api.IntegrationTests`, `TimeTracker.ArchitectureTests` y las pruebas de la Web que ya existan. Todos los proyectos DEBEN apuntar a `net10.0`. `global.json` DEBE fijar el SDK `10.0.302` con `rollForward: latestFeature`; NO DEBE seleccionar un ejecutor de pruebas distinto del predeterminado del SDK (VSTest).
 
 #### Scenario: Contenido de la solución
 - DADO el repositorio con el cambio aplicado
 - CUANDO se ejecuta `dotnet sln TimeTracker.sln list`
-- ENTONCES aparecen exactamente los 9 proyectos indicados y no existe `TimeTracker.slnx`
+- ENTONCES aparecen los proyectos indicados, incluido `TimeTracker.Infrastructure.Tests`, y no existe `TimeTracker.slnx`
 
 #### Scenario: Destino de plataforma
 - DADO cada `.csproj`
@@ -26,10 +26,10 @@ La solución DEBE ser `TimeTracker.sln` en formato clásico e incluir en `src/` 
 
 ### Requirement: Regla de dependencias por referencias de proyecto
 
-Las referencias de proyecto DEBEN ser: Domain sin referencias; Application solo Domain; Infrastructure solo Application; Api solo Application e Infrastructure (composition root); Web ninguna referencia a los demás proyectos de `src/`, comunicándose con la API solo por HTTP. `Domain` y `Application` NO DEBEN tener dependencias de paquetes externos (Infrastructure incorpora EF Core y Npgsql; las capas internas no).
+Las referencias de proyecto DEBEN ser: Domain sin referencias; Application solo Domain; Infrastructure solo Application (y Domain por transitividad); Api solo Application e Infrastructure (composition root); Web ninguna referencia a los demás proyectos de `src/`, comunicándose con la API solo por HTTP; `TimeTracker.Infrastructure.Tests` solo Infrastructure, Application y Domain. `Domain` y `Application` NO DEBEN tener dependencias de paquetes externos (Infrastructure incorpora EF Core, Npgsql y los paquetes de IA; las capas internas no). El asistente DEBE depender de los casos de uso y puertos existentes de Application; NO DEBE acceder a la base de datos directamente ni duplicar la autorización de los casos de uso.
 
 #### Scenario: Referencias esperadas
-- DADO cada proyecto de `src/`
+- DADO cada proyecto de `src/` y `TimeTracker.Infrastructure.Tests`
 - CUANDO se ejecuta `dotnet list <proyecto> reference`
 - ENTONCES coincide con la lista permitida y Web no lista ningún proyecto de `src/`
 
@@ -42,6 +42,11 @@ Las referencias de proyecto DEBEN ser: Domain sin referencias; Application solo 
 - DADO `TimeTracker.Application.csproj`
 - CUANDO se ejecuta `dotnet list TimeTracker.Application package`
 - ENTONCES no lista ningún paquete directo
+
+#### Scenario: El asistente no usa la base de datos directamente
+- DADO el código del asistente en `TimeTracker.Infrastructure`
+- CUANDO se revisan sus dependencias
+- ENTONCES obtiene datos solo a través de los casos de uso de Application y no referencia el contexto de EF Core
 
 ### Requirement: Prueba de arquitectura por reflexión
 
@@ -198,12 +203,32 @@ Nota de verificación: versiones de las imágenes base de Docker NO verificadas;
 
 ### Requirement: ADR y README
 
-`docs/adr/` DEBE contener los ADR 0001 a 0012: los diez previos (formato, net10.0, monolito modular y `.sln`, minimal APIs y OpenAPI, WASM y CORS, pila de pruebas, configuración y validación, 0008 persistencia, 0009 identidad provisional y 0010 tiempo) y, nuevos, 0011 «Autenticación con JWT propio, roles y equipo» y 0012 «Sesión en la Web y riesgo XSS»; cada uno con contexto, decisión, consecuencias y alternativas. El ADR 0009 DEBE figurar con el estado «Sustituido por 0011» y el 0011 DEBE declarar que lo sustituye. El 0011 DEBE registrar la ausencia de refresh token (desviación consciente de AGENTS §6) y la ausencia de FK de `time_entries.employee_id` a `users`, ambas con su disparador de revisión; el 0012 DEBE registrar el uso de `sessionStorage` y el riesgo XSS aceptado. `README.md` DEBE describir el proyecto, la pila, cómo compilar, probar (con la necesidad de Docker) y ejecutar (incluido `docker compose up`, las rutas `/login`, `/fichajes` y `/equipo` y el puerto `5274`), la estructura, los usuarios de prueba inventados (dominio `example.test`) con la contraseña de demostración (que figura solo en el README, nunca en `.env.example`, y que se copia a `Seed__DemoPassword` en el `.env` local para usar la siembra), el aviso de no activar la siembra en un despliegue real, el comando para generar `Jwt__SigningKey`, el origen de la Web (`Cors__AllowedOrigins__0=http://localhost:5172`) y que `docker compose down -v` borra los fichajes de desarrollo anteriores. `README.md` NO DEBE mencionar `Identity__DevelopmentEmployeeId`. `openspec/config.yaml` DEBE actualizarse con el estado de la autenticación y sin la nota de identidad provisional.
+`docs/adr/` DEBE contener los ADR 0001 a 0017: los previos vigentes y, nuevo, 0017 sobre el asistente de IA. El ADR 0017 DEBE registrar con contexto, decisión, consecuencias y alternativas: la IA en Infrastructure con Application sin SDK de IA (alternativa A) y las alternativas descartadas; que las herramientas son de solo lectura y delegan la autorización en los casos de uso; el tratamiento de datos personales (nombres y horas de fichajes) enviados al proveedor en la nube (RGPD), la minimización y el uso de datos inventados en la demostración; los límites de consumo (limitador por minuto y por usuario tras la autorización, tope diario por usuario en memoria con su limitación: se reinicia con cada despliegue y no se comparte entre réplicas, y presupuesto en la consola del proveedor) y la ausencia de prompt y respuesta en los registros; el cambio de orden del pipeline respecto a la decisión archivada DD-21; y el comportamiento sin `Ai:Provider`. Los ADR no se reescriben. `README.md` DEBE describir además el asistente: qué hace, que es de solo lectura, cómo habilitarlo y deshabilitarlo con `Ai__Provider` (`Anthropic` en Railway con `Ai__ApiKey` como secreto; `Ollama` local con `Ai__Endpoint`), el modelo como configuración, la ruta `/asistente`, el aviso sobre datos personales y el proveedor en la nube, y que las pruebas del asistente no llaman a un modelo real. `README.md` NO DEBE contener ninguna clave de API real.
 
 #### Scenario: ADR completos
 - DADO `docs/adr/`
 - CUANDO se listan los archivos
-- ENTONCES existen trece ADR numerados 0001 a 0013, cada uno con las cuatro secciones
+- ENTONCES existen diecisiete ADR numerados 0001 a 0017, cada uno con las cuatro secciones
+
+#### Scenario: Contenido del ADR 0017
+- DADO el ADR 0017
+- CUANDO se revisan sus consecuencias y alternativas
+- ENTONCES menciona los datos personales y el proveedor en la nube, la ubicación de la IA en Infrastructure, el modo solo lectura, los límites de consumo (incluida la limitación del tope diario en memoria), el nuevo orden del limitador y la alternativa B descartada
+
+#### Scenario: ADR anteriores intactos
+- DADO los ADR 0001 a 0016
+- CUANDO se comparan con su versión anterior al cambio
+- ENTONCES no han sido reescritos
+
+#### Scenario: README cubre el asistente
+- DADO `README.md`
+- CUANDO se revisa
+- ENTONCES explica cómo habilitar y deshabilitar el asistente con `Ai__Provider`, los dos proveedores, la ruta `/asistente` y el aviso de datos personales
+
+#### Scenario: README sin secretos
+- DADO `README.md`, `.env.example` y `docker-compose.yml`
+- CUANDO se busca un valor de `Ai__ApiKey`
+- ENTONCES no hay ninguno
 
 #### Scenario: ADR 0009 sustituido
 - DADO `docs/adr/0009*` y `docs/adr/0011*`
@@ -232,17 +257,22 @@ Nota de verificación: versiones de las imágenes base de Docker NO verificadas;
 
 ### Requirement: Exportación del contrato OpenAPI sin base de datos ni identidad real
 
-La generación de `docs/api/openapi.json` durante el build (`GetDocument.Insider`) DEBE funcionar sin base de datos accesible y sin variables de entorno del desarrollador: la rama de generación DEBE forzar el entorno `Development` y aportar valores ficticios para `Cors:AllowedOrigins`, `ConnectionStrings:Default` (servidor inexistente, sin contraseña real) y `Jwt:SigningKey` (ficticia, de al menos 32 bytes), y desactivar la siembra (`Seed:DemoUsers` = `false`), de modo que `ValidateOnStart` no falle y no se ejecute ninguna siembra. Estos valores NO DEBEN estar en `appsettings*.json` ni afectar a la ejecución normal.
+La generación de `docs/api/openapi.json` durante el build (`GetDocument.Insider`) DEBE funcionar sin base de datos accesible y sin variables de entorno del desarrollador: la rama de generación DEBE forzar el entorno `Development` y aportar valores ficticios para `Cors:AllowedOrigins`, `ConnectionStrings:Default` (servidor inexistente, sin contraseña real) y `Jwt:SigningKey` (ficticia, de al menos 32 bytes), y desactivar la siembra (`Seed:DemoUsers` = `false`), de modo que `ValidateOnStart` no falle y no se ejecute ninguna siembra. El contrato DEBE generarse con el asistente deshabilitado (sin `Ai:Provider`) y sin ninguna clave de IA, sin contactar con proveedor alguno. Estos valores NO DEBEN estar en `appsettings*.json` ni afectar a la ejecución normal.
 
 #### Scenario: Contrato generado en build
-- DADO un entorno sin `ConnectionStrings__Default`, `Jwt__SigningKey` ni `ASPNETCORE_ENVIRONMENT=Development`
+- DADO un entorno sin `ConnectionStrings__Default`, `Jwt__SigningKey`, `Ai__*` ni `ASPNETCORE_ENVIRONMENT=Development`
 - CUANDO se ejecuta `dotnet build` de `TimeTracker.Api`
-- ENTONCES el build termina con `0` y `docs/api/openapi.json` contiene los tres endpoints de fichajes, `/api/auth/login`, `/api/auth/me`, `/api/team/members` y `/api/team/members/{memberId}/time-entries`
+- ENTONCES el build termina con `0` y `docs/api/openapi.json` contiene los tres endpoints de fichajes, `/api/auth/login`, `/api/auth/me`, `/api/team/members`, `/api/team/members/{memberId}/time-entries` y `/api/asistente`
 
 #### Scenario: Sin efecto en la ejecución normal
 - DADO la API arrancada fuera de la generación del contrato, en `Production` y sin `Jwt__SigningKey`
 - CUANDO intenta arrancar
 - ENTONCES falla por la validación de configuración con un mensaje que contiene `Jwt:SigningKey` (los valores ficticios no se aplican)
+
+#### Scenario: Prueba de contrato
+- DADO `OpenApiContractTests`
+- CUANDO se ejecutan con el endpoint añadido
+- ENTONCES pasan y el documento versionado coincide con el generado
 
 ### Requirement: Paquetes de autenticación acotados por proyecto
 
@@ -281,3 +311,53 @@ El código fuente (`src/`) y las pruebas (`tests/`, salvo la prueba que comprueb
 - DADO `src/TimeTracker.Api`
 - CUANDO se listan sus tipos
 - ENTONCES no existen el adaptador de desarrollo de `ICurrentUser`, sus opciones, su validador ni su extensión, y `HttpContextCurrentUser` sí existe
+
+## Tanda asistente-ia: asistente de IA
+
+### Requirement: Paquetes de IA acotados a Infrastructure
+
+`Microsoft.Extensions.AI`, `Anthropic` y `OllamaSharp` DEBEN declararse solo en `TimeTracker.Infrastructure`, con versión fija en `Directory.Packages.props`. `Microsoft.Extensions.AI.Abstractions` PUEDE declararse además en proyectos de pruebas que construyen un `IChatClient` falso. `Domain`, `Application` y `Web` NO DEBEN declarar ningún paquete de IA ni referenciar sus ensamblados. `TimeTracker.Api` solo compone las dependencias (composition root) y NO DEBE declarar paquetes de IA por sí mismo.
+
+#### Scenario: Paquetes en su proyecto
+- DADO los `.csproj` de `src/`
+- CUANDO se buscan `PackageReference` de `Microsoft.Extensions.AI`, `Anthropic` y `OllamaSharp`
+- ENTONCES solo aparecen en `TimeTracker.Infrastructure` y ninguno lleva atributo `Version`
+
+#### Scenario: Application, Domain y Web sin IA
+- DADO `TimeTracker.Domain.csproj`, `TimeTracker.Application.csproj` y `TimeTracker.Web.csproj`
+- CUANDO se ejecuta `dotnet list <proyecto> package`
+- ENTONCES ninguno lista un paquete de IA y Application sigue sin ningún paquete directo
+
+#### Scenario: Application sin ensamblados de IA
+- DADO `DependencyRuleTests`
+- CUANDO se ejecutan
+- ENTONCES pasan: Application solo referencia Domain y ensamblados `System*` o `netstandard`
+
+#### Scenario: Sin vulnerabilidades
+- DADO el cambio aplicado
+- CUANDO se ejecuta `dotnet list TimeTracker.sln package --vulnerable --include-transitive`
+- ENTONCES informa de que no hay paquetes vulnerables y `dotnet build -warnaserror` no falla por NU1903
+
+### Requirement: Proyecto de pruebas de Infrastructure sin Docker
+
+La solución DEBE incluir `tests/TimeTracker.Infrastructure.Tests` (xUnit, `net10.0`) con una implementación falsa de `IChatClient`. Sus pruebas NO DEBEN requerir Docker, red ni un modelo real, y DEBEN cubrir la seguridad por herramienta (empleado solo ve lo suyo; herramientas de equipo no ofrecidas a un empleado; responsable solo ve reportes directos; ajeno, inexistente y propio dan la misma respuesta), el tope de iteraciones, los límites y los fallos del proveedor sin filtrar detalle. Las pruebas con un modelo real DEBEN estar separadas, ser opcionales y estar desactivadas por defecto.
+
+#### Scenario: Proyecto en la solución
+- DADO `TimeTracker.sln`
+- CUANDO se ejecuta `dotnet sln TimeTracker.sln list`
+- ENTONCES aparece `tests/TimeTracker.Infrastructure.Tests`
+
+#### Scenario: Ejecución sin Docker
+- DADO una máquina sin Docker
+- CUANDO se ejecuta `dotnet test` sobre `TimeTracker.Infrastructure.Tests`
+- ENTONCES las pruebas pasan sin red
+
+#### Scenario: Sin modelo real por defecto
+- DADO `dotnet test` sobre toda la solución sin variables de proveedor
+- CUANDO termina
+- ENTONCES ninguna prueba contacta con un proveedor de IA
+
+#### Scenario: Seguridad por herramienta cubierta
+- DADO las pruebas del proyecto
+- CUANDO se listan
+- ENTONCES existen pruebas para cada uno de los cuatro comportamientos de seguridad indicados
