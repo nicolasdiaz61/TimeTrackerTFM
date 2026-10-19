@@ -62,6 +62,6 @@ public static class AssistantSettingsResolver
             return SettingSource.Stored;
         }
 
-        return environment.Credential is not null && provider == environment.Provider ? SettingSource.Env : SettingSource.None;
+        return UsableCredential.FromEnvironment(environment, provider) is not null ? SettingSource.Env : SettingSource.None;
     }
 }

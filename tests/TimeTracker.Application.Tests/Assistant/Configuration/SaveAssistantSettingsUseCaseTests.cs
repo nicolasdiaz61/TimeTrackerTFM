@@ -1,3 +1,5 @@
+using System.Text;
+
 using Microsoft.Extensions.Time.Testing;
 
 using TimeTracker.Application.Assistant.Configuration;
@@ -78,7 +80,7 @@ public class SaveAssistantSettingsUseCaseTests
         await Save(Input(provider: "OpenAI", credential: SecretKey));
 
         Assert.Equal((short)2, _store.Row!.Credential!.KeyVersion);
-        Assert.DoesNotContain(SecretKey, _store.Row.Credential.ToString());
+        Assert.DoesNotContain(SecretKey, Encoding.UTF8.GetString(_store.Row.Credential.Ciphertext));
         Assert.True(_store.Audits.Single().CredentialChanged);
     }
 
@@ -92,6 +94,19 @@ public class SaveAssistantSettingsUseCaseTests
 
         Assert.Equal((short)2, _store.Row!.Credential!.KeyVersion);
         Assert.False(_store.Audits.Single().CredentialChanged);
+    }
+
+    [Fact]
+    public async Task KeepingTheKey_WhenTheMasterKeyIsLostBeforeReEncrypting_KeepsTheStoredOneAndSaves()
+    {
+        var original = StoreKeyFor(AssistantProvider.OpenAI, keyVersion: 1);
+        _store.Row = Stored(AssistantProvider.OpenAI, model: "viejo", credential: original);
+        _protector.FailProtectAfterAvailabilityCheck = true;
+
+        Saved(await Save(Input(provider: "OpenAI", model: "nuevo"), _store.Row.Version));
+
+        Assert.Equal("nuevo", _store.Row!.Model);
+        Assert.Same(original, _store.Row.Credential);
     }
 
     [Fact]
@@ -121,6 +136,42 @@ public class SaveAssistantSettingsUseCaseTests
         Assert.True(view.Effective.CredentialConfigured);
         Assert.True(_protector.TryUnprotect(_store.Row!.Credential!, AssistantProvider.Gemini, out var plain));
         Assert.Equal("otra-clave-654321", plain.Value);
+    }
+
+    [Fact]
+    public async Task AKeptKeyThatCannotBeDecrypted_IsRejectedOnTheCredentialFieldWithoutWriting()
+    {
+        _env = Env(apiKey: null, allowedProviders: "Anthropic,OpenAI,Gemini");
+        _store.Row = Stored(AssistantProvider.OpenAI, credential: StoreKeyFor(AssistantProvider.OpenAI, keyVersion: 1));
+        _protector.RetiredVersions.Add(1);
+
+        var result = await Save(Input(provider: "OpenAI"), _store.Row.Version);
+
+        Assert.Equal(["credential"], InvalidFields(result));
+        Assert.Equal(0, _store.Writes);
+        Assert.Equal(0, _reloader.Calls);
+    }
+
+    [Fact]
+    public async Task AKeptKeyThatCannotBeDecrypted_IsReplacedWhenTheRequestBringsANewOne()
+    {
+        _env = Env(apiKey: null, allowedProviders: "Anthropic,OpenAI,Gemini");
+        _store.Row = Stored(AssistantProvider.OpenAI, credential: StoreKeyFor(AssistantProvider.OpenAI, keyVersion: 1));
+        _protector.RetiredVersions.Add(1);
+        _protector.ActiveVersion = 2;
+
+        Saved(await Save(Input(provider: "OpenAI", credential: SecretKey), _store.Row.Version));
+
+        Assert.True(_protector.TryUnprotect(_store.Row!.Credential!, AssistantProvider.OpenAI, out _));
+    }
+
+    [Fact]
+    public async Task AKeptKeyThatCannotBeDecrypted_IsAcceptedWhenTheEnvironmentHasAKeyForTheProvider()
+    {
+        _store.Row = Stored(AssistantProvider.Anthropic, credential: StoreKeyFor(AssistantProvider.Anthropic, keyVersion: 1));
+        _protector.RetiredVersions.Add(1);
+
+        Saved(await Save(Input(provider: "Anthropic"), _store.Row.Version));
     }
 
     [Fact]

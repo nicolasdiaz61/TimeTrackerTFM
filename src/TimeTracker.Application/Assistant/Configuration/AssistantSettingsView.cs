@@ -21,7 +21,7 @@ public sealed record AssistantSettingsView(
         var allowed = Configuration.AllowedProviders.Resolve(environment).Providers;
         var applied = stored is not null && (stored.Provider == AssistantProvider.None || allowed.Contains(stored.Provider));
         var inUse = applied ? stored : null;
-        var credentialUsable = inUse?.Credential is { } encrypted && protector.TryUnprotect(encrypted, inUse.Provider, out _);
+        var credentialUsable = inUse is not null && UsableCredential.FromStored(inUse, inUse.Provider, protector) is not null;
 
         return new AssistantSettingsView(
             AssistantSettingsResolver.Resolve(environment, inUse, credentialUsable),

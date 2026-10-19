@@ -7,7 +7,7 @@ namespace TimeTracker.Application.Tests.Assistant.Configuration;
 public class AssistantSettingsRulesTests
 {
     private static SettingsValidation Validate(AssistantSettingsInput input, AssistantEnvironmentDefaults? env = null, AssistantSettings? stored = null)
-        => AssistantSettingsRules.Validate(input, env ?? Env(), stored);
+        => AssistantSettingsRules.Validate(input, env ?? Env(), stored, new FakeProtector());
 
     private static string[] Fields(SettingsValidation validation) => [.. validation.Errors.Select(e => e.Field)];
 
@@ -54,7 +54,7 @@ public class AssistantSettingsRulesTests
 
         Assert.Equal("model", error.Field);
         Assert.Contains("model", error.Message);
-        Assert.DoesNotContain(model.Trim() + "\"", error.Message);
+        Assert.True(model.Trim().Length == 0 || !error.Message.Contains(model.Trim(), StringComparison.Ordinal), "El mensaje no debe repetir el valor recibido.");
     }
 
     [Fact]
@@ -78,6 +78,7 @@ public class AssistantSettingsRulesTests
     [Theory]
     [InlineData("low")]
     [InlineData("Medium")]
+    [InlineData("  low ")]
     [InlineData("HIGH")]
     public void Effort_WithAKnownLevel_IsAcceptedWithoutCaseSensitivity(string effort)
     {
@@ -148,9 +149,21 @@ public class AssistantSettingsRulesTests
     [Fact]
     public void Credential_StoredForTheSameProvider_IsEnough()
     {
-        var stored = Stored(AssistantProvider.Gemini, credential: new EncryptedCredential([1], new byte[12], 1));
+        var stored = Stored(AssistantProvider.Gemini, credential: new FakeProtector().Protect(new AssistantCredential(SecretKey), AssistantProvider.Gemini));
 
         Assert.True(Validate(Input(provider: "Gemini"), Env(apiKey: null, allowedProviders: "Gemini"), stored).IsValid);
+    }
+
+    [Fact]
+    public void Credential_StoredButUndecryptable_IsNotEnough()
+    {
+        var protector = new FakeProtector();
+        var stored = Stored(AssistantProvider.Gemini, credential: protector.Protect(new AssistantCredential(SecretKey), AssistantProvider.Gemini));
+        protector.RetiredVersions.Add(1);
+
+        var result = AssistantSettingsRules.Validate(Input(provider: "Gemini"), Env(apiKey: null, allowedProviders: "Gemini"), stored, protector);
+
+        Assert.Equal(["credential"], Fields(result));
     }
 
     [Fact]
