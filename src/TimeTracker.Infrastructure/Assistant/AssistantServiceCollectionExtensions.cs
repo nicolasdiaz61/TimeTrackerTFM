@@ -2,6 +2,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 
 using TimeTracker.Application.Assistant;
+using TimeTracker.Application.Assistant.Configuration;
 
 namespace TimeTracker.Infrastructure.Assistant;
 
@@ -26,6 +27,8 @@ public static class AssistantServiceCollectionExtensions
             var options = provider.GetRequiredService<IOptions<AiOptions>>().Value;
             return new AssistantChatClient(ChatClientFactory.Create(options), options);
         });
+        // Singleton: decodifica y valida las claves maestras una sola vez; sin clave activa válida queda no disponible.
+        services.AddSingleton<IAssistantCredentialProtector, AesGcmCredentialProtector>();
         services.AddSingleton<IAssistantQuota, InMemoryAssistantQuota>();
         services.AddScoped<AssistantToolset>();
         services.AddScoped<IAssistantEngine, ChatAssistantEngine>();

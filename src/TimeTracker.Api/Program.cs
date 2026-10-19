@@ -24,6 +24,7 @@ builder.Services.AddTimeEntries();
 builder.Services.AddTeam();
 builder.Services.AddDemoSeeding();
 builder.Services.AddAssistant();
+builder.Services.AddHostedService<ProtectionStatusLogger>();
 builder.Services.AddRateLimiting();
 builder.Services.AddOpenApi(options => options.AddBearerSecurity());
 
