@@ -9,7 +9,7 @@ Aplicación de control de tiempos y ausencias para empresas: fichajes, ausencias
 - **Frontend:** Blazor WebAssembly (proyecto independiente). Solo presenta y llama a la API.
 - **Backend:** API en .NET con Clean Architecture, desplegada como un único monolito modular.
 - **Datos:** PostgreSQL con EF Core.
-- **IA:** acceso al modelo mediante la abstracción `IChatClient` (Microsoft.Extensions.AI). El proveedor y el modelo se eligen por configuración, sin cambiar código.
+- **IA:** acceso al modelo mediante la abstracción `IChatClient` (Microsoft.Extensions.AI). El proveedor y el modelo se eligen por configuración de entorno o guardada por un Manager (ADR 0018), sin cambiar código.
 - Todos los datos de ejemplo son inventados. No se incluye código, datos ni nombres de ninguna empresa real.
 
 Idioma: la documentación, los mensajes de commit y los textos de usuario van en español. Los identificadores de código (clases, métodos, variables) van en inglés.
@@ -89,7 +89,7 @@ Idioma: la documentación, los mensajes de commit y los textos de usuario van en
 - **Base de datos:** cambios mediante migraciones versionadas. Datos de prueba generados por un script y reproducibles.
 - **Observabilidad:** registros estructurados, comprobaciones de salud y seguimiento de errores en producción. Mide con umbrales concretos y alerta de forma accionable.
 - **Costes:** el modelo de IA de producción tiene presupuesto y límite de uso definidos.
-- **Cambio de proveedor de IA:** solo mediante configuración (`Ai:Provider`, `Ai:Model`, `Ai:Endpoint`). En desarrollo se usa un modelo pequeño local (Ollama).
+- **Cambio de proveedor de IA:** solo mediante configuración: de entorno (`Ai:Provider`, `Ai:Model`, `Ai:Endpoint`) o configuración guardada por un Manager (ADR 0018). En desarrollo se usa un modelo pequeño local (Ollama).
 
 ## 8. Documentación
 

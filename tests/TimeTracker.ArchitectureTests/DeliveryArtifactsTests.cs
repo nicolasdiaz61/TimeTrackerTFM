@@ -269,14 +269,14 @@ public partial class DeliveryArtifactsTests
     // --- ADR (SA-20, SA-21, SA-22) ---
 
     [Fact]
-    public void Adr_Directory_HasSeventeenAdrsWithFourSections()
+    public void Adr_Directory_HasEighteenAdrsWithFourSections()
     {
         string[] sections = ["## Contexto", "## Decisión", "## Consecuencias", "## Alternativas"];
         var adrs = Directory.GetFiles(Path.Combine(RepositoryRoot.Path, "docs", "adr"), "0*.md")
             .Order(StringComparer.Ordinal)
             .ToList();
 
-        Assert.Equal(17, adrs.Count);
+        Assert.Equal(18, adrs.Count);
         for (var index = 0; index < adrs.Count; index++)
         {
             var name = Path.GetFileName(adrs[index]);
@@ -304,6 +304,46 @@ public partial class DeliveryArtifactsTests
         var missing = required.Where(text => !adr.Contains(text, StringComparison.OrdinalIgnoreCase)).ToList();
 
         Assert.True(missing.Count == 0, $"El ADR 0017 no menciona: {string.Join(", ", missing)}");
+    }
+
+    [Fact]
+    public void Adr0018_RecordsTheManagerConfigurationDecisionAndWhatItAmends()
+    {
+        var adr = ReadRepositoryFile("docs/adr/0018-configuracion-del-asistente-por-el-responsable.md");
+
+        string[] required =
+        [
+            "AGENTS", "§1", "§7", "ADR 0017", "AES-256-GCM", "clave maestra", "solo escritura", "solo inserción",
+            "xmin", "datos personales", "rol obsoleto", "GitHub Models", "OpenCode Zen", "Data Protection", "Ai__AllowedProviders",
+        ];
+        var missing = required.Where(text => !adr.Contains(text, StringComparison.OrdinalIgnoreCase)).ToList();
+
+        Assert.True(missing.Count == 0, $"El ADR 0018 no menciona: {string.Join(", ", missing)}");
+    }
+
+    [Fact]
+    public void AgentsMd_AllowsStoredConfigurationForTheAssistantProviderAndPointsToAdr0018()
+    {
+        var agents = ReadRepositoryFile("AGENTS.md");
+
+        Assert.Contains("configuración de entorno o guardada por un Manager", agents, StringComparison.Ordinal);
+        Assert.Contains("configuración guardada", agents, StringComparison.Ordinal);
+        Assert.Contains("ADR 0018", agents, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Readme_ExplainsTheManagerAssistantConfigurationAndKeyRotation()
+    {
+        var readme = ReadRepositoryFile("README.md");
+
+        string[] required =
+        [
+            "/asistente/configuracion", "Ai__MasterKeys__1", "Ai__ActiveMasterKeyVersion", "Ai__AllowedProviders", "Ai__Effort",
+            "OpenAI", "Gemini", "rotación", "datos personales", "0018-configuracion-del-asistente-por-el-responsable.md",
+        ];
+        var missing = required.Where(text => !readme.Contains(text, StringComparison.OrdinalIgnoreCase)).ToList();
+
+        Assert.True(missing.Count == 0, $"README.md no menciona: {string.Join(", ", missing)}");
     }
 
     [Fact]
