@@ -18,7 +18,9 @@ public static class CorsServiceCollectionExtensions
             cors.AddDefaultPolicy(policy => policy
                 .WithOrigins([.. apiCors.Value.AllowedOrigins])
                 .AllowAnyHeader()
-                .AllowAnyMethod()));
+                .AllowAnyMethod()
+                // Sin esto el navegador oculta Retry-After a la Web (otro origen) y el aviso de espera del 429 no puede mostrarse.
+                .WithExposedHeaders("Retry-After")));
 
         return services;
     }

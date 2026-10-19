@@ -107,6 +107,23 @@ public class AssistantRateLimitTests
     }
 
     [Fact]
+    public async Task RateLimited429_ExposesRetryAfterToTheBrowser()
+    {
+        using var factory = new AssistantApiFactory(Model());
+        var client = factory.CreateClient();
+        await SendAsync(client, 5);
+        var request = new HttpRequestMessage(HttpMethod.Post, Route) { Content = JsonContent.Create(new { message = "hola" }) };
+        request.Headers.Add("Origin", ApiFactory.ValidOrigin);
+
+        var response = await client.SendAsync(request, CancellationToken.None);
+
+        Assert.Equal(HttpStatusCode.TooManyRequests, response.StatusCode);
+        Assert.True(response.Headers.Contains("Retry-After"));
+        var exposed = string.Join(',', response.Headers.GetValues("Access-Control-Expose-Headers"));
+        Assert.Contains("Retry-After", exposed, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public async Task InvalidRequestsAndDisabledAssistant_CountForTheMinuteButNotForTheDay()
     {
         using var factory = new AssistantApiFactory(settings: new Dictionary<string, string?> { ["Ai:RequestsPerMinute"] = "3" });
