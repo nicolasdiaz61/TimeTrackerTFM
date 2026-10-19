@@ -38,7 +38,7 @@ public static class AssistantSettingsRules
         {
             errors.Add(new FieldError("provider", "El campo provider debe ser un proveedor del catálogo."));
         }
-        else if (provider != AssistantProvider.None && !AllowedProviders.Resolve(environment).Contains(provider.Value))
+        else if (provider != AssistantProvider.None && !AllowedProviders.Resolve(environment).Providers.Contains(provider.Value))
         {
             errors.Add(new FieldError("provider", "El proveedor indicado en provider no está permitido en esta instalación."));
         }
@@ -109,11 +109,6 @@ public static class AssistantSettingsRules
         if (string.IsNullOrEmpty(effectiveModel) && !errors.Any(e => e.Field == "model"))
         {
             errors.Add(new FieldError("model", "El campo model es obligatorio: no hay modelo en el entorno."));
-        }
-
-        if (traits.RequiresEnvironmentEndpoint && !environment.HasEndpoint)
-        {
-            errors.Add(new FieldError("provider", "El proveedor indicado en provider necesita un endpoint definido en el entorno."));
         }
 
         var hasCredential = newCredential is not null
