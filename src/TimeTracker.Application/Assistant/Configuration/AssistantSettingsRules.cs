@@ -3,7 +3,7 @@ namespace TimeTracker.Application.Assistant.Configuration;
 /// <summary>Reglas puras de validación; los mensajes nombran el campo y nunca incluyen valores recibidos.</summary>
 public static class AssistantSettingsRules
 {
-    public static SettingsValidation Validate(AssistantSettingsInput input, AssistantEnvironmentDefaults environment, AssistantSettings? stored)
+    public static SettingsValidation Validate(AssistantSettingsInput input, AssistantEnvironmentDefaults environment, AssistantSettings? stored, IAssistantCredentialProtector protector)
     {
         var errors = new List<FieldError>();
         var provider = ParseProvider(input.Provider, environment, errors);
@@ -15,7 +15,7 @@ public static class AssistantSettingsRules
 
         if (provider is { } selected && selected != AssistantProvider.None)
         {
-            ValidateProviderRequirements(selected, input.Model is null ? environment.Model : model, credential, environment, stored, errors);
+            ValidateProviderRequirements(selected, input.Model is null ? environment.Model : model, credential, environment, stored, protector, errors);
         }
         else if (provider == AssistantProvider.None && credential is not null)
         {
@@ -107,6 +107,7 @@ public static class AssistantSettingsRules
         AssistantCredential? newCredential,
         AssistantEnvironmentDefaults environment,
         AssistantSettings? stored,
+        IAssistantCredentialProtector protector,
         List<FieldError> errors)
     {
         var traits = AssistantProviderTraits.For(provider);
@@ -116,8 +117,8 @@ public static class AssistantSettingsRules
         }
 
         var hasCredential = newCredential is not null
-            || (stored is { Credential: not null } && stored.Provider == provider)
-            || (environment.Credential is not null && environment.Provider == provider);
+            || UsableCredential.FromStored(stored, provider, protector) is not null
+            || UsableCredential.FromEnvironment(environment, provider) is not null;
         if (traits.RequiresCredential && !hasCredential)
         {
             errors.Add(new FieldError("credential", "El proveedor seleccionado necesita una clave en el campo credential."));

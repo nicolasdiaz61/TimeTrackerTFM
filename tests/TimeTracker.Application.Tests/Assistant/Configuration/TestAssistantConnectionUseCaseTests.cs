@@ -83,6 +83,19 @@ public class TestAssistantConnectionUseCaseTests
     }
 
     [Fact]
+    public async Task AStoredKeyThatCannotBeDecrypted_IsRejectedOnTheCredentialFieldWithoutCallingTheTester()
+    {
+        _env = Env(apiKey: null);
+        _store.Row = Stored(credential: _protector.Protect(new AssistantCredential(SecretKey), AssistantProvider.Anthropic));
+        _protector.RetiredVersions.Add(1);
+
+        var result = await Test(Empty);
+
+        Assert.Equal(["credential"], Assert.IsType<TestAssistantConnectionResult.Invalid>(result).Errors.Select(e => e.Field));
+        Assert.Empty(_tester.Received);
+    }
+
+    [Fact]
     public async Task WhenNothingIsStored_NothingChangesAfterTheTest()
     {
         _store.Row = Stored(model: "db-m");

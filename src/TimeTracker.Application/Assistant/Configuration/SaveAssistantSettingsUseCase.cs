@@ -41,7 +41,7 @@ public sealed class SaveAssistantSettingsUseCase(
             errors.Add(tokenError);
         }
 
-        var validation = AssistantSettingsRules.Validate(command.Input, env, stored);
+        var validation = AssistantSettingsRules.Validate(command.Input, env, stored, protector);
         errors.AddRange(validation.Errors);
         if (validation.Value is not { } value || errors.Count > 0)
         {

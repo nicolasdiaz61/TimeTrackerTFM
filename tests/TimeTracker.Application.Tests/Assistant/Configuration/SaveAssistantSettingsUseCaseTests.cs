@@ -124,6 +124,42 @@ public class SaveAssistantSettingsUseCaseTests
     }
 
     [Fact]
+    public async Task AKeptKeyThatCannotBeDecrypted_IsRejectedOnTheCredentialFieldWithoutWriting()
+    {
+        _env = Env(apiKey: null, allowedProviders: "Anthropic,OpenAI,Gemini");
+        _store.Row = Stored(AssistantProvider.OpenAI, credential: StoreKeyFor(AssistantProvider.OpenAI, keyVersion: 1));
+        _protector.RetiredVersions.Add(1);
+
+        var result = await Save(Input(provider: "OpenAI"), _store.Row.Version);
+
+        Assert.Equal(["credential"], InvalidFields(result));
+        Assert.Equal(0, _store.Writes);
+        Assert.Equal(0, _reloader.Calls);
+    }
+
+    [Fact]
+    public async Task AKeptKeyThatCannotBeDecrypted_IsReplacedWhenTheRequestBringsANewOne()
+    {
+        _env = Env(apiKey: null, allowedProviders: "Anthropic,OpenAI,Gemini");
+        _store.Row = Stored(AssistantProvider.OpenAI, credential: StoreKeyFor(AssistantProvider.OpenAI, keyVersion: 1));
+        _protector.RetiredVersions.Add(1);
+        _protector.ActiveVersion = 2;
+
+        Saved(await Save(Input(provider: "OpenAI", credential: SecretKey), _store.Row.Version));
+
+        Assert.True(_protector.TryUnprotect(_store.Row!.Credential!, AssistantProvider.OpenAI, out _));
+    }
+
+    [Fact]
+    public async Task AKeptKeyThatCannotBeDecrypted_IsAcceptedWhenTheEnvironmentHasAKeyForTheProvider()
+    {
+        _store.Row = Stored(AssistantProvider.Anthropic, credential: StoreKeyFor(AssistantProvider.Anthropic, keyVersion: 1));
+        _protector.RetiredVersions.Add(1);
+
+        Saved(await Save(Input(provider: "Anthropic"), _store.Row.Version));
+    }
+
+    [Fact]
     public async Task SwitchingToAProviderWithoutKey_DiscardsTheStoredKeyAndAuditsTheChange()
     {
         _env = Env(provider: AssistantProvider.Ollama, apiKey: null, hasEndpoint: true, allowedProviders: "Ollama,OpenAI");

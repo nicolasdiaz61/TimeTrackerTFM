@@ -27,7 +27,7 @@ public sealed class TestAssistantConnectionUseCase(
         var stored = await store.GetAsync(cancellationToken);
         var effective = AssistantSettingsView.Build(env, protector, stored).Effective;
 
-        var validation = AssistantSettingsRules.Validate(Complete(input, effective), env, stored);
+        var validation = AssistantSettingsRules.Validate(Complete(input, effective), env, stored, protector);
         if (validation.Value is not { } value)
         {
             return new TestAssistantConnectionResult.Invalid(validation.Errors);
@@ -62,12 +62,5 @@ public sealed class TestAssistantConnectionUseCase(
     }
 
     private AssistantCredential? FindCredential(AssistantProvider provider, AssistantEnvironmentDefaults env, AssistantSettings? stored)
-    {
-        if (stored is { Credential: { } encrypted } && stored.Provider == provider && protector.TryUnprotect(encrypted, provider, out var plain))
-        {
-            return plain;
-        }
-
-        return env.Provider == provider ? env.Credential : null;
-    }
+        => UsableCredential.FromStored(stored, provider, protector) ?? UsableCredential.FromEnvironment(env, provider);
 }
