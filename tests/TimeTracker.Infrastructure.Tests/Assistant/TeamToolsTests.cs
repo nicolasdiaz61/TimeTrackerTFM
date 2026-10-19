@@ -32,6 +32,18 @@ public class TeamToolsTests
     }
 
     [Fact]
+    public async Task MemberTimeEntries_ReturnPrecomputedHoursAndMinutesText()
+    {
+        var harness = Manager();
+        harness.SeedEntry(ToolHarness.Luis, new DateOnly(2026, 10, 15), new(8, 0), new(18, 4));
+
+        var result = await MemberEntriesAsync(harness, ToolHarness.Luis.ToString());
+
+        Assert.Equal(604, result.GetProperty("workedMinutes").GetInt32());
+        Assert.Equal("10 h 4 min", result.GetProperty("workedText").GetString());
+    }
+
+    [Fact]
     public async Task Members_DoNotIncludeTransitiveReports()
     {
         var harness = Manager();

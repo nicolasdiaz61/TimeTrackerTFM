@@ -183,7 +183,7 @@ Puerta de cada unidad (al terminar): `RESTORE` → `BUILD` → `TEST` → `COV-A
 ## 5. Verificación final extremo a extremo (tras PR 4)
 
 - [ ] 5.1 Suite completa: `RESTORE` → `BUILD` → `TEST` (con Docker) → `COV-A` ≥ 80 → `COV-D` 100 → `FORMAT` → `VULN`; confirmar `dotnet sln TimeTracker.sln list` con `Infrastructure.Tests`, `DependencyRuleTests` verde (Application sin IA) y 17 ADR.
-- [ ] 5.2 **Verificación manual con modelo real** (Ollama local o clave de nube). El **usuario aporta la clave** definiéndola en su propia sesión de PowerShell (`$env:Ai__ApiKey`); **nunca se escribe una clave en disco, en `.env`, en el repositorio ni en el informe**. Pasos: `docker compose` con `Ai__Provider=Ollama` (o `Anthropic`), `Ai__Model` y `Ai__Endpoint`/clave por variables de sesión; con datos de demostración, `luis.empleado@example.test` pregunta «¿cuántas horas trabajé la semana pasada?» y `marta.responsable@example.test` pregunta por lo propio y por un reporte; las respuestas coinciden con `/fichajes` y `/equipo` (el resumen por día puede diferir ≤ 1 min por intervalo partido); un empleado que pide el equipo no obtiene datos ajenos; sin `Ai__Provider` la página muestra el aviso. Registrar el resultado (sin claves ni respuestas reales) en `verify-report.md`. Cambiar solo configuración entre Ollama y Anthropic.
+- [x] 5.2 **Verificación manual con modelo real** (Ollama local o clave de nube). El **usuario aporta la clave** definiéndola en su propia sesión de PowerShell (`$env:Ai__ApiKey`); **nunca se escribe una clave en disco, en `.env`, en el repositorio ni en el informe**. Pasos: `docker compose` con `Ai__Provider=Ollama` (o `Anthropic`), `Ai__Model` y `Ai__Endpoint`/clave por variables de sesión; con datos de demostración, `luis.empleado@example.test` pregunta «¿cuántas horas trabajé la semana pasada?» y `marta.responsable@example.test` pregunta por lo propio y por un reporte; las respuestas coinciden con `/fichajes` y `/equipo` (el resumen por día puede diferir ≤ 1 min por intervalo partido); un empleado que pide el equipo no obtiene datos ajenos; sin `Ai__Provider` la página muestra el aviso. Registrar el resultado (sin claves ni respuestas reales) en `verify-report.md`. Cambiar solo configuración entre Ollama y Anthropic.
 - [ ] 5.3 Railway: el usuario configura `Ai__Provider`, `Ai__Model` y el secreto `Ai__ApiKey` y fija el presupuesto en la consola del proveedor (instrucciones en README, 4.4). Para desactivar basta quitar `Ai__Provider` (503, resto intacto).
 - [ ] 5.4 Preparar para `sdd-verify` y archivo: actualizar `openspec/config.yaml` (estado, ADR 0008-0017) y el `Purpose` de `solution-architecture` al fusionar deltas (avisos de los deltas de `startup-configuration` y `solution-architecture`).
 
@@ -277,3 +277,14 @@ Previsión por unidad (líneas a mano, `additions + deletions`):
 | **Total** | | | | **≈ 1.610** (1.500-1.770) | |
 
 Nota: `docs/api/openapi.json` regenerado en PR 3 no cuenta (generado). Cortes alternativos si hace falta: PR 1 en 1a (`SpainTime` + `ICurrentUser`) y 1b (`LocalDateRange` + resumen + caso de uso); PR 3 en 3a (endpoint y limitador) y 3b (proveedores y documentación).
+
+## Mejoras tras verificación 5.2
+
+Rama `feat/asistente-ia-fechas-y-equipo`. Origen: `verify-report.md` (fechas relativas mal resueltas, flujo nombre → id → fichajes y conversión de minutos fallidos con `qwen2.5:3b` y `7b`). Strict TDD; sin modelo real en las pruebas.
+
+- [x] M.1 RED/GREEN `DurationText.Format` y textos `workedText`/`breakText`/`mealBreakText` en `DaySummary` y `DailySummaryResult` (APP/TimeTracking). Pruebas en `AT/TimeTracking/DurationTextTests.cs`.
+- [x] M.2 RED/GREEN `AssistantPrompt.Build` con tabla de fechas de referencia e instrucciones (DD-21). Pruebas en `IFT/Assistant/AssistantPromptTests.cs` (domingo, lunes, cambio de año y barrido de 365 días sin periodos futuros ni mayores de 31 días).
+- [x] M.3 RED/GREEN descripciones de herramientas y de `memberId` (GUID obtenido SOLO de `get_team_members`; no el nombre). Prueba en `ToolsetRegistrationTests`.
+- [x] M.4 Caracterización: los resultados de ambas herramientas incluyen `workedText` (`MyTimeEntriesToolTests`, `TeamToolsTests`).
+- [x] M.5 Specs (`assistant-tools`, `assistant-endpoint`), `design.md` (DD-21) y puerta de unidad.
+- [ ] M.6 Repetir la verificación manual (5.2) con el modelo elegido tras estos cambios.

@@ -35,7 +35,7 @@ public sealed class AssistantToolset(
     // Debe coincidir con LocalDateRange.MaxDays (un int no puede interpolarse en una constante); un test lo fija.
     internal const string MaxDaysText = "31";
     private const string DateRangeSuffix = $"entre dos fechas (máximo {MaxDaysText} días).";
-    private const string MemberIdDescription = $"Identificador del miembro del equipo, tal como lo devuelve {TeamMembersTool}.";
+    private const string MemberIdDescription = $"Identificador (GUID) del miembro, obtenido SOLO de {TeamMembersTool}; nunca el nombre.";
     private const string UnavailableMessage = "No se ha podido completar la consulta en este momento.";
 
     /// <summary>Herramientas ofrecidas al modelo para el rol del usuario actual.</summary>
@@ -55,11 +55,11 @@ public sealed class AssistantToolset(
             tools.Add(Create(
                 GetTeamMembersAsync,
                 TeamMembersTool,
-                "Lista los miembros del equipo del usuario (sus reportes directos) con su identificador y nombre."));
+                "Lista los miembros del equipo del usuario (sus reportes directos) con su identificador (GUID) y nombre. Llámala siempre antes de consultar fichajes de un miembro."));
             tools.Add(Create(
                 GetTeamMemberTimeEntriesAsync,
                 TeamMemberTimeEntriesTool,
-                $"Devuelve un resumen por día, en hora de España, de los fichajes de un miembro del equipo {DateRangeSuffix}"));
+                $"Llama siempre antes a {TeamMembersTool} y pasa su identificador (GUID) en memberId, no el nombre. Devuelve un resumen por día, en hora de España, de los fichajes de un miembro del equipo {DateRangeSuffix}"));
         }
 
         return tools;

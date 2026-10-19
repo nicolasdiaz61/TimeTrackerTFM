@@ -102,9 +102,13 @@ public class ToolsetRegistrationTests
         Assert.Equal(AssistantToolset.MaxDaysText, TimeTracker.Application.TimeTracking.LocalDateRange.MaxDays.ToString(System.Globalization.CultureInfo.InvariantCulture));
         Assert.EndsWith("entre dos fechas (máximo 31 días).", byName["get_my_time_entries"].Description, StringComparison.Ordinal);
         Assert.EndsWith("entre dos fechas (máximo 31 días).", byName["get_team_member_time_entries"].Description, StringComparison.Ordinal);
-        Assert.Equal(
-            "Identificador del miembro del equipo, tal como lo devuelve get_team_members.",
-            byName["get_team_member_time_entries"].JsonSchema.GetProperty("properties").GetProperty("memberId").GetProperty("description").GetString());
+        var memberId = byName["get_team_member_time_entries"].JsonSchema.GetProperty("properties").GetProperty("memberId").GetProperty("description").GetString();
+        Assert.Contains("GUID", memberId);
+        Assert.Contains("SOLO", memberId);
+        Assert.Contains("get_team_members", memberId);
+        Assert.Contains("nunca el nombre", memberId);
+        Assert.Contains("Llama siempre antes a get_team_members", byName["get_team_member_time_entries"].Description);
+        Assert.Contains("identificador (GUID)", byName["get_team_members"].Description);
     }
 
     private static ChatResponse AskForTool(string name)

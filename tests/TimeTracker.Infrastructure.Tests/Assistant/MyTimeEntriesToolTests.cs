@@ -72,6 +72,8 @@ public class MyTimeEntriesToolTests
         Assert.Equal("2026-10-15", day.GetProperty("date").GetString());
         Assert.Equal(240, day.GetProperty("workedMinutes").GetInt32());
         Assert.Equal("Idle", result.GetProperty("status").GetString());
+        Assert.Equal("4 h 0 min", day.GetProperty("workedText").GetString());
+        Assert.Equal("4 h 0 min", result.GetProperty("workedText").GetString());
         Assert.False(result.GetProperty("truncated").GetBoolean());
     }
 
