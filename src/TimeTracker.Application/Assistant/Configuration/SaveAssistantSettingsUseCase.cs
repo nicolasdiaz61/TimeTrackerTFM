@@ -64,7 +64,7 @@ public sealed class SaveAssistantSettingsUseCase(
             return new SaveAssistantSettingsResult.Conflict();
         }
 
-        await ReloadWithoutFailingTheSaveAsync(cancellationToken);
+        await reloader.ReloadAfterCommitAsync(cancellationToken);
         return new SaveAssistantSettingsResult.Saved(AssistantSettingsView.Build(env, protector, next with { Version = saved.Token }));
     }
 
@@ -91,16 +91,5 @@ public sealed class SaveAssistantSettingsUseCase(
             : existing;
         return (reEncrypted, false);
     }
-
-    private async Task ReloadWithoutFailingTheSaveAsync(CancellationToken cancellationToken)
-    {
-        try
-        {
-            await reloader.ReloadAsync(cancellationToken);
-        }
-        catch (Exception) when (!cancellationToken.IsCancellationRequested)
-        {
-            // El guardado ya está confirmado: el sondeo de versión reintentará la carga y el cargador deja el aviso.
-        }
-    }
 }
+
