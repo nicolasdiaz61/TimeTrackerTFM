@@ -445,3 +445,50 @@ BUILD de la solución con `-warnaserror` 0 advertencias 0 errores; `dotnet forma
 - `IAssistantConnectionTester` se registra como singleton (sin estado); el caso de uso `TestAssistantConnectionUseCase` se registra en 6b.4 con el resto.
 - La prueba de la política usa un servidor mínimo en lugar del API completo: el endpoint real no existe hasta la 6b.
 - Tamaño: 177 líneas de producción y 567 de pruebas (≈ 744) frente a las ≈ 220 previstas; la desviación son las pruebas triangulares (SDK reales, plazo, no-eco).
+
+## PR 6b — API: endpoints, política Manager y OpenAPI (rama `feat/asistente-config-pr6b-api`, apilada sobre `feat/asistente-config-pr6a-prueba-conexion`)
+
+| Tarea | Estado | Commit |
+|---|---|---|
+| 6b.1 Copia previa (`..\TimeTracker.rollback\pr-6b\`: `TeamEndpoints.cs`, `Program.cs`, `openapi.json`, `OpenApiContractTests.cs`, `AuthorizationCoverageTests.cs`, `IUserRepository.cs`, `UserRepository.cs`, `InMemoryUserRepository.cs`) | Hecha | fuera del repositorio |
+| 6b.2 [V-8] Política `Manager` en `Security/AuthorizationPolicies` | Hecha | `29c1f40` |
+| 6b.3 [V-7] DTO estrictos (`Disallow`) | Hecha | `eeb8f61` |
+| 6b.4 Los cuatro endpoints y registro de casos de uso | Hecha | `eeb8f61` |
+| 6b.5 Clave de solo escritura y fallo cerrado | Hecha | `4a4aa27` |
+| 6b.6 Prueba de conexión y 429 sobre el endpoint real | Hecha | `a424868` |
+| 6b.7 Contrato OpenAPI regenerado y `OpenApiContractTests` ampliada | Hecha | `22c236b` |
+| 6b.8 REFACTOR y puerta | Hecha | (el REFACTOR va en cada commit) |
+
+### TDD Cycle Evidence (PR 6b)
+
+| Tarea | Archivo de prueba | Capa | RED | GREEN | TRIANGULAR | REFACTOR |
+|---|---|---|---|---|---|---|
+| 6b.2 | `AuthorizationCoverageTests` | Api.IntegrationTests | No compila: `CS0103 El nombre 'AuthorizationPolicies' no existe` (solo ese error) | 48/48 (cobertura de autorización, `/equipo` y política de respaldo; línea base 37/37 en Authorization+Team) | Nueva prueba: la política está registrada una sola vez y exige el rol `Manager`; `/equipo` sigue exigiéndola | Nada necesario |
+| 6b.3 | `AssistantConfigurationStrictBodyTests` | Api.IntegrationTests | 6/6 fallan con `Expected: BadRequest, Actual: NotFound` (ruta inexistente) | 6/6 con `JsonUnmappedMemberHandling.Disallow` **sin validar a mano**: V-7 se cumple. Mutación: quitando el atributo, `url`/`endpoint` dan `500` en el PUT y `200` en la prueba | `url`, `endpoint`, `baseUrl` en el PUT; `url`, `endpoint` en la prueba; JSON roto; con un almacén que cuenta lecturas y escrituras: 0 y 0, y el probador sin invocar | Peticiones con valores por defecto `null` (el contrato no marca campos obligatorios) |
+| 6b.4 | `AssistantConfigurationEndpointsTests` | Api.IntegrationTests (PostgreSQL 18) | 21 de 25 fallan (`NotFound` en todo); los 4 anónimos pasan por la política de respaldo (el 401 es lo que ya daba cualquier ruta inexistente) | 25/25 | 401 anónimo y 403 Employee en los cuatro endpoints con 0 lecturas/escrituras; `GET` con los 13 campos y orígenes; `PUT` válido = mismo texto que el `GET`, token nuevo, auditoría `Saved`, la fábrica de clientes recibe el modelo nuevo; 400 por campo (`effort`, `model`, `timeoutSeconds`) y por `concurrencyToken` ausente; 409 en primera creación y en actualización con token obsoleto (el ganador se conserva, 2 auditorías); `DELETE` 204 con fila (auditoría `Reset`, `GET` con origen `env` y token `0`), 204 sin fila (0 auditorías) y 409 con fila cambiada tras la lectura; 413 con 9 KiB en `PUT` y en la prueba (Kestrel) sin lecturas; `updatedBy` con nombre visible y `null` si el usuario no existe | `updatedBy` por `IUserRepository.FindDisplayNameAsync` (puerto nuevo) |
+| 6b.5 | `AssistantConfigurationCredentialTests` | Api.IntegrationTests (PostgreSQL 18) | **Verde a la primera** (5/5 tras corregir un error de mi propia prueba): los casos de uso y los endpoints de 6b.4 ya cumplen CP; no hay código nuevo. Mutación: con `credentialStorageAvailable` fijo a `true` falla la prueba del indicador | 5/5 | Sin clave maestra: `PUT` con clave = 400 en `credential` sin filas ni auditoría; `GET` con y sin clave maestra; `provider=None` con clave = 400 en `credential`; `GET`, `PUT` y prueba nunca devuelven la clave, su Base64/hex cifrado ni la clave maestra, y no tienen propiedad `credential` en la raíz; el probador recibe la clave candidata; el indicador pasa a `false`/`none` tras `DELETE`; el 400 no repite la clave | Nada necesario |
+| 6b.6 | `AssistantConfigurationConnectionTestEndpointTests` | Api.IntegrationTests | **Verde a la primera** (10/10): el endpoint y la política ya se registraron en 6b.4. Mutación: quitando `RequireRateLimiting` fallan las dos pruebas del 429 | 10/10 | `ok`, `authentication`, `rejected`, `unreachable` con texto fijo; cuerpo vacío = configuración efectiva; 400 sin invocar al probador; 4.ª = 429 con detalle propio y `Retry-After` 1-60; 400,400,200,429 (cuentan las que acaban en 400); 6 anónimos (401) y 6 Employee (403) del mismo `sub` no consumen permisos y luego el Manager hace 3; otro Manager tiene los suyos y el resto del grupo no se limita | Nada necesario |
+| 6b.7 | `OpenApiContractTests` (4 pruebas nuevas) | Architecture | Con el `openapi.json` anterior restaurado: `Falta la ruta /api/asistente/configuracion en el contrato.` (2 pruebas) y `KeyNotFound` en los esquemas (2) | 15/15 tras regenerar con el build | Operaciones y respuestas exactas de DD-14 y Bearer en las cuatro; sin `requestBody` ni parámetros en `DELETE`; sin 413 declarado; campos exactos de peticiones y respuestas; `additionalProperties=false` en las dos peticiones; ningún esquema de configuración con `url`/`endpoint`; `credential` solo en las dos peticiones (y en `sources`, ver decisiones) y `credentialConfigured` en la respuesta; sin `apikey` ni `Ai__` (prueba existente) | `.ProducesValidationProblem()` en lugar de `ProducesProblem(400)` (el 400 documenta `errors`); peticiones sin campos obligatorios |
+
+### Work Unit Evidence (PR 6b)
+
+| Evidencia | Valor |
+|---|---|
+| Prueba focal | `dotnet test tests/TimeTracker.Api.IntegrationTests --filter "FullyQualifiedName~AssistantConfiguration"` = 40/40; `dotnet test tests/TimeTracker.ArchitectureTests --filter "FullyQualifiedName~OpenApiContractTests"` = 15/15 |
+| Arnés de ejecución | `WebApplicationFactory` con el pipeline real de `Program` (autenticación, autorización, limitador), PostgreSQL 18 (Testcontainers) con migraciones, probador y fábrica de clientes falsos (nunca red); Kestrel para el 413 |
+| Límite de rollback | Revertir `22c236b` restaura el contrato; `4a4aa27` y `a424868` solo son pruebas; `eeb8f61` quita endpoints, DTO, registro y `FindDisplayNameAsync`; `29c1f40` devuelve la política a `TeamEndpoints` (V-8). Copia previa en `..\TimeTracker.rollback\pr-6b\` |
+
+### Puerta del PR 6b (ejecutada)
+
+BUILD de la solución con `-warnaserror` 0 advertencias 0 errores; `dotnet format --verify-no-changes` sin cambios; TEST: Domain 67, Application 323, Infrastructure 398, Web 223, Architecture 141, Api.IntegrationTests 517 (Docker disponible; no se tocaron contenedores, volúmenes, redes ni imágenes existentes; sin prune); COV-A Application 99,9 % líneas / 96,5 % ramas (mínimo 80 %), COV-D Domain 100 %; VULN (`--vulnerable --include-transitive`) limpio. `docs/api/openapi.json` commiteado con solo adiciones (529 líneas generadas).
+
+### Decisiones fuera de spec (PR 6b)
+
+- **`DELETE` sin token de concurrencia en la petición**: se sigue DD-8/DD-14 (el servidor lee la fila y borra con su `xmin`; `Conflict` = 409, `Deleted`/`NotFound` = 204). El encargo hablaba de un token del cliente también en `DELETE`; el contrato del diseño no lo tiene y el caso de uso ya lo captura. Si se quiere token del cliente, es un cambio de contrato (nuevo parámetro y caso de uso).
+- **`sources.credential`** (origen `env`/`stored`/`none`) es un campo exigido por DD-14 y no la clave: la prueba de contrato lo distingue (`credential` aparece solo en las dos peticiones y en `AssistantConfigurationSources`, tipo cadena). DD-16 (4) debe leerse así.
+- **`updatedBy` con nombre visible**: DD-14 lo pide y la vista de Application solo trae el `Guid`; se añade `IUserRepository.FindDisplayNameAsync` (3 líneas en puerto, repositorio EF y doble en memoria). Devuelve `null` si el usuario ya no existe.
+- **V-7**: `JsonUnmappedMemberHandling.Disallow` en un `record` posicional con valores por defecto da `400` problem+json (no `500`) con `ThrowOnBadRequest` activo; no hizo falta validar a mano.
+- Los `400` de validación usan `ValidationProblem` con título en español «Solicitud no válida» y errores por campo; `409` usa `ProblemDetails` «Conflicto» con detalle fijo. El cuerpo ausente en `PUT` es `400` general; en la prueba equivale a «probar la efectiva».
+- Pruebas con base de datos: base vacía por prueba (`CreateEmptyDatabaseAsync`) y migraciones al arrancar la fábrica; las pruebas sin base usan un almacén que cuenta operaciones.
+- La política `Manager` se registra con `AddAuthorizationPolicies()` (nueva extensión) antes de `AddTeam()`; `AddTeam()` ya no registra políticas.
+- Tamaño: ≈ 245 líneas de producción, ≈ 850 de pruebas y 529 de `openapi.json` generado (≈ 1.620 en total, ≈ 1.090 sin el contrato) frente a las ≈ 380 previstas; la desviación es de pruebas (HTTP real con PostgreSQL) y del contrato generado.
