@@ -17,6 +17,7 @@ using TimeTracker.Infrastructure.Assistant;
 namespace TimeTracker.Infrastructure.Tests.Assistant;
 
 // Ninguna prueba abre una conexión: construir un cliente no hace red.
+[Collection(ProcessEnvironmentCollection.Name)]
 public sealed class ChatClientFactoryTests
 {
     private const string SecretKey = "clave-secreta-prueba";
@@ -112,8 +113,13 @@ public sealed class ChatClientFactoryTests
     {
         using var client = ChatClientFactory.CreateOllamaClient(
             new AiOptions { Provider = "Ollama", Model = "m", Endpoint = "http://localhost:11434/", TimeoutSeconds = 1 }, () => new HangingHandler());
+        var clock = System.Diagnostics.Stopwatch.StartNew();
 
-        await Assert.ThrowsAnyAsync<Exception>(() => client.GetResponseAsync("hola"));
+        // WaitAsync es solo la red de seguridad de la prueba; la cota de tiempo distingue su TimeoutException de la del cliente.
+        var exception = await Assert.ThrowsAnyAsync<Exception>(() => client.GetResponseAsync("hola").WaitAsync(TimeSpan.FromSeconds(5)));
+
+        Assert.True(exception is TaskCanceledException or TimeoutException, $"Llegó {exception.GetType().Name}.");
+        Assert.InRange(clock.Elapsed, TimeSpan.FromMilliseconds(800), TimeSpan.FromSeconds(4));
     }
 
     [Fact]
