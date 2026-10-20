@@ -21,6 +21,7 @@ builder.Services.AddDatabaseConfiguration();
 builder.Services.AddJwtAuthentication();
 builder.Services.AddDomainProblemDetails();
 builder.Services.AddTimeEntries();
+builder.Services.AddAuthorizationPolicies();
 builder.Services.AddTeam();
 builder.Services.AddDemoSeeding();
 builder.Services.AddAssistant();

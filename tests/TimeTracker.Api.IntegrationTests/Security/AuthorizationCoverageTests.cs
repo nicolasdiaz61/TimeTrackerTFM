@@ -2,6 +2,8 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.DependencyInjection;
 
+using TimeTracker.Api.Security;
+
 namespace TimeTracker.Api.IntegrationTests.Security;
 
 public class AuthorizationCoverageTests
@@ -53,6 +55,19 @@ public class AuthorizationCoverageTests
             .ToList();
 
         Assert.Equal(2, team.Count);
-        Assert.All(team, endpoint => Assert.Contains(endpoint.Metadata.GetOrderedMetadata<IAuthorizeData>(), data => data.Policy == "Manager"));
+        Assert.All(team, endpoint => Assert.Contains(endpoint.Metadata.GetOrderedMetadata<IAuthorizeData>(), data => data.Policy == AuthorizationPolicies.Manager));
+    }
+
+    [Fact]
+    public async Task ManagerPolicy_IsRegisteredOnceAndRequiresTheManagerRole()
+    {
+        using var factory = new ApiFactory();
+        _ = factory.CreateClient();
+
+        var policy = await factory.Services.GetRequiredService<IAuthorizationPolicyProvider>().GetPolicyAsync(AuthorizationPolicies.Manager);
+
+        Assert.Equal("Manager", AuthorizationPolicies.Manager);
+        var roles = Assert.Single(policy!.Requirements.OfType<Microsoft.AspNetCore.Authorization.Infrastructure.RolesAuthorizationRequirement>());
+        Assert.Equal(["Manager"], roles.AllowedRoles);
     }
 }
