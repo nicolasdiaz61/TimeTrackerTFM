@@ -56,6 +56,30 @@ public partial class AssistantAuditAppendOnlyTests
             type => type.IsInterface && type.Name.Contains("Audit", StringComparison.Ordinal));
     }
 
+    // Segunda barrera (DD-9): la base de datos rechaza UPDATE, DELETE y TRUNCATE aunque el código futuro lo intente.
+    [Fact]
+    public void Migrations_InstallTheAppendOnlyTriggersOnTheAuditTable()
+    {
+        var migrations = string.Join('\n', Directory.EnumerateFiles(Path.Combine(RepositoryRoot.Path, "src", "TimeTracker.Infrastructure", "Persistence", "Migrations"), "*.cs")
+            .Where(file => !file.EndsWith(".Designer.cs", StringComparison.Ordinal))
+            .Select(File.ReadAllText));
+
+        Assert.Matches(@"CREATE TRIGGER\s+\w+\s+BEFORE UPDATE OR DELETE ON assistant_settings_audit\s+FOR EACH ROW", migrations);
+        Assert.Matches(@"CREATE TRIGGER\s+\w+\s+BEFORE TRUNCATE ON assistant_settings_audit\s+FOR EACH STATEMENT", migrations);
+    }
+
+    [Fact]
+    public void TheAppendOnlyMigration_OnlyTouchesTheAuditTable()
+    {
+        var migration = File.ReadAllText(Path.Combine(
+            RepositoryRoot.Path, "src", "TimeTracker.Infrastructure", "Persistence", "Migrations", "20261020111927_AddAssistantAuditImmutability.cs"));
+
+        var tables = System.Text.RegularExpressions.Regex.Matches(migration, @"\bON\s+(\w+)").Select(match => match.Groups[1].Value).Distinct().ToList();
+
+        Assert.Equal(["assistant_settings_audit"], tables);
+        Assert.DoesNotMatch(@"\b(ALTER|DROP)\s+TABLE\b|CreateTable|DropTable|AddColumn|DropColumn", migration);
+    }
+
     // Un enunciado = texto hasta «;». Una cadena de llamadas partida en líneas sigue siendo un único enunciado.
     private static IEnumerable<string> FindOffendingStatements(string source)
         => source.Split(';')

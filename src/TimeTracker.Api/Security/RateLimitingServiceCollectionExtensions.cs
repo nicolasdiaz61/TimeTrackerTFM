@@ -14,12 +14,17 @@ public static class RateLimitingServiceCollectionExtensions
 
     public const string AssistantPolicy = "assistant";
 
+    public const string AssistantConfigTestPolicy = "assistant-config-test";
+
     public const int LoginPermitLimit = 10;
 
     // Sin dirección remota (servidor en memoria de las pruebas) todo cae en una partición única.
     private const string NoAddressPartition = "sin-ip";
 
     private const int FallbackAssistantPermitLimit = 5;
+
+    // Constante de código: los límites de la prueba de conexión no son editables (DD-15).
+    private const int AssistantConfigTestPermitLimit = 3;
 
     private static readonly TimeSpan LoginWindow = TimeSpan.FromMinutes(1);
 
@@ -28,6 +33,8 @@ public static class RateLimitingServiceCollectionExtensions
     private const string LoginDetail = "Espere un minuto antes de volver a intentarlo.";
 
     private const string AssistantDetail = "Ha realizado demasiadas consultas al asistente en poco tiempo. Espere un minuto antes de volver a intentarlo.";
+
+    private const string AssistantConfigTestDetail = "Ha realizado demasiadas pruebas de conexión. Espere un minuto antes de volver a intentarlo.";
 
     public static IServiceCollection AddRateLimiting(this IServiceCollection services)
     {
@@ -45,19 +52,23 @@ public static class RateLimitingServiceCollectionExtensions
                 }));
             // Ventana fija por usuario autenticado (claim sub), no por IP: el limitador corre tras la autorización (DD-1).
             // Cuentan todas las peticiones que llegan al endpoint, también las que acaban en 400 o 503.
-            options.AddPolicy(AssistantPolicy, httpContext => RateLimitPartition.GetFixedWindowLimiter(
-                httpContext.User.FindFirst("sub")?.Value ?? httpContext.Connection.RemoteIpAddress?.ToString() ?? NoAddressPartition,
-                _ => new FixedWindowRateLimiterOptions
-                {
-                    PermitLimit = AssistantPermitLimit(httpContext),
-                    Window = AssistantWindow,
-                    QueueLimit = 0,
-                }));
+            options.AddPolicy(AssistantPolicy, httpContext => PerUser(httpContext, AssistantPermitLimit(httpContext)));
+            // Mismo reparto que el chat, pero con tope fijo y contador propio: probar la conexión no gasta consultas del chat.
+            options.AddPolicy(AssistantConfigTestPolicy, httpContext => PerUser(httpContext, AssistantConfigTestPermitLimit));
             options.OnRejected = WriteRejectionAsync;
         });
 
         return services;
     }
+
+    private static RateLimitPartition<string> PerUser(HttpContext httpContext, int permitLimit) => RateLimitPartition.GetFixedWindowLimiter(
+        httpContext.User.FindFirst("sub")?.Value ?? httpContext.Connection.RemoteIpAddress?.ToString() ?? NoAddressPartition,
+        _ => new FixedWindowRateLimiterOptions
+        {
+            PermitLimit = permitLimit,
+            Window = AssistantWindow,
+            QueueLimit = 0,
+        });
 
     /// <summary>Segundos de <c>Retry-After</c>: entero y siempre positivo.</summary>
     internal static int RetryAfterSeconds(TimeSpan wait) => Math.Max(1, (int)Math.Ceiling(wait.TotalSeconds));
@@ -78,7 +89,7 @@ public static class RateLimitingServiceCollectionExtensions
             response.Headers.RetryAfter = RetryAfterSeconds(retryAfter).ToString(CultureInfo.InvariantCulture);
         }
 
-        // El texto depende de la política del endpoint rechazado: login y asistente tienen detalles distintos.
+        // El texto depende de la política del endpoint rechazado: login, chat y prueba de conexión tienen detalles distintos.
         var policy = context.HttpContext.GetEndpoint()?.Metadata.GetMetadata<EnableRateLimitingAttribute>()?.PolicyName;
 
         await context.HttpContext.RequestServices.GetRequiredService<IProblemDetailsService>().WriteAsync(new ProblemDetailsContext
@@ -88,8 +99,15 @@ public static class RateLimitingServiceCollectionExtensions
             {
                 Status = StatusCodes.Status429TooManyRequests,
                 Title = "Demasiadas solicitudes",
-                Detail = policy == AssistantPolicy ? AssistantDetail : LoginDetail,
+                Detail = DetailFor(policy),
             },
         });
     }
+
+    private static string DetailFor(string? policy) => policy switch
+    {
+        AssistantPolicy => AssistantDetail,
+        AssistantConfigTestPolicy => AssistantConfigTestDetail,
+        _ => LoginDetail,
+    };
 }

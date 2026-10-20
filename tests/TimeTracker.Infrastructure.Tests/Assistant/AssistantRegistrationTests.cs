@@ -38,6 +38,16 @@ public sealed class AssistantRegistrationTests
     }
 
     [Fact]
+    public async Task TheConnectionTester_IsRegisteredAndDoesNotNeedAProvider()
+    {
+        await using var provider = Build();
+
+        await using var scope = provider.CreateAsyncScope();
+
+        Assert.Equal("AssistantConnectionTester", scope.ServiceProvider.GetRequiredService<IAssistantConnectionTester>().GetType().Name);
+    }
+
+    [Fact]
     public async Task WithoutProvider_TheContainerBuildsAndTheEngineIsDisabled()
     {
         await using var provider = Build();
@@ -87,6 +97,18 @@ public sealed class AssistantRegistrationTests
         Assert.NotSame(first.ServiceProvider.GetRequiredService<IAssistantEngine>(), second.ServiceProvider.GetRequiredService<IAssistantEngine>());
         Assert.IsType<ChatAssistantEngine>(first.ServiceProvider.GetRequiredService<IAssistantEngine>());
         Assert.NotSame(first.ServiceProvider.GetRequiredService<AssistantToolset>(), second.ServiceProvider.GetRequiredService<AssistantToolset>());
+    }
+
+    [Fact]
+    public async Task TheReloadPieces_AreSingletonsAndTheReloaderSharesTheLoaderAndTheClient()
+    {
+        await using var provider = Build(("Ai:Provider", "Ollama"), ("Ai:Model", "m"), ("Ai:Endpoint", "http://localhost:11434/"));
+
+        Assert.IsType<ConfigurationAssistantEnvironment>(provider.GetRequiredService<IAssistantEnvironment>());
+        Assert.Same(provider.GetRequiredService<IAssistantEnvironment>(), provider.GetRequiredService<IAssistantEnvironment>());
+        Assert.IsType<AssistantRuntimeReloader>(provider.GetRequiredService<IAssistantRuntimeReloader>());
+        Assert.Same(provider.GetRequiredService<IAssistantRuntimeReloader>(), provider.GetRequiredService<IAssistantRuntimeReloader>());
+        Assert.Same(provider.GetRequiredService<IAssistantSettingsLoader>(), provider.GetRequiredService<IAssistantSettingsLoader>());
     }
 
     [Fact]

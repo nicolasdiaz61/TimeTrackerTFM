@@ -3,7 +3,7 @@ using Microsoft.Extensions.AI;
 namespace TimeTracker.Infrastructure.Assistant;
 
 /// <summary>Crea el cliente del proveedor de una configuración, o <c>null</c> si el asistente está deshabilitado.</summary>
-internal interface IChatClientFactory
+public interface IChatClientFactory
 {
     IChatClient? Create(AiOptions options);
 }

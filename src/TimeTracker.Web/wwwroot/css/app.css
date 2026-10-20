@@ -536,3 +536,5 @@ code {
 .assistant-author { display: block; font-size: 0.8rem; font-weight: 600; color: #495057; }
 .assistant-text { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
 .assistant-form { max-width: 48rem; }
+.assistant-config-form { max-width: 40rem; }
+.assistant-config-actions { display: flex; flex-wrap: wrap; gap: 0.5rem; }

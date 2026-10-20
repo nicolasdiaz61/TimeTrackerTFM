@@ -25,6 +25,9 @@ public sealed class UserRepository(TimeTrackerDbContext context) : IUserReposito
     public Task<UserAccount?> FindDirectReportAsync(Guid managerId, Guid memberId, CancellationToken cancellationToken)
         => context.Users.AsNoTracking().FirstOrDefaultAsync(user => user.Id == memberId && user.ManagerId == managerId, cancellationToken);
 
+    public Task<string?> FindDisplayNameAsync(Guid userId, CancellationToken cancellationToken)
+        => context.Users.AsNoTracking().Where(user => user.Id == userId).Select(user => user.DisplayName).FirstOrDefaultAsync(cancellationToken);
+
     public async Task AddAsync(UserAccount user, CancellationToken cancellationToken)
     {
         context.Users.Add(user);

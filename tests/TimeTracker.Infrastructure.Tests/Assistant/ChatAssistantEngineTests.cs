@@ -1,7 +1,6 @@
 using System.Text.Json;
 
 using Microsoft.Extensions.AI;
-using Microsoft.Extensions.Options;
 
 using TimeTracker.Application.Assistant;
 using TimeTracker.Application.Tests.Fakes;
@@ -41,7 +40,6 @@ public sealed class ChatAssistantEngineTests
                 new AssistantChatClient(inner, options ?? DefaultOptions()),
                 Harness.Toolset,
                 new FixedCurrentUser(UserId, role),
-                Options.Create(options ?? DefaultOptions()),
                 Harness.Clock,
                 Logger);
         }

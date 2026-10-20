@@ -165,6 +165,83 @@ public class RepositoryConventionsTests
         Assert.Contains("href=\"asistente\"", menu, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public void Web_HasTheAssistantConfigurationPageOnlyForManagersWithPlainTextAndNoBrowserStorage()
+    {
+        var pagePath = Path.Combine(RepositoryRoot.Path, "src", "TimeTracker.Web", "Pages", "AssistantConfiguration.razor");
+        Assert.True(File.Exists(pagePath), "Falta src/TimeTracker.Web/Pages/AssistantConfiguration.razor.");
+        var page = ReadWeb("Pages/AssistantConfiguration.razor");
+
+        // El rol del JWT, igual que /equipo; la Web no referencia Domain, así que no puede usar nameof(UserRole.Manager).
+        Assert.Contains("@page \"/asistente/configuracion\"", page, StringComparison.Ordinal);
+        Assert.Contains("@attribute [Authorize(Roles = \"Manager\")]", page, StringComparison.Ordinal);
+
+        // Texto plano y sin almacenamiento del navegador (DD-17, V-5): ni la configuración ni la clave salen del componente.
+        var sources = WebSourceFiles()
+            .Where(file => Path.GetFileName(file).StartsWith("AssistantConfiguration", StringComparison.Ordinal))
+            .Select(file => File.ReadAllText(file))
+            .ToList();
+        Assert.Contains(page, sources);
+        string[] forbidden = ["MarkupString", "localStorage", "sessionStorage", "IJSRuntime", "innerHTML", "type=\"url\""];
+        Assert.All(sources, text =>
+        {
+            Assert.DoesNotContain(forbidden, word => text.Contains(word, StringComparison.Ordinal));
+            Assert.DoesNotContain("endpoint", text, StringComparison.OrdinalIgnoreCase);
+        });
+
+        // La clave: campo de contraseña, desactivado sin almacenamiento seguro y nunca escrito en otro elemento.
+        Assert.Contains("type=\"password\"", page, StringComparison.Ordinal);
+        Assert.Contains("autocomplete=\"new-password\"", page, StringComparison.Ordinal);
+        Assert.Contains("disabled=\"@(!form.CredentialEnabled)\"", page, StringComparison.Ordinal);
+        Assert.Single(System.Text.RegularExpressions.Regex.Matches(page, @"form\.Credential\b"));
+
+        // Avisos y acciones exigidos por la spec.
+        Assert.Contains("data-testid=\"data-sharing-notice\"", page, StringComparison.Ordinal);
+        Assert.Contains("tercero", page, StringComparison.Ordinal);
+        Assert.Contains("data-testid=\"company-scope-notice\"", page, StringComparison.Ordinal);
+        Assert.Contains("toda la empresa", page, StringComparison.Ordinal);
+        Assert.Contains("Guardar", page, StringComparison.Ordinal);
+        Assert.Contains("Probar conexión", page, StringComparison.Ordinal);
+        Assert.Contains("Restablecer al entorno", page, StringComparison.Ordinal);
+        Assert.Contains("aunque otro responsable", page, StringComparison.Ordinal);
+        Assert.Contains("clave configurada", page, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Web_LinksTheAssistantConfigurationOnlyInTheManagerBlockAndLeavesTheChatPageAlone()
+    {
+        var menu = ReadWeb("Layout/NavMenu.razor");
+        var managerStart = menu.IndexOf("<AuthorizeView Roles=\"Manager\"", StringComparison.Ordinal);
+        var managerEnd = menu.IndexOf("</AuthorizeView>", managerStart, StringComparison.Ordinal);
+        Assert.True(managerStart >= 0, "Falta el bloque de menú del Manager.");
+        Assert.Single(System.Text.RegularExpressions.Regex.Matches(menu, "asistente/configuracion"));
+        var managerBlock = menu[managerStart..managerEnd];
+        Assert.Contains("href=\"asistente/configuracion\"", managerBlock, StringComparison.Ordinal);
+        Assert.Contains("href=\"equipo\"", managerBlock, StringComparison.Ordinal);
+
+        Assert.Contains("AssistantConfigurationApiClient", ReadWeb("Program.cs"), StringComparison.Ordinal);
+        var chat = ReadWeb("Pages/Assistant.razor");
+        Assert.DoesNotContain("Configuration", chat, StringComparison.Ordinal);
+        Assert.Contains("@attribute [Authorize]", chat, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Web_TheChatLinkMatchesOnlyItsExactRoute_SoItIsNotActiveOnTheConfigurationPage()
+    {
+        var menu = ReadWeb("Layout/NavMenu.razor");
+
+        Assert.Matches("""<NavLink class="nav-link" href="asistente" Match="NavLinkMatch\.All">""", menu);
+    }
+
+    [Fact]
+    public void Web_TheConfigurationPageDisablesTheResetConfirmationWhileBusyAndFlagsAFailedRereadAfterReset()
+    {
+        var page = ReadWeb("Pages/AssistantConfiguration.razor");
+
+        Assert.Matches("""@onclick="ResetAsync" disabled="@\(!form\.CanConfirmReset\)">Sí, restablecer""", page);
+        Assert.Contains("form.Fail(ConfigurationOperation.ReloadAfterReset, loadError)", page, StringComparison.Ordinal);
+    }
+
     private static string ReadWeb(string relativePath)
         => File.ReadAllText(Path.Combine(RepositoryRoot.Path, "src", "TimeTracker.Web", relativePath));
 
@@ -289,9 +366,9 @@ public class RepositoryConventionsTests
     }
 
     [Fact]
-    public void InfrastructureAssistant_CreatesUrisOnlyInProviderEndpointsAndTheOllamaEndpoint()
+    public void InfrastructureAssistant_BuildsNoUriOutsideTheApprovedSyntacticForms()
     {
-        // Sin URL elegida por el Manager (SSRF, DD-3): las únicas direcciones salen de una constante fija o del entorno (Ollama).
+        // Sin URL elegida por el Manager (SSRF, DD-3): las únicas direcciones salen de una constante fija o del entorno (Ollama). Guarda sintáctica; sus límites están en UriCreation.
         var offenders = SourceFiles("src/TimeTracker.Infrastructure/Assistant")
             .Where(file => CreatesUnapprovedUri(Path.GetFileName(file), File.ReadAllText(file)))
             .Select(file => Path.GetRelativePath(RepositoryRoot.Path, file))
@@ -310,6 +387,14 @@ public class RepositoryConventionsTests
     [InlineData("System.Uri.TryCreate (value, UriKind.Absolute, out var u);")]
     [InlineData("var b = new UriBuilder(value);")]
     [InlineData("var b = new System.UriBuilder { Host = value };")]
+    [InlineData("var u = new global::System.Uri(value);")]
+    [InlineData("var b = new global::System.UriBuilder(value);")]
+    [InlineData("global::System.Uri.TryCreate(value, UriKind.Absolute, out var u);")]
+    [InlineData("Uri u = new(value);")]
+    [InlineData("Uri? u = new(\"https://a\");")]
+    [InlineData("private static readonly Uri A = new  (value);")]
+    [InlineData("public Uri A { get; } = new(value);")]
+    [InlineData("client.BaseAddress = new(value);")]
     public void UriScanner_DetectsEveryWayOfBuildingAnAddress(string source)
     {
         Assert.True(CreatesUnapprovedUri("OtroArchivo.cs", source));
@@ -319,15 +404,18 @@ public class RepositoryConventionsTests
     [InlineData("var id = Guid.NewGuid();")]
     [InlineData("Uri? uri = null;")]
     [InlineData("var text = uri.ToString();")]
+    [InlineData("List<string> items = new();")]
+    [InlineData("var request = new HttpRequestMessage();")]
     public void UriScanner_IgnoresCodeThatBuildsNoAddress(string source)
     {
         Assert.False(CreatesUnapprovedUri("OtroArchivo.cs", source));
     }
 
     [Theory]
-    [InlineData("ChatClientFactory.cs", "BaseAddress = new Uri(options.Endpoint!),", false)]
+    [InlineData("ChatClientFactory.cs", "Uri.TryCreate(options.Endpoint, UriKind.Absolute, out var endpoint) && endpoint.Scheme is \"http\"", false)]
     [InlineData("ChatClientFactory.cs", "BaseAddress = new Uri(\"https://evil.example/\"),", true)]
     [InlineData("ChatClientFactory.cs", "BaseAddress = new Uri(options.ApiKey!),", true)]
+    [InlineData("ChatClientFactory.cs", "BaseAddress = new Uri(options.Endpoint!),", true)]
     [InlineData("ChatClientFactory.cs", "Uri.TryCreate(options.Endpoint, UriKind.Absolute, out var u);", true)]
     [InlineData("ChatClientFactory.cs", "var b = new UriBuilder(options.Endpoint!);", true)]
     [InlineData("AiOptionsValidator.cs", "Uri.TryCreate(value, UriKind.Absolute, out var uri) && uri.Scheme is \"http\"", false)]
@@ -344,15 +432,21 @@ public class RepositoryConventionsTests
         Assert.False(CreatesUnapprovedUri("ProviderEndpoints.cs", "public static readonly Uri A = new Uri(\"https://a/\");"));
     }
 
+    // Análisis sintáctico por expresión regular: cubre `new Uri(...)`/`new UriBuilder` (con `System.` o `global::System.`),
+    // `Uri.TryCreate(...)` y `new(...)` de tipo inferido cuando el tipo `Uri` aparece en la misma declaración (campo, local o
+    // propiedad) o se asigna a `BaseAddress`/`RequestUri`. No cubre `Uri` obtenido por otras vías (conversión desde `string` en
+    // `HttpRequestMessage`, `new(...)` asignado a un destino de tipo `Uri` con otro nombre, reflexión): son límites de la guarda,
+    // no garantías. La defensa real contra el SSRF es que las URL de los proveedores sean constantes (DD-3).
     private static readonly System.Text.RegularExpressions.Regex UriCreation = new(
-        @"new\s*(System\.)?Uri\s*\(|(System\.)?Uri\.TryCreate\s*\(|new\s*(System\.)?UriBuilder\b",
+        @"new\s*(global::)?(System\.)?Uri\s*\(|(global::)?(System\.)?Uri\.TryCreate\s*\(|new\s*(global::)?(System\.)?UriBuilder\b"
+        + @"|\bUri\??\s+\w+\s*=\s*new\s*\(|\bUri\??\s+\w+\s*\{[^}]*\}\s*=\s*new\s*\(|\b(BaseAddress|RequestUri)\s*=\s*new\s*\(",
         System.Text.RegularExpressions.RegexOptions.CultureInvariant);
 
     // Formas exactas permitidas por archivo: la fábrica solo construye la dirección de Ollama a partir de Ai:Endpoint, y el
     // validador solo comprueba que ese valor sea http/https sin conservar la dirección. Cualquier otra forma es un desvío posible.
     private static readonly Dictionary<string, string> AllowedUriForms = new()
     {
-        ["ChatClientFactory.cs"] = "new Uri(options.Endpoint!)",
+        ["ChatClientFactory.cs"] = "Uri.TryCreate(options.Endpoint, UriKind.Absolute, out var endpoint)",
         ["AiOptionsValidator.cs"] = "Uri.TryCreate(value, UriKind.Absolute, out var uri)",
     };
 

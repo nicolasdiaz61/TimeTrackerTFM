@@ -1,0 +1,230 @@
+@page "/asistente/configuracion"
+@attribute [Authorize(Roles = "Manager")]
+@using TimeTracker.Web.Assistant
+@using TimeTracker.Web.Http
+@using TimeTracker.Web.Time
+@inject AssistantConfigurationApiClient Api
+@inject ILocalTimeZone Zone
+
+<PageTitle>Configuración del asistente - TimeTracker</PageTitle>
+
+<h1>Configuración del asistente</h1>
+
+@* Todo el texto del servidor se pinta con @ (Blazor lo escapa): nunca como HTML. *@
+<div class="alert alert-warning" role="note" data-testid="data-sharing-notice">
+    <strong>Protección de datos.</strong> Al usar el asistente, los datos personales de los fichajes se envían a un tercero (el proveedor elegido) con la clave que usted aporta.
+</div>
+<div class="alert alert-info" role="note" data-testid="company-scope-notice">
+    <strong>Alcance.</strong> Esta configuración es única para toda la empresa: cualquier responsable puede cambiarla y el cambio afecta a todas las personas que usan el asistente.
+</div>
+
+@if (form.ErrorMessage is not null)
+{
+    <div class="alert alert-danger" role="alert" data-testid="configuration-error">
+        @form.ErrorMessage
+        @if (form.ReloadOffered)
+        {
+            <button type="button" class="btn btn-sm btn-outline-danger ms-2" @onclick="LoadAsync" disabled="@form.IsBusy">Recargar</button>
+        }
+        @if (form.OtherErrors.Count > 0)
+        {
+            <ul class="mb-0">
+                @foreach (var message in form.OtherErrors)
+                {
+                    <li>@message</li>
+                }
+            </ul>
+        }
+    </div>
+}
+
+@if (form.SuccessMessage is not null)
+{
+    <div class="alert alert-success" role="status" data-testid="configuration-success">@form.SuccessMessage</div>
+}
+
+@if (!form.IsLoaded)
+{
+    @if (form.IsBusy)
+    {
+        <p role="status" aria-busy="true"><em>Cargando configuración...</em></p>
+    }
+    else if (!form.ReloadOffered)
+    {
+        <button type="button" class="btn btn-outline-primary" @onclick="LoadAsync">Reintentar</button>
+    }
+}
+else
+{
+    <p class="text-muted" data-testid="configuration-updated">@form.UpdatedText(Zone)</p>
+
+    <form @onsubmit="SaveAsync" class="assistant-config-form" autocomplete="off">
+        <div class="mb-3">
+            <label for="config-provider" class="form-label">Proveedor</label>
+            <select id="config-provider" class="form-select" @bind="form.Provider" disabled="@form.IsBusy">
+                @foreach (var option in form.ProviderOptions)
+                {
+                    <option value="@option.Value">@option.Label</option>
+                }
+            </select>
+            <div class="form-text">Origen: @AssistantConfigurationForm.SourceLabel(form.Loaded!.Sources.Provider)</div>
+            <FieldErrors Messages="@(form.ErrorsFor("provider"))" />
+        </div>
+
+        <div class="mb-3">
+            <label for="config-model" class="form-label">Modelo</label>
+            <input id="config-model" class="form-control" maxlength="100" @bind="form.Model" disabled="@form.IsBusy" />
+            <div class="form-text">Origen: @AssistantConfigurationForm.SourceLabel(form.Loaded.Sources.Model)</div>
+            <FieldErrors Messages="@(form.ErrorsFor("model"))" />
+        </div>
+
+        <div class="mb-3">
+            <label for="config-timeout" class="form-label">Tiempo máximo de espera (segundos)</label>
+            <input id="config-timeout" type="number" class="form-control" min="1" @bind="form.TimeoutSeconds" disabled="@form.IsBusy" />
+            <div class="form-text">Origen: @AssistantConfigurationForm.SourceLabel(form.Loaded.Sources.TimeoutSeconds)</div>
+            <FieldErrors Messages="@(form.ErrorsFor("timeoutSeconds"))" />
+        </div>
+
+        <div class="mb-3">
+            <label for="config-tokens" class="form-label">Máximo de tokens de respuesta</label>
+            <input id="config-tokens" type="number" class="form-control" min="1" @bind="form.MaxOutputTokens" disabled="@form.IsBusy" />
+            <div class="form-text">Origen: @AssistantConfigurationForm.SourceLabel(form.Loaded.Sources.MaxOutputTokens)</div>
+            <FieldErrors Messages="@(form.ErrorsFor("maxOutputTokens"))" />
+        </div>
+
+        @if (form.EffortVisible)
+        {
+            <div class="mb-3">
+                <label for="config-effort" class="form-label">Esfuerzo de razonamiento</label>
+                <select id="config-effort" class="form-select" @bind="form.Effort" disabled="@form.IsBusy">
+                    <option value="">Sin indicar</option>
+                    <option value="low">Bajo</option>
+                    <option value="medium">Medio</option>
+                    <option value="high">Alto</option>
+                </select>
+                <div class="form-text">Origen: @AssistantConfigurationForm.SourceLabel(form.Loaded.Sources.Effort)</div>
+                <FieldErrors Messages="@(form.ErrorsFor("effort"))" />
+            </div>
+        }
+
+        <div class="mb-3">
+            <label for="config-credential" class="form-label">Clave del proveedor</label>
+            <input id="config-credential" type="password" class="form-control" autocomplete="new-password" maxlength="500"
+                   @bind="form.Credential" @bind:event="oninput" disabled="@(!form.CredentialEnabled)" />
+            @if (!form.CredentialEnabled)
+            {
+                <div class="form-text text-danger" data-testid="credential-storage-unavailable">
+                    El servidor no puede guardar claves de forma segura: la clave no se puede configurar desde aquí.
+                </div>
+            }
+            else if (form.CredentialConfigured)
+            {
+                <div class="form-text" data-testid="credential-configured">Hay una clave configurada. Escriba otra solo si quiere sustituirla; la clave guardada nunca se muestra.</div>
+            }
+            <div class="form-text">Origen: @AssistantConfigurationForm.SourceLabel(form.Loaded.Sources.Credential)</div>
+            <FieldErrors Messages="@(form.ErrorsFor("credential"))" />
+        </div>
+
+        @if (form.TestMessage is not null)
+        {
+            <div class="alert @(form.TestSucceeded ? "alert-success" : "alert-warning")" role="status" data-testid="connection-test-result">@form.TestMessage</div>
+        }
+
+        <div class="assistant-config-actions">
+            <button type="submit" class="btn btn-primary" disabled="@form.IsBusy">Guardar</button>
+            <button type="button" class="btn btn-outline-secondary" @onclick="TestAsync" disabled="@form.IsBusy">Probar conexión</button>
+            <button type="button" class="btn btn-outline-danger" @onclick="form.RequestReset" disabled="@form.IsBusy">Restablecer al entorno</button>
+        </div>
+    </form>
+
+    @if (form.ResetConfirmationPending)
+    {
+        <div class="alert alert-danger mt-3" role="alertdialog" aria-labelledby="reset-title" data-testid="reset-confirmation">
+            <p id="reset-title" class="mb-2"><strong>¿Restablecer al entorno?</strong></p>
+            <p>Se borrará la configuración guardada vigente, incluida la clave, aunque otro responsable la haya cambiado después de que usted abriera esta página. El asistente volverá a usar los valores del entorno.</p>
+            <button type="button" class="btn btn-danger" @onclick="ResetAsync" disabled="@(!form.CanConfirmReset)">Sí, restablecer</button>
+            <button type="button" class="btn btn-outline-secondary" @onclick="form.CancelReset">Cancelar</button>
+        </div>
+    }
+}
+
+@code {
+    private readonly AssistantConfigurationForm form = new();
+
+    protected override Task OnInitializedAsync() => LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        if (!form.TryBegin())
+        {
+            return;
+        }
+
+        var result = await Api.GetAsync();
+        if (result.Error is { } error)
+        {
+            form.Fail(ConfigurationOperation.Load, error);
+            return;
+        }
+
+        form.CompleteLoad(result.Value!);
+    }
+
+    private async Task SaveAsync()
+    {
+        if (!form.TryBegin())
+        {
+            return;
+        }
+
+        var result = await Api.SaveAsync(form.BuildSaveRequest());
+        if (result.Error is { } error)
+        {
+            form.Fail(ConfigurationOperation.Save, error);
+            return;
+        }
+
+        form.CompleteSave(result.Value!);
+    }
+
+    private async Task TestAsync()
+    {
+        if (!form.TryBegin())
+        {
+            return;
+        }
+
+        var result = await Api.TestAsync(form.BuildTestRequest());
+        if (result.Error is { } error)
+        {
+            form.Fail(ConfigurationOperation.Test, error);
+            return;
+        }
+
+        form.CompleteTest(result.Value!);
+    }
+
+    private async Task ResetAsync()
+    {
+        if (!form.TryConfirmReset())
+        {
+            return;
+        }
+
+        if (await Api.ResetAsync() is { } error)
+        {
+            form.Fail(ConfigurationOperation.Reset, error);
+            return;
+        }
+
+        // El 204 no trae cuerpo: se vuelve a leer la configuración efectiva (el entorno) para el formulario.
+        var result = await Api.GetAsync();
+        if (result.Error is { } loadError)
+        {
+            form.Fail(ConfigurationOperation.ReloadAfterReset, loadError);
+            return;
+        }
+
+        form.CompleteReset(result.Value!);
+    }
+}

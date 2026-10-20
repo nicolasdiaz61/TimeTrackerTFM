@@ -329,3 +329,278 @@ BUILD Release `-warnaserror` 0 advertencias 0 errores; `dotnet format --verify-n
 - La guarda de `Uri` admite una forma exacta en `AiOptionsValidator.cs` (`Uri.TryCreate(value, UriKind.Absolute, out var uri)`), descubierta por la propia guarda endurecida: el validador solo comprueba el esquema y no conserva la dirección.
 - Límite del escáner: no detecta `new(...)` con tipo inferido; `ProviderEndpoints` usa `new Uri(...)` explícito y la PR 4 ya lo exigía.
 - La prueba de la variable de entorno modifica estado del proceso: se restaura en `finally`; las demás pruebas que construyen clientes de Anthropic usan manejadores y no dependen de la URL base.
+
+## PR 4.2 — Correcciones de la revisión de la PR 4.1 (rama `feat/asistente-config-pr5-recarga`, primeros commits)
+
+| Tarea | Estado | Commit |
+|---|---|---|
+| (a) Ollama no sigue redirecciones | Hecha | `fdac75e` |
+| (b) Validar el `Endpoint` antes de crear el `HttpClient` y exigir http/https absoluto | Hecha | `e899804` |
+| (c) Guarda de `Uri`: `new(...)` inferido y `global::System`, nombre y límites documentados | Hecha | `f84ce95` |
+| (d) `ANTHROPIC_BASE_URL` en colección sin paralelismo y (e) plazo de Ollama con tipo de excepción y cota | Hechas | `042d3ac` |
+
+### TDD Cycle Evidence (PR 4.2)
+
+| Tarea | Archivo de prueba | Capa | RED | GREEN | TRIANGULAR | REFACTOR |
+|---|---|---|---|---|---|---|
+| (a) | `ChatClientFactoryTests` | Infrastructure | `El destino de la redirección recibió una conexión.`: con el manejador por defecto el 307 se seguía hacia `127.0.0.2` (dos escuchas TCP locales, sin red externa) | 27/27 | El origen sirve un solo 307; el destino no recibe conexión y la llamada falla acotada por `WaitAsync` | Comentario del porqué |
+| (b) | `ChatClientFactoryTests` | Infrastructure | No compila (`Func<HttpMessageHandler>` inexistente) | 36/36 | 4 `Endpoint` inválidos (texto, ruta relativa, `ftp://`, `file://`) × (`CreateOllamaHttpClient`: 0 manejadores creados; `Create`: mensaje con `Ai:Endpoint` y sin el valor) + uno válido que crea el manejador una vez | La guarda de arquitectura admite ahora la forma `TryCreate` exacta de la fábrica |
+| (c) | `RepositoryConventionsTests` | Architecture | 7 casos fallaron (`Uri u = new(...)`, `Uri? u = new(...)`, campo `static readonly`, propiedad `{ get; } = new(...)`, `BaseAddress = new(...)`, `global::System.Uri`/`UriBuilder`/`TryCreate`) | 137/137 | 3 negativos (`List<string> items = new()`, `Uri? uri = null`, `new HttpRequestMessage()`) | Prueba renombrada a `InfrastructureAssistant_BuildsNoUriOutsideTheApprovedSyntacticForms`; el comentario de `UriCreation` enumera lo que cubre y lo que no |
+| (d) | (infraestructura de prueba) | Infrastructure | N/A: el aislamiento no tiene un fallo observable determinista | 290/290 | `ProcessEnvironmentCollection` con `DisableParallelization = true`; la prueba restaura la variable en `finally` | Nada |
+| (e) | `ChatClientFactoryTests` | Infrastructure | Mutación temporal: con `Timeout` de 30 s la prueba falla a los 5 s (`WaitAsync`) en vez de aceptar cualquier excepción | 290/290 | Exige `TaskCanceledException`/`TimeoutException` y `800 ms <= t <= 4 s` (la `TimeoutException` de `WaitAsync` llegaría a los 5 s) | Nada |
+
+### Decisiones fuera de spec (PR 4.2)
+
+- `CreateOllamaClient` y `CreateOllamaHttpClient` reciben `Func<HttpMessageHandler>?` en vez de la instancia: es la única forma de comprobar que no se crea ningún manejador cuando el `Endpoint` es inválido.
+- La fábrica ya no usa `new Uri(options.Endpoint!)` sino `Uri.TryCreate(options.Endpoint, UriKind.Absolute, out var endpoint)` con comprobación de esquema; el mensaje es fijo («Ai:Endpoint debe ser una URL absoluta con esquema http o https.»).
+- La prueba de redirección escucha en `127.0.0.1` y `127.0.0.2`: en Linux y Windows ambas son de bucle local; no funcionaría en macOS.
+
+## PR 5 — Recarga en caliente (rama `feat/asistente-config-pr5-recarga`, apilada sobre `fix/asistente-config-pr4-1-revision`)
+
+| Tarea | Estado | Commit |
+|---|---|---|
+| 5.1 Copia previa (`..\TimeTracker.rollback\pr-5\`) | Hecha | fuera del repositorio |
+| 5.2 `AssistantSnapshot`, `Current`, `Swap` | Hecha | `e7c2cb2` |
+| 5.3 Motor sobre la instantánea | Hecha | `5bd2a3d` |
+| 5.4 Cargador, entorno y recargador | Hecha | `a308f7c`, `bc0d60a` |
+| 5.5 Sondeo | Hecha | `41d6ec2` |
+| 5.6 [V-6] Registro en `Program.cs` y orden de arranque | Hecha | `c7ca640` |
+| 5.7 Guardado externo con PostgreSQL | Hecha | `4ef895f` |
+| 5.8 REFACTOR y puerta | Hecha | (sin commit propio) |
+
+### TDD Cycle Evidence (PR 5)
+
+| Tarea | Archivo de prueba | Capa | RED | GREEN | TRIANGULAR | REFACTOR |
+|---|---|---|---|---|---|---|
+| 5.2 | `AssistantChatClientSwapTests` | Infrastructure | No compila: `Current`, `Swap` y el constructor con `TimeProvider` inexistentes | 10/10 | Versión `"0"` del constructor compatible; Swap a `null` y vuelta; copia defensiva sin `ApiKey` ni `MasterKeys`; anterior viva a 119,999 s y liberada a 120 s; 3 cambios seguidos con plazos propios; `Dispose` una sola vez; `Swap` tras `Dispose` lanza y libera el cliente nuevo | `AiOptions.Copy()` |
+| 5.3 | `ChatAssistantEngineSnapshotTests` | Infrastructure | No compila: el constructor del motor aún pedía `IOptions<AiOptions>` | 305/305 | Swap a mitad de una petición con bucle de herramientas (2 llamadas al pipeline inicial, 0 al nuevo; modelo, tokens y esfuerzo iniciales); el plazo inicial de 10 s corta aunque el nuevo sea 40 s; la siguiente petición usa lo nuevo; Swap a `null` a mitad no rompe la petición en curso y la siguiente da `null`; la cuota diaria sigue del entorno | Se quitó `Pipeline` de `AssistantChatClient` |
+| 5.4 | `ConfigurationAssistantEnvironmentTests`, `AssistantSettingsLoaderTests`, `AssistantRuntimeReloaderTests` | Infrastructure | No compila: `AssistantSettingsLoader`, `IAssistantSettingsLoader`, `SettingsLoadOutcome`, `ConfigurationAssistantEnvironment` y `AssistantRuntimeReloader` inexistentes | 333/333 | Fila válida (versión, valores, clave descifrada, sin avisos); valores omitidos del entorno; `None`; sin fila tras fila; sin fila inicial y versión repetida sin reconstruir; fila inválida con una sola advertencia por versión y otra por versión nueva; texto cifrado alterado, versión retirada y sin clave maestra (`undecryptable`, la fábrica no se llama); proveedor ya no permitido (`not-allowed`); fábrica que falla (solo el tipo en el registro); rechazo limpiado tras un éxito; base de datos caída propaga; cargas serializadas. Mutación: sin el `SemaphoreSlim` la prueba de serialización falla (`MaxConcurrentReads` 2). Recargador: éxito sin registro, fallo con aviso solo del tipo y relanzado, cancelación sin aviso | Dos commits (cargador / recargador y registro) |
+| 5.5 | `AssistantSettingsPollerTests` | Infrastructure | No compila: `AssistantSettingsPoller` inexistente. Después, 2 pruebas fallaron de forma determinista: el primer intervalo se perdía porque el host ejecuta `ExecuteAsync` más tarde que `StartAsync` | 344/344 (3 ejecuciones seguidas verdes) | Carga solo si cambia la versión (4 ticks); versión rechazada no se recarga y una nueva sí; sin leer antes del intervalo; caída: un aviso por racha, una línea al recuperar y otro aviso en la racha siguiente; fallo de carga como misma racha; primera carga antes de devolver, con error capturado y acotada a 10 s (9 s no, 10 s sí); cancelación del host se propaga; `StopAsync` detiene; `SettingsPollSeconds` = 7 | El `PeriodicTimer` se crea en `StartAsync` |
+| 5.6 | `AssistantSettingsStartupOrderTests` | Integration (PostgreSQL) | 3 de 4 pruebas fallaron: `La primera carga no se hizo durante el arranque.` y `Assert.Single() Failure: The collection was empty` (poller sin registrar); la de «sin fila» pasó por ser el entorno | 7/7 con 5.7; suite completa 471/471 | Orden: la tabla existe en la primera lectura con una base vacía y migraciones al arrancar; el primer chat usa la fila sembrada; con y sin fábrica que conserva el sondeo | `Program.cs` no lo registra al exportar OpenAPI (verificado: el build dejó de contactar `db.invalid`) |
+| 5.7 | `AssistantSettingsExternalSaveTests` | Integration (PostgreSQL) | `El sondeo no leyó la versión a tiempo.` (3 pruebas, sin poller) | 7/7 | INSERT y UPDATE externos cambian el modelo; fila `None` → 503 y borrar la fila restaura el entorno; fila inválida (Anthropic sin clave) conserva el entorno y la fábrica no crea su cliente | Nada |
+
+### Work Unit Evidence (PR 5)
+
+| Evidencia | Valor |
+|---|---|
+| Prueba focal | `dotnet test tests/TimeTracker.Infrastructure.Tests` = 344/344 (Swap, motor sobre instantánea, cargador, recargador, sondeo); `dotnet test tests/TimeTracker.Api.IntegrationTests --filter "FullyQualifiedName~AssistantSettingsStartupOrder\|FullyQualifiedName~AssistantSettingsExternalSave"` = 7/7 |
+| Arnés de ejecución | API real (`WebApplicationFactory`) con PostgreSQL de Testcontainers, `IChatClientFactory` falso (`RecordingChatClientFactory`), SQL externo y el reloj ficticio avanzado un segundo por vuelta; sin red ni proveedor real |
+| Límite de rollback | Revertir `c7ca640` y `4ef895f` quita el sondeo (el sistema vuelve al entorno); revertir `5bd2a3d` y `e7c2cb2` devuelve el motor y el cliente al estado de la PR 4; la copia previa está en `..\TimeTracker.rollback\pr-5\` |
+
+### Puerta del PR 5 (ejecutada)
+
+BUILD de la solución con `-warnaserror` 0 advertencias 0 errores; `dotnet format --verify-no-changes` sin cambios; TEST: Domain 67, Application 323, Infrastructure 344, Web 223, Architecture 137, Api.IntegrationTests 471 (Docker disponible; no se tocaron contenedores, volúmenes, redes ni imágenes existentes; sin prune); VULN (`--vulnerable --include-transitive`) limpio en los 11 proyectos. `docs/api/openapi.json` restaurado con `git checkout` y sin commitear (el contrato no cambia en esta PR).
+
+### Decisiones fuera de spec (PR 5)
+
+- `IChatClientFactory` pasa a ser **pública** (la implementación por defecto sigue interna): Api la sustituye en las pruebas de integración y el cargador la recibe por constructor. Alternativa descartada: `InternalsVisibleTo` hacia el proyecto de pruebas de Api.
+- `IAssistantSettingsLoader` es una interfaz **pública** (`ReadVersionAsync`, `LoadAsync`, `LastRejectedVersion`) porque `AssistantSettingsPoller` es público (Api lo registra y `ApiFactory` lo elimina por tipo) y su constructor no puede exponer tipos internos. La implementación es interna. El cargador abre su propio ámbito para el `DbContext`, también para la lectura de versión.
+- La instantánea **no conserva la clave del proveedor ni las claves maestras** (`ApiKey` y `MasterKeys` se anulan en la copia): el motor solo usa modelo, plazo, tokens y esfuerzo. El diseño decía «copia defensiva con los valores efectivos».
+- Una fila con clave guardada que no se puede descifrar se rechaza (`undecryptable`) **aunque el entorno tuviera una clave utilizable del mismo proveedor**: sigue AS «Fila inválida» («no se puede descifrar: conserva la última válida») y DD-11, en lugar del respaldo al entorno que haría el resolver.
+- Una versión ya aplicada (`Version` de la fila igual a `Current.Version`) devuelve `Unchanged` sin reconstruir el cliente; sin fila y con la instantánea inicial (`"0"`) tampoco se reconstruye.
+- El **aviso de la recarga fallida tras guardar** lo deja `AssistantRuntimeReloader` (registra solo el tipo y relanza); `ReloadAfterCommitAsync` sigue tragando la excepción tras el guardado confirmado, como decidió la PR 2.
+- El `PeriodicTimer` del sondeo se crea en `StartAsync`, no en `ExecuteAsync` (hallazgo de 5.5). El sondeo no se registra al exportar OpenAPI (`DocumentGeneration.IsRunningUnderTool`).
+- En las pruebas de integración el sondeo avanza con el `FakeTimeProvider` de la aplicación (que también emite los tokens): `ReloadApiFactory.PollOnceAsync` avanza un segundo y espera a la lectura. Los dobles `DisposalTrackingChatClient` y `RecordingChatClientFactory` se comparten por enlace de compilación con Api.IntegrationTests, igual que `FakeChatClient`.
+- V-6 se cumple tal como está el orden de arranque, así que **no** se implementó la marca de instantánea inicial «no cargada» (era solo la contingencia).
+- Tamaño: 11 commits de código, 495 líneas de producción y 1573 de pruebas (≈ 2068 en total con las correcciones 4.2), por encima de la previsión de ≈ 380 líneas del PR 5 (sobre todo pruebas).
+
+## PR 6a — Prueba de conexión y límite de tasa (rama `feat/asistente-config-pr6a-prueba-conexion`, apilada sobre `feat/asistente-config-pr5-recarga`)
+
+| Tarea | Estado | Commit |
+|---|---|---|
+| 6a.1 Copia previa (`..\TimeTracker.rollback\pr-6a\`: `RateLimitingServiceCollectionExtensions.cs` y `AssistantRateLimitTests.cs`) | Hecha | fuera del repositorio |
+| 6a.2 `ConnectionFailureClassifier` y `ConnectionTestResults` | Hecha | `b5e44f9` |
+| 6a.3 `AssistantConnectionTester`, registro y registro de eventos | Hecha | `95896ac` |
+| 6a.4 Política `assistant-config-test` y `OnRejected` por política | Hecha | `19a9f51` |
+| 6a.5 REFACTOR y puerta | Hecha | (el REFACTOR de 6a.4 va en su commit) |
+
+### TDD Cycle Evidence (PR 6a)
+
+| Tarea | Archivo de prueba | Capa | RED | GREEN | TRIANGULAR | REFACTOR |
+|---|---|---|---|---|---|---|
+| 6a.2 | `ConnectionFailureClassifierTests` | Infrastructure | No compila: `ConnectionFailureClassifier` y `ConnectionTestResults` inexistentes (solo esos errores CS0103) | 36/36 a la primera | Excepciones reales de los tres SDK (OpenAI, Anthropic, Ollama) con un manejador que solo devuelve el estado y un cuerpo que miente (`401… 404… 400…`): 401/403, 404, 422, 429, 500, 502 en cada SDK y 400 en OpenAI/Anthropic; Ollama 400 = `unreachable`; estado en una excepción interna; el mensaje nunca decide; plazo propio y `TimeoutException` interna = `timeout`; textos fijos de las seis categorías | Nada necesario |
+| 6a.3 | `AssistantConnectionTesterTests`, `AssistantRegistrationTests` | Infrastructure | No compila: `AssistantConnectionTester` inexistente; después, la prueba de registro falló con `No service for type 'IAssistantConnectionTester' has been registered` | 17/17 y suite 398/398 | Mensaje fijo único sin herramientas, 64 tokens, modelo y esfuerzo del candidato (Low/High/nulo); la fábrica recibe valores del candidato y solo el endpoint del entorno; la clave candidata gana a la del entorno; plazo `min(40, 15)` = 15 s y `min(10, 15)` = 10 s con `FakeTimeProvider` (a 14,999 s sigue pendiente); cliente desechado en éxito, fallo, plazo y cancelación; fallo de creación = `unreachable`; cancelación del llamante se propaga; instantánea y cliente del chat intactos; 3 fallos con URL y clave en el mensaje: ni respuesta ni registro los contienen y el registro lleva solo tipo y categoría. Mutación: con el plazo sin `min` la prueba de 40 s falla | Nada necesario |
+| 6a.4 | `AssistantConfigTestRateLimitTests` | Api.IntegrationTests | No compila: `RateLimitingServiceCollectionExtensions.AssistantConfigTestPolicy` inexistente | 5/5 nuevas + 20 del chat/login = 25/25 | 3 permisos y 4.ª = 429 con detalle propio y `Retry-After` 1–60; partición por `sub` (otro `sub` tiene sus 3); 6 anónimos (401) y 6 Employee (403) no consumen permisos del mismo `sub` que luego hace 3 pruebas como Manager; chat intacto (6.ª = 429 con su texto) y contadores independientes | `PerUser(...)` compartido por las políticas del chat y de la prueba; `DetailFor(policy)` en lugar del ternario |
+
+### Work Unit Evidence (PR 6a)
+
+| Evidencia | Valor |
+|---|---|
+| Prueba focal | `dotnet test tests/TimeTracker.Infrastructure.Tests` = 398/398 (+54: clasificador 36, probador 17, registro 1); `dotnet test tests/TimeTracker.Api.IntegrationTests --filter "FullyQualifiedName~AssistantConfigTestRateLimit\|FullyQualifiedName~AssistantRateLimitTests\|FullyQualifiedName~LoginRateLimit"` = 25/25 |
+| Arnés de ejecución | Clasificador: SDK reales con un `HttpMessageHandler` de estado fijo, sin red. Política: servidor en memoria (`TestServer`) con el `AddRateLimiting()` real y el orden de `Program` (autenticación, autorización, limitador) sobre dos rutas mínimas; el endpoint real llega en la PR 6b (6b.6 repite el 429 sobre él) |
+| Límite de rollback | Revertir `19a9f51` quita la política; revertir `95896ac` y `b5e44f9` quita probador, clasificador y su registro. Copia previa en `..\TimeTracker.rollback\pr-6a\` |
+
+### Puerta del PR 6a (ejecutada)
+
+BUILD de la solución con `-warnaserror` 0 advertencias 0 errores; `dotnet format --verify-no-changes` sin cambios; TEST: Domain 67, Application 323, Infrastructure 398, Web 223, Architecture 137, Api.IntegrationTests 476 (Docker disponible; no se tocaron contenedores, volúmenes, redes ni imágenes existentes; sin prune); VULN (`--vulnerable --include-transitive`) limpio en los 11 proyectos. `docs/api/openapi.json` restaurado con `git checkout` y sin commitear (el contrato no cambia: aún no hay endpoints).
+
+### Decisiones fuera de spec (PR 6a)
+
+- **Ollama con 400 = `unreachable`** (V-3): `OllamaException` / `InvalidOperationException` no traen estado HTTP y la segunda es genérica; clasificarlas como `rejected` también etiquetaría fallos locales. Consecuencia aceptada: un modelo de Ollama que rechaza `think` aparece como «No se pudo contactar con el proveedor». Una prueba lo fija; reabrir solo si OllamaSharp expone el estado.
+- Un `TimeoutException` en la cadena de excepciones (plazo propio de `HttpClient` en Ollama o de red de los SDK) también es `timeout`, además del plazo propio del probador; así una carrera entre ambos plazos no cambia la categoría.
+- La excepción se examina recorriendo `InnerException`; el estado se toma de la primera que lo tenga.
+- Cualquier respuesta completada es `ok`, aunque el texto venga vacío (la spec dice «respuesta correcta»).
+- El probador no usa el pipeline de herramientas (`AssistantChatPipeline.Build`): reutiliza solo `CreateChatOptions(options, [])` con `MaxOutputTokens = 64` en las opciones copiadas. Del entorno solo toma el endpoint de Ollama; la clave es siempre la del candidato.
+- Registro: dos eventos nuevos (20 y 21) con proveedor, categoría y tipo de la excepción; ni el modelo ni el mensaje.
+- `IAssistantConnectionTester` se registra como singleton (sin estado); el caso de uso `TestAssistantConnectionUseCase` se registra en 6b.4 con el resto.
+- La prueba de la política usa un servidor mínimo en lugar del API completo: el endpoint real no existe hasta la 6b.
+- Tamaño: 177 líneas de producción y 567 de pruebas (≈ 744) frente a las ≈ 220 previstas; la desviación son las pruebas triangulares (SDK reales, plazo, no-eco).
+
+## PR 6b — API: endpoints, política Manager y OpenAPI (rama `feat/asistente-config-pr6b-api`, apilada sobre `feat/asistente-config-pr6a-prueba-conexion`)
+
+| Tarea | Estado | Commit |
+|---|---|---|
+| 6b.1 Copia previa (`..\TimeTracker.rollback\pr-6b\`: `TeamEndpoints.cs`, `Program.cs`, `openapi.json`, `OpenApiContractTests.cs`, `AuthorizationCoverageTests.cs`, `IUserRepository.cs`, `UserRepository.cs`, `InMemoryUserRepository.cs`) | Hecha | fuera del repositorio |
+| 6b.2 [V-8] Política `Manager` en `Security/AuthorizationPolicies` | Hecha | `29c1f40` |
+| 6b.3 [V-7] DTO estrictos (`Disallow`) | Hecha | `eeb8f61` |
+| 6b.4 Los cuatro endpoints y registro de casos de uso | Hecha | `eeb8f61` |
+| 6b.5 Clave de solo escritura y fallo cerrado | Hecha | `4a4aa27` |
+| 6b.6 Prueba de conexión y 429 sobre el endpoint real | Hecha | `a424868` |
+| 6b.7 Contrato OpenAPI regenerado y `OpenApiContractTests` ampliada | Hecha | `22c236b` |
+| 6b.8 REFACTOR y puerta | Hecha | (el REFACTOR va en cada commit) |
+
+### TDD Cycle Evidence (PR 6b)
+
+| Tarea | Archivo de prueba | Capa | RED | GREEN | TRIANGULAR | REFACTOR |
+|---|---|---|---|---|---|---|
+| 6b.2 | `AuthorizationCoverageTests` | Api.IntegrationTests | No compila: `CS0103 El nombre 'AuthorizationPolicies' no existe` (solo ese error) | 48/48 (cobertura de autorización, `/equipo` y política de respaldo; línea base 37/37 en Authorization+Team) | Nueva prueba: la política está registrada una sola vez y exige el rol `Manager`; `/equipo` sigue exigiéndola | Nada necesario |
+| 6b.3 | `AssistantConfigurationStrictBodyTests` | Api.IntegrationTests | 6/6 fallan con `Expected: BadRequest, Actual: NotFound` (ruta inexistente) | 6/6 con `JsonUnmappedMemberHandling.Disallow` **sin validar a mano**: V-7 se cumple. Mutación: quitando el atributo, `url`/`endpoint` dan `500` en el PUT y `200` en la prueba | `url`, `endpoint`, `baseUrl` en el PUT; `url`, `endpoint` en la prueba; JSON roto; con un almacén que cuenta lecturas y escrituras: 0 y 0, y el probador sin invocar | Peticiones con valores por defecto `null` (el contrato no marca campos obligatorios) |
+| 6b.4 | `AssistantConfigurationEndpointsTests` | Api.IntegrationTests (PostgreSQL 18) | 21 de 25 fallan (`NotFound` en todo); los 4 anónimos pasan por la política de respaldo (el 401 es lo que ya daba cualquier ruta inexistente) | 25/25 | 401 anónimo y 403 Employee en los cuatro endpoints con 0 lecturas/escrituras; `GET` con los 13 campos y orígenes; `PUT` válido = mismo texto que el `GET`, token nuevo, auditoría `Saved`, la fábrica de clientes recibe el modelo nuevo; 400 por campo (`effort`, `model`, `timeoutSeconds`) y por `concurrencyToken` ausente; 409 en primera creación y en actualización con token obsoleto (el ganador se conserva, 2 auditorías); `DELETE` 204 con fila (auditoría `Reset`, `GET` con origen `env` y token `0`), 204 sin fila (0 auditorías) y 409 con fila cambiada tras la lectura; 413 con 9 KiB en `PUT` y en la prueba (Kestrel) sin lecturas; `updatedBy` con nombre visible y `null` si el usuario no existe | `updatedBy` por `IUserRepository.FindDisplayNameAsync` (puerto nuevo) |
+| 6b.5 | `AssistantConfigurationCredentialTests` | Api.IntegrationTests (PostgreSQL 18) | **Verde a la primera** (5/5 tras corregir un error de mi propia prueba): los casos de uso y los endpoints de 6b.4 ya cumplen CP; no hay código nuevo. Mutación: con `credentialStorageAvailable` fijo a `true` falla la prueba del indicador | 5/5 | Sin clave maestra: `PUT` con clave = 400 en `credential` sin filas ni auditoría; `GET` con y sin clave maestra; `provider=None` con clave = 400 en `credential`; `GET`, `PUT` y prueba nunca devuelven la clave, su Base64/hex cifrado ni la clave maestra, y no tienen propiedad `credential` en la raíz; el probador recibe la clave candidata; el indicador pasa a `false`/`none` tras `DELETE`; el 400 no repite la clave | Nada necesario |
+| 6b.6 | `AssistantConfigurationConnectionTestEndpointTests` | Api.IntegrationTests | **Verde a la primera** (10/10): el endpoint y la política ya se registraron en 6b.4. Mutación: quitando `RequireRateLimiting` fallan las dos pruebas del 429 | 10/10 | `ok`, `authentication`, `rejected`, `unreachable` con texto fijo; cuerpo vacío = configuración efectiva; 400 sin invocar al probador; 4.ª = 429 con detalle propio y `Retry-After` 1-60; 400,400,200,429 (cuentan las que acaban en 400); 6 anónimos (401) y 6 Employee (403) del mismo `sub` no consumen permisos y luego el Manager hace 3; otro Manager tiene los suyos y el resto del grupo no se limita | Nada necesario |
+| 6b.7 | `OpenApiContractTests` (4 pruebas nuevas) | Architecture | Con el `openapi.json` anterior restaurado: `Falta la ruta /api/asistente/configuracion en el contrato.` (2 pruebas) y `KeyNotFound` en los esquemas (2) | 15/15 tras regenerar con el build | Operaciones y respuestas exactas de DD-14 y Bearer en las cuatro; sin `requestBody` ni parámetros en `DELETE`; sin 413 declarado; campos exactos de peticiones y respuestas; `additionalProperties=false` en las dos peticiones; ningún esquema de configuración con `url`/`endpoint`; `credential` solo en las dos peticiones (y en `sources`, ver decisiones) y `credentialConfigured` en la respuesta; sin `apikey` ni `Ai__` (prueba existente) | `.ProducesValidationProblem()` en lugar de `ProducesProblem(400)` (el 400 documenta `errors`); peticiones sin campos obligatorios |
+
+### Work Unit Evidence (PR 6b)
+
+| Evidencia | Valor |
+|---|---|
+| Prueba focal | `dotnet test tests/TimeTracker.Api.IntegrationTests --filter "FullyQualifiedName~AssistantConfiguration"` = 40/40; `dotnet test tests/TimeTracker.ArchitectureTests --filter "FullyQualifiedName~OpenApiContractTests"` = 15/15 |
+| Arnés de ejecución | `WebApplicationFactory` con el pipeline real de `Program` (autenticación, autorización, limitador), PostgreSQL 18 (Testcontainers) con migraciones, probador y fábrica de clientes falsos (nunca red); Kestrel para el 413 |
+| Límite de rollback | Revertir `22c236b` restaura el contrato; `4a4aa27` y `a424868` solo son pruebas; `eeb8f61` quita endpoints, DTO, registro y `FindDisplayNameAsync`; `29c1f40` devuelve la política a `TeamEndpoints` (V-8). Copia previa en `..\TimeTracker.rollback\pr-6b\` |
+
+### Puerta del PR 6b (ejecutada)
+
+BUILD de la solución con `-warnaserror` 0 advertencias 0 errores; `dotnet format --verify-no-changes` sin cambios; TEST: Domain 67, Application 323, Infrastructure 398, Web 223, Architecture 141, Api.IntegrationTests 517 (Docker disponible; no se tocaron contenedores, volúmenes, redes ni imágenes existentes; sin prune); COV-A Application 99,9 % líneas / 96,5 % ramas (mínimo 80 %), COV-D Domain 100 %; VULN (`--vulnerable --include-transitive`) limpio. `docs/api/openapi.json` commiteado con solo adiciones (529 líneas generadas).
+
+### Decisiones fuera de spec (PR 6b)
+
+- **`DELETE` sin token de concurrencia en la petición**: se sigue DD-8/DD-14 (el servidor lee la fila y borra con su `xmin`; `Conflict` = 409, `Deleted`/`NotFound` = 204). El encargo hablaba de un token del cliente también en `DELETE`; el contrato del diseño no lo tiene y el caso de uso ya lo captura. Si se quiere token del cliente, es un cambio de contrato (nuevo parámetro y caso de uso).
+- **`sources.credential`** (origen `env`/`stored`/`none`) es un campo exigido por DD-14 y no la clave: la prueba de contrato lo distingue (`credential` aparece solo en las dos peticiones y en `AssistantConfigurationSources`, tipo cadena). DD-16 (4) debe leerse así.
+- **`updatedBy` con nombre visible**: DD-14 lo pide y la vista de Application solo trae el `Guid`; se añade `IUserRepository.FindDisplayNameAsync` (3 líneas en puerto, repositorio EF y doble en memoria). Devuelve `null` si el usuario ya no existe.
+- **V-7**: `JsonUnmappedMemberHandling.Disallow` en un `record` posicional con valores por defecto da `400` problem+json (no `500`) con `ThrowOnBadRequest` activo; no hizo falta validar a mano.
+- Los `400` de validación usan `ValidationProblem` con título en español «Solicitud no válida» y errores por campo; `409` usa `ProblemDetails` «Conflicto» con detalle fijo. El cuerpo ausente en `PUT` es `400` general; en la prueba equivale a «probar la efectiva».
+- Pruebas con base de datos: base vacía por prueba (`CreateEmptyDatabaseAsync`) y migraciones al arrancar la fábrica; las pruebas sin base usan un almacén que cuenta operaciones.
+- La política `Manager` se registra con `AddAuthorizationPolicies()` (nueva extensión) antes de `AddTeam()`; `AddTeam()` ya no registra políticas.
+- Tamaño: ≈ 245 líneas de producción, ≈ 850 de pruebas y 529 de `openapi.json` generado (≈ 1.620 en total, ≈ 1.090 sin el contrato) frente a las ≈ 380 previstas; la desviación es de pruebas (HTTP real con PostgreSQL) y del contrato generado.
+
+## PR 7 — Web: `/asistente/configuracion` (rama `feat/asistente-config-pr7-web`, apilada sobre `feat/asistente-config-pr6b-api`)
+
+| Tarea | Estado | Commit |
+|---|---|---|
+| 7.1 Copia previa (`..\TimeTracker.rollback\pr-7\`: `NavMenu.razor`, `Program.cs`, `app.css`, `RepositoryConventionsTests.cs`, `ApiRequest.cs`, `AssistantConversation.cs`) | Hecha | fuera del repositorio |
+| 7.2 `AssistantConfigurationForm` y DTO | Hecha | `9313002`, `8784354` |
+| 7.3 `AssistantConfigurationApiClient` y sobrecarga sin cuerpo de `ApiRequest` | Hecha | `8d2d9fe` |
+| 7.4 Página y guardas de convenciones | Hecha | `ee311d2` |
+| 7.5 `NavMenu`, `Program.cs`, estilos y chat sin cambios | Hecha | `ee311d2` |
+| 7.6 Verificación manual en Chrome | **Pendiente (orquestador)** | — |
+
+### TDD Cycle Evidence (PR 7)
+
+| Tarea | Archivo de prueba | RED | GREEN | TRIANGULAR | REFACTOR |
+|---|---|---|---|---|---|
+| 7.2 | `AssistantConfigurationFormTests` (Web.Tests) | No compila: `CS0246` por `AssistantConfigurationForm`, `AssistantConfigurationDto`, `AllowedProviderDto`, `AssistantConfigurationError` (solo ese error) | 39/39 tras corregir una prueba mía (`<b>x</b>` con origen `env` se omite por diseño; se usó origen `stored`) | Campos del entorno sin tocar = `null`; guardados se envían; vaciados = `null`; cambio de proveedor envía todo; esfuerzo omitido si no se admite; clave solo si se escribió y con almacenamiento; la clave se vacía tras éxito y tras 400/409/429/red; la prueba conserva la clave; `ToString` redacta la clave; 409 ofrece recargar; 400 por campo y resto agrupado; 429 con espera; `<b>x</b>` literal en modelo, errores, conflicto y prueba; confirmación de restablecer | La frase de espera del 429 se extrae a `Http/WaitHint` y la reutiliza `AssistantConversation` (223 pruebas previas en verde) |
+| 7.2b | `UpdatedText` (misma clase) | No compila: `CS1061` y `CS0117` (`UpdatedText`, `NothingStoredMessage`) | 282/282 | Hora local con desfase, autor omitido, sin fila guardada, autor como texto | Nada necesario |
+| 7.3 | `AssistantConfigurationApiClientTests` y 3 en `ApiRequestTests` | No compila: `CS0246 AssistantConfigurationApiClient` | 280/280 | GET/PUT/POST/DELETE con ruta y método; nombres JSON exactos con `null`; 400 con errores por campo, solo con `detail`, y cuerpos ilegibles; 409; 429 con `Retry-After`; 204; 403 genérico; red caída; la clave no vuelve en errores | `ApiRequest.SendAsync` comparte `SendCoreAsync` entre la sobrecarga con cuerpo y la de 204 |
+| 7.4 | `RepositoryConventionsTests.Web_HasTheAssistantConfigurationPage...` | `Falta src/TimeTracker.Web/Pages/AssistantConfiguration.razor.` | Verde con la página | Sin `MarkupString`, `localStorage`, `sessionStorage`, `IJSRuntime`, `innerHTML`, `type="url"` ni «endpoint»; `[Authorize(Roles = "Manager")]`; campo `password` con `autocomplete="new-password"` y `disabled="@(!form.CredentialEnabled)"`; la clave se enlaza en un único sitio; avisos, botones y texto «clave configurada» | Componente `Shared/FieldErrors` para los mensajes por campo |
+| 7.5 | `RepositoryConventionsTests.Web_LinksTheAssistantConfiguration...` | `Assert.Single() Failure: The collection was empty` (enlace ausente) | 143/143 en Architecture | Enlace solo dentro del bloque `Roles="Manager"` junto a «Equipo»; registro en `Program.cs`; `/asistente` sin referencias a la configuración y con `[Authorize]` | Nada necesario |
+
+### Work Unit Evidence (PR 7)
+
+| Evidencia | Valor |
+|---|---|
+| Prueba focal | `dotnet test tests/TimeTracker.Web.Tests --filter "FullyQualifiedName~AssistantConfiguration"` y `dotnet test tests/TimeTracker.ArchitectureTests --filter "FullyQualifiedName~RepositoryConventionsTests.Web_"` en verde |
+| Arnés de ejecución | N/A en automático: la Web no tiene bUnit ni E2E; el recorrido real es la verificación manual 7.6 |
+| Límite de rollback | Borrar `Pages/AssistantConfiguration.razor`, `Shared/FieldErrors.razor`, `Assistant/AssistantConfiguration*`, `Http/WaitHint.cs` (y devolver su frase a `AssistantConversation`), el enlace de `NavMenu`, el registro de `Program.cs`, los estilos y las dos guardas; copia previa en `..\TimeTracker.rollback\pr-7\` |
+
+### Puerta del PR 7 (ejecutada)
+
+BUILD de la solución con `-warnaserror` 0 advertencias 0 errores; `dotnet format --verify-no-changes` sin cambios; TEST: Domain 67, Application 323, Infrastructure 398, Web 282, Architecture 143, Api.IntegrationTests 517 (Docker disponible; no se tocaron contenedores, volúmenes, redes ni imágenes existentes; sin prune); VULN (`--vulnerable --include-transitive`) limpio. `docs/api/openapi.json` restaurado con `git checkout` y sin commitear (el contrato no cambia).
+
+### Decisiones fuera de spec (PR 7)
+
+- `[Authorize(Roles = "Manager")]` en lugar de `nameof(UserRole.Manager)`: la Web no referencia Domain (prueba existente); es el mismo literal que usa `/equipo`.
+- La confirmación de «Restablecer al entorno» es un panel en la propia página (sin `confirm()` de JavaScript, para no usar `IJSRuntime`). Advierte que borra la configuración vigente aunque otro responsable la haya cambiado.
+- Tras el `DELETE` (204 sin cuerpo) la página vuelve a hacer `GET` para mostrar la configuración efectiva.
+- Valores del entorno sin tocar se envían como `null` para no congelarlos como guardados; si cambia el proveedor se envía todo explícito.
+- Etiquetas de origen: `env` = «Entorno», `stored` = «Guardado por un responsable», `none` = «Sin clave».
+- Texto del menú «Config. asistente» (corto para el menú lateral).
+- `ApiRequest` gana una sobrecarga sin cuerpo (necesaria para el 204); la frase de espera del 429 se comparte con el chat.
+- Tamaño aprox.: ≈ 800 líneas de producción y pruebas frente a las ≈ 350 previstas; la desviación es de pruebas del formulario y del cliente.
+
+### Pendiente de verificación manual (7.6, orquestador)
+
+Chrome contra API y Web locales: Manager ve ambos avisos y guarda; Employee sin enlace y «acceso denegado» por URL directa; clave vaciada tras guardar; el DOM no contiene la clave (inspeccionar); `<b>x</b>` como modelo se ve literal; 409 con dos pestañas muestra «Recargar»; «Probar conexión» muestra resultado y, tras 3 pruebas en un minuto, el mensaje de espera; sin `Ai__MasterKeys` el campo de clave sale desactivado con aviso. Registrar en `verify-report.md`.
+
+## PR 8 — Endurecimiento y documentación (rama `feat/asistente-config-pr8-endurecimiento`, apilada sobre `feat/asistente-config-pr7-web`)
+
+Incluye los puntos de seguimiento (a-h) acordados en las revisiones anteriores, en commits propios y antes de 8.1.
+
+| Unidad | Estado | Commit |
+|---|---|---|
+| a) `updatedAt` truncado a microsegundos | Hecha | `1f556e0` |
+| b) y c) nombre visible degradado, `switch` sin `default → Conflict`, PUT con cuerpo vacío/`null` | Hechas (un solo commit: tocan los mismos archivos) | `7adadec` |
+| d) DTO numéricos: se mantiene `int?` y se documenta la desviación | Hecha | `1690bcd` |
+| e) almacén: constante `xmin`, comentarios, `SaveAsync` dividido, `DELETE` de fila ya borrada = `NotFound` | Hecha | `2031635` |
+| f) auditoría de solo inserción en PostgreSQL (trigger) | Hecha | `24cf8f7` |
+| g) Web: clave conservada ante fallos, relectura fallida tras `DELETE`, confirmación desactivada, `NavLink` exacto | Hecha | `0776208` |
+| h) riesgos aceptados en `design.md` | Hecha | `936b631` |
+| 8.1 dos instancias y señal de fin de sondeo | Hecha | `3f8186b` |
+| 8.2 guardas de arquitectura | Hecha | `83a97c8` |
+| 8.3 V-1..V-8 cerradas en `design.md` | Hecha (`openspec/config.yaml` NO editado: pendiente de aprobación del usuario) | `a1705d1` |
+| 8.4 README y ADR 0019 (nuevo; el 0018 queda como en main) | Hecha (custodia de la clave maestra sigue como pregunta abierta para el product owner) | `2ba6b73` |
+| 8.5 puerta final | Pasada; **parada de `sdd-verify` pendiente** | `5f76da4` y este registro |
+
+### TDD Cycle Evidence (PR 8)
+
+| Unidad | Archivo de prueba | RED | GREEN | TRIANGULAR | REFACTOR |
+|---|---|---|---|---|---|
+| a | `SaveAssistantSettingsUseCaseTests` | `Expected: ...1234560+00:00 Actual: ...1234567+00:00` | 22/22 | Vista, fila guardada y auditoría con el mismo instante | Nada necesario |
+| b | `AssistantConfigurationEndpointsTests` (GET y PUT con repositorio que lanza) | `Expected: OK Actual: InternalServerError` (2 pruebas) | 23/23 | GET con fila ajena y PUT tras confirmar el guardado | `UpdatedByNameResolver` (registra solo el tipo de excepción) |
+| c | mismas pruebas | Caracterización: el PUT con cuerpo vacío y `null` ya daba `400` (verde a la primera, 2 casos). El `default → throw` no es alcanzable (la jerarquía de resultados está sellada): cambio mecánico | 23/23 | `""` y `null` | Nada |
+| d | `AssistantConfigurationStrictBodyTests` | Caracterización del `400` general con `"abc"`, `1.5`, `99999999999`, `true` (4 casos, verde a la primera) | 10/10 | 4 formas de valor no entero | Nada |
+| e | `AssistantSettingsStoreTests` | `Expected: NotFound Actual: Conflict` (fila borrada por otra conexión tras la lectura, con un interceptor de `SaveChanges`) | 22/22 | Fila borrada = `NotFound`; fila cambiada = `Conflict` | `SaveAsync` en `TrackRowForSaveAsync` + `CommitSaveAsync`; constante `XminColumn`; `IsMissingTable` |
+| f | `AssistantSettingsAuditImmutabilityTests` | 4 de 6 fallan: `No exception was thrown` para `UPDATE`, `DELETE`, `TRUNCATE` y `Actual: []` sin triggers | 6/6 | `INSERT` sigue funcionando; solo la tabla de auditoría tiene triggers; `Down` los elimina y devuelve `UPDATE`/`DELETE`; `MigrationTests` (5 migraciones, sin alterar otras tablas) | Guarda de arquitectura que exige los triggers y que la migración solo toca su tabla |
+| g | `AssistantConfigurationFormTests`, `RepositoryConventionsTests` | No compila (`ReloadAfterReset`, `CanConfirmReset`); tras añadir solo las firmas, 9 pruebas fallan (clave vaciada en 6 estados, carga no marcada como no vigente, confirmación aceptable en curso) y 2 guardas de página/menú | 288/288 y 84/84 | 6 estados de error con clave conservada; recarga tras `409` la vacía; relectura fallida y recarga posterior; confirmación descartada al empezar otra operación | Página: «Reintentar» no se duplica con «Recargar» |
+| 8.1 | `AssistantSettingsPollerTests`, `AssistantSettingsMultiInstanceTests` | No compila (`PollCompleted`); las 4 pruebas de dos instancias son caracterización del comportamiento de PR 5 (verdes a la primera). Mutación: sin la guarda del sondeo **y** sin la del cargador fallan 2 de 4 (`Expected: 1 Actual: 2` avisos) | 11/11 y 4/4 (6 ejecuciones seguidas del sondeo sin fallos) | Otra instancia, tabla ausente, fila no descifrable (otra clave maestra), fila manipulada (byte cambiado) y recuperación al borrarla | Se eliminan `WaitUntilAsync` y los `Task.Delay` de las pruebas del sondeo y de `PollOnceAsync` |
+| 8.2 | `DependencyRuleTests`, `AssistantAuditAppendOnlyTests` | Guardas nuevas verdes a la primera (reflejan el estado actual) | 153/153 | SDK de proveedores solo en Infrastructure (3 ensamblados); migración acotada a su tabla | Nada |
+| 8.4 | `DeliveryArtifactsTests` | 3 pruebas fallan: README sin la sección de Railway del asistente, textos «llegará en un cambio posterior» y ADR sin trigger ni custodia | 153/153 | `Ai__MasterKeys__1` solo por `stdin` y sin valor asignado en el documento | Nada |
+
+### Work Unit Evidence (PR 8)
+
+| Evidencia | Valor |
+|---|---|
+| Prueba focal | `dotnet test tests/TimeTracker.Api.IntegrationTests --filter "FullyQualifiedName~MultiInstance"` = 4/4; `--filter "FullyQualifiedName~AuditImmutability"` = 6/6; `dotnet test tests/TimeTracker.ArchitectureTests` = 153/153 |
+| Arnés de ejecución | Dos `WebApplicationFactory` sobre la misma base PostgreSQL 18 (Testcontainers), cada una con su `FakeTimeProvider` y el sondeo real a 1 s; fábrica de clientes falsa (nunca red) |
+| Límite de rollback | Revertir los commits de la rama (migración `AddAssistantAuditImmutability` incluida: su `Down` elimina los triggers) |
+
+### Puerta del PR 8 (ejecutada)
+
+BUILD de la solución con `-warnaserror` 0 advertencias 0 errores; `dotnet format --verify-no-changes` sin cambios; TEST: Domain 67, Application 324, Infrastructure 398, Web 288, Architecture 153, Api.IntegrationTests 538 (Docker disponible; no se tocaron contenedores, volúmenes, redes ni imágenes existentes; sin prune); COV-A Application 99,8 % líneas / 96,6 % ramas (mínimo 80 %), COV-D Domain 100 %; VULN (`--vulnerable --include-transitive`) limpio en los once proyectos. `docs/api/openapi.json` restaurado con `git checkout` y sin commitear (el contrato no cambia: el punto d se resolvió sin tocarlo).
+
+### Decisiones fuera de spec (PR 8)
+
+- **d) Se mantiene `int?`** en los DTO numéricos y se documenta como desviación aceptada de DD-14 (sección 14 de `design.md`): cambiar a cadenas altera el contrato publicado, la Web y todas las pruebas de Application.
+- **Trigger y no `REVOKE`** para la auditoría: el propietario de la tabla (el rol de la aplicación) no queda frenado por un `REVOKE`. Cubre también `TRUNCATE`. El ADR 0018 ya estaba fusionado en main y no se reescribe (AGENTS §8): el matiz sobre la alternativa descartada del trigger va en el ADR 0019 nuevo, que lo complementa.
+- **`Fail` nunca vacía la clave** (ni con 400 ni con 409): solo la vacía un éxito o recargar desde el servidor.
+- **Señal de pruebas en producción:** `AssistantSettingsPoller.PollCompleted` (evento público) para esperar sin tiempo real; sin coste en ejecución normal.
+- `UpdatedByNameResolver` (nuevo, Api) centraliza la degradación de `updatedBy` y registra solo el tipo de la excepción.
+- `ReloadApiFactory` fija `Ai__AllowedProviders=Anthropic,OpenAI,Ollama` y acepta clave maestra opcional.
+- Los puntos b y c comparten commit (mismos archivos).
+
+### No cerrado
+
+- **7.6** (verificación manual en Chrome) y su `verify-report.md`: pendientes del orquestador.
+- **Parada de `sdd-verify`: pendiente** (no ejecutada).
+- **`openspec/config.yaml`** sin editar (requiere aprobación del usuario).
+- **Custodia de la clave maestra en Railway** (§13): pregunta abierta para el product owner, documentada en README y ADR 0019.
+- **Archivo de `asistente-config-responsable`**: tras la verificación.

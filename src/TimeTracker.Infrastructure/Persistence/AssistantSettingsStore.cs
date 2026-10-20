@@ -12,7 +12,11 @@ namespace TimeTracker.Infrastructure.Persistence;
 /// <summary>Almacén PostgreSQL de la fila única de configuración; la fila y su auditoría se confirman en una sola transacción (DD-8, DD-9).</summary>
 public sealed class AssistantSettingsStore(TimeTrackerDbContext context) : IAssistantSettingsStore
 {
+    // Un xmin real nunca es 0 (los identificadores de transacción empiezan en 3): el 0 es el centinela «sin fila» del contrato.
     private const string NoRowToken = "0";
+
+    // Columna de sistema de PostgreSQL usada como token de concurrencia; EF la mapea con este nombre en la configuración.
+    private const string XminColumn = "xmin";
 
     private static readonly JsonSerializerOptions AuditJson = new(JsonSerializerDefaults.Web);
 
@@ -22,11 +26,11 @@ public sealed class AssistantSettingsStore(TimeTrackerDbContext context) : IAssi
         {
             var read = await context.Set<AssistantSettingsRecord>()
                 .AsNoTracking()
-                .Select(row => new { Row = row, Xmin = EF.Property<uint>(row, "xmin") })
+                .Select(row => new { Row = row, Xmin = EF.Property<uint>(row, XminColumn) })
                 .FirstOrDefaultAsync(cancellationToken);
             return read is null ? null : ToSettings(read.Row, read.Xmin);
         }
-        catch (PostgresException exception) when (exception.SqlState == PostgresErrorCodes.UndefinedTable)
+        catch (PostgresException exception) when (IsMissingTable(exception))
         {
             return null;
         }
@@ -38,11 +42,11 @@ public sealed class AssistantSettingsStore(TimeTrackerDbContext context) : IAssi
         {
             var xmin = await context.Set<AssistantSettingsRecord>()
                 .AsNoTracking()
-                .Select(row => (uint?)EF.Property<uint>(row, "xmin"))
+                .Select(row => (uint?)EF.Property<uint>(row, XminColumn))
                 .FirstOrDefaultAsync(cancellationToken);
             return xmin is { } value ? Token(value) : NoRowToken;
         }
-        catch (PostgresException exception) when (exception.SqlState == PostgresErrorCodes.UndefinedTable)
+        catch (PostgresException exception) when (IsMissingTable(exception))
         {
             return NoRowToken;
         }
@@ -50,41 +54,14 @@ public sealed class AssistantSettingsStore(TimeTrackerDbContext context) : IAssi
 
     public async Task<SaveOutcome> SaveAsync(AssistantSettings next, string expectedToken, AuditEntry audit, CancellationToken cancellationToken)
     {
-        AssistantSettingsRecord row;
-        if (expectedToken == NoRowToken)
+        if (await TrackRowForSaveAsync(expectedToken, cancellationToken) is not { } row)
         {
-            row = new AssistantSettingsRecord();
-            context.Add(row);
-        }
-        else
-        {
-            if (!uint.TryParse(expectedToken, NumberStyles.None, CultureInfo.InvariantCulture, out var expected)
-                || await context.Set<AssistantSettingsRecord>().FirstOrDefaultAsync(cancellationToken) is not { } existing)
-            {
-                return new SaveOutcome.Conflict();
-            }
-
-            row = existing;
-            context.Entry(row).Property<uint>("xmin").OriginalValue = expected;
+            return new SaveOutcome.Conflict();
         }
 
         Apply(next, row);
         context.Add(ToAuditRecord(audit));
-
-        try
-        {
-            await context.SaveChangesAsync(cancellationToken);
-        }
-        catch (DbUpdateConcurrencyException)
-        {
-            return new SaveOutcome.Conflict();
-        }
-        catch (DbUpdateException exception) when (expectedToken == NoRowToken && exception.InnerException is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation })
-        {
-            return new SaveOutcome.Conflict();
-        }
-
-        return new SaveOutcome.Saved(Token(context.Entry(row).Property<uint>("xmin").CurrentValue));
+        return await CommitSaveAsync(row, expectedToken == NoRowToken, cancellationToken);
     }
 
     public async Task<DeleteOutcome> DeleteAsync(string expectedToken, AuditEntry audit, CancellationToken cancellationToken)
@@ -94,7 +71,7 @@ public sealed class AssistantSettingsStore(TimeTrackerDbContext context) : IAssi
             return DeleteOutcome.NotFound;
         }
 
-        if (Token(context.Entry(row).Property<uint>("xmin").CurrentValue) != expectedToken)
+        if (Token(context.Entry(row).Property<uint>(XminColumn).CurrentValue) != expectedToken)
         {
             return DeleteOutcome.Conflict;
         }
@@ -108,10 +85,53 @@ public sealed class AssistantSettingsStore(TimeTrackerDbContext context) : IAssi
         }
         catch (DbUpdateConcurrencyException)
         {
-            return DeleteOutcome.Conflict;
+            // Cero filas afectadas: o la borró otro Manager (mismo estado final pedido, idempotente) o la cambió (hay que avisar).
+            context.ChangeTracker.Clear();
+            return await context.Set<AssistantSettingsRecord>().AnyAsync(cancellationToken) ? DeleteOutcome.Conflict : DeleteOutcome.NotFound;
         }
 
         return DeleteOutcome.Deleted;
+    }
+
+    // 42P01: la tabla aún no existe (el sondeo corrió antes que las migraciones o se revirtieron); equivale a «sin fila» y el asistente usa el entorno.
+    private static bool IsMissingTable(PostgresException exception) => exception.SqlState == PostgresErrorCodes.UndefinedTable;
+
+    /// <summary>Fila a modificar con el token esperado como valor original; <c>null</c> si el token no corresponde a la fila actual.</summary>
+    private async Task<AssistantSettingsRecord?> TrackRowForSaveAsync(string expectedToken, CancellationToken cancellationToken)
+    {
+        if (expectedToken == NoRowToken)
+        {
+            var created = new AssistantSettingsRecord();
+            context.Add(created);
+            return created;
+        }
+
+        if (!uint.TryParse(expectedToken, NumberStyles.None, CultureInfo.InvariantCulture, out var expected)
+            || await context.Set<AssistantSettingsRecord>().FirstOrDefaultAsync(cancellationToken) is not { } existing)
+        {
+            return null;
+        }
+
+        context.Entry(existing).Property<uint>(XminColumn).OriginalValue = expected;
+        return existing;
+    }
+
+    private async Task<SaveOutcome> CommitSaveAsync(AssistantSettingsRecord row, bool creating, CancellationToken cancellationToken)
+    {
+        try
+        {
+            await context.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            return new SaveOutcome.Conflict();
+        }
+        catch (DbUpdateException exception) when (creating && exception.InnerException is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation })
+        {
+            return new SaveOutcome.Conflict();
+        }
+
+        return new SaveOutcome.Saved(Token(context.Entry(row).Property<uint>(XminColumn).CurrentValue));
     }
 
     private static string Token(uint xmin) => xmin.ToString(CultureInfo.InvariantCulture);
