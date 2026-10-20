@@ -1,5 +1,7 @@
 using Microsoft.Extensions.AI;
 
+using TimeTracker.Application.Assistant.Configuration;
+
 namespace TimeTracker.Infrastructure.Assistant;
 
 /// <summary>
@@ -46,5 +48,14 @@ internal static class AssistantChatPipeline
             ToolMode = ChatToolMode.Auto,
             MaxOutputTokens = options.MaxOutputTokens,
             ModelId = options.Model,
+            // Sin esfuerzo no se define Reasoning: los modelos que siempre piensan rechazan un valor explícito (DD-12).
+            Reasoning = options.ResolvedEffort is { } effort ? new ReasoningOptions { Effort = ToReasoningEffort(effort) } : null,
         };
+
+    private static ReasoningEffort ToReasoningEffort(AssistantEffort effort) => effort switch
+    {
+        AssistantEffort.Low => ReasoningEffort.Low,
+        AssistantEffort.Medium => ReasoningEffort.Medium,
+        _ => ReasoningEffort.High,
+    };
 }

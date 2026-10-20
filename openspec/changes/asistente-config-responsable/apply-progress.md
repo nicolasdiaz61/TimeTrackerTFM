@@ -245,3 +245,46 @@ RESTORE ok; BUILD `-warnaserror` (Release) 0 advertencias 0 errores; FORMAT sin 
 - La fila de auditoría guarda `provider`, `effort` y demás en el JSON con nombres camelCase y `effort` en minúsculas (`low|medium|high`), igual que la columna `effort`.
 - `MigrationTests.Migrate_OnEmptyDatabase_AppliesMigrationsInOrder` se actualizó de 3 a 4 migraciones.
 - Tamaño: 1.439 líneas añadidas en 20 archivos (≈ 390 son la migración generada `Designer` y el snapshot; ≈ 270 de producción manual y ≈ 600 de pruebas) frente a las ≈ 300 estimadas más los arrastres. Se propone contar el código generado fuera del presupuesto (decisión 2 pendiente del forecast).
+
+## PR 4 — Catálogo y adaptador compatible con OpenAI (rama `feat/asistente-config-pr4-catalogo-openai`)
+
+| Tarea | Estado | Commit |
+|---|---|---|
+| 4.1 Copia previa | Hecha (`..\TimeTracker.rollback\pr-4\`: `Directory.Packages.props`, csproj de Infrastructure, `ChatClientFactory.cs`, `AssistantChatPipeline.cs`, `DependencyRuleTests.cs`; la carpeta ya existía de un cambio anterior y se sobrescribieron esos nombres) | |
+| 4.2 [V-1] Paquete | Hecha | `d31840f` |
+| 4.3 + 4.4 Spike [V-2] y `CreateChatOptions` | Hecha | `c152358` |
+| 4.5 [V-3] Excepciones por SDK | Hecha (anotado en design §12; sondeo temporal, no se commitea) | |
+| 4.6 Fábrica | Hecha | `b10fa58` |
+| Limpieza acordada (PR 3a.1) | Hecha: `ProviderAdapterLogger`, su registro, `LacksAdapter` y `ProviderAdapterLogTests` eliminados | `648b32b` |
+| 4.7 Guardas AR | Hecha | `ea832d5` |
+| 4.8 REFACTOR y puerta | Hecha | |
+
+### TDD Cycle Evidence (PR 4)
+
+| Tarea | Archivo de prueba | Capa | RED | GREEN | TRIANGULAR | REFACTOR |
+|---|---|---|---|---|---|---|
+| 4.2 | (restore/build/`list package`) | Paquete | N/A: no hay código; la comprobación es el propio restore | 0 NU1608/NU1903, VULN limpio | `dotnet package search` confirma que 10.10.0 existe | Ninguno |
+| 4.3/4.4 | `ReasoningEffortSpikeTests` | Infrastructure | 9 de 13 fallan por el motivo previsto: OpenAI, Gemini y Anthropic con `Expected: "low" Actual: null` (cuerpo sin el campo). Ollama no se vio en el primer informe (salida recortada); tras el GREEN falló por una excepción no capturada (`OllamaException`) del manejador 400 y se amplió el filtro de la prueba | 13/13 | 3 niveles × 4 proveedores, URL de Gemini fija y caso sin esfuerzo (ninguno envía campo) | `ToReasoningEffort` privado |
+| 4.6 | `ChatClientFactoryTests` | Infrastructure | No compila: `ProviderEndpoints`, `IChatClientFactory`, `DefaultChatClientFactory` y `CreateOpenAIClientOptions` inexistentes | 13/13 | OpenAI sin `Endpoint` (URL del SDK), Gemini con la fija aunque haya `Ai:Endpoint`, `NetworkTimeout`, 2 peticiones ante 500 (un reintento), delegación de la fábrica inyectable | Fábrica registrada con `TryAddSingleton` y usada por `AssistantChatClient` |
+| Limpieza | `AssistantRegistrationTests.WithOpenAIOrGemini_...` | Infrastructure | Verde a la primera: el comportamiento lo daba la fábrica; protege que OpenAI/Gemini queden habilitados al borrar el aviso | 263/263 | `OpenAI` y `gemini` | |
+| 4.7 | `RepositoryConventionsTests` (2 pruebas nuevas) | Architecture | Mutación temporal: `using OpenAI;` en `Api/Assistant/AssistantRequest.cs` y un `new System.Uri(...)` en `Infrastructure/Assistant/Mut.cs`. Primer intento: la expresión solo buscaba `new Uri(` y no vio `new System.Uri(`; se cambió a la expresión `new\s+(System\.)?Uri\(` y se repitió | 106/106 | Declaración del paquete solo en Infrastructure, versión central 10.10.0, uso del espacio de nombres, `new Uri(` solo en `ProviderEndpoints` y fábrica; `Src_DoesNotHardcodeModelNames` (V-5) sigue verde | |
+
+### Work Unit Evidence (PR 4)
+
+| Evidencia | Valor |
+|---|---|
+| Prueba focal | `dotnet test tests/TimeTracker.Infrastructure.Tests --filter FullyQualifiedName~ReasoningEffortSpike` = 13/13; `--filter FullyQualifiedName~ChatClientFactory` = 13/13; `dotnet test tests/TimeTracker.ArchitectureTests` = 106/106 |
+| Arnés de ejecución | Manejador HTTP de grabación sin red sobre los clientes reales de OpenAI, Anthropic y OllamaSharp; ninguna llamada a un proveedor ni clave real |
+| Límite de rollback | Quitar `Microsoft.Extensions.AI.OpenAI` (`Directory.Packages.props` y csproj) y revertir `ChatClientFactory`/`CreateChatOptions`/`IChatClientFactory`/`ProviderEndpoints`; la limpieza de `ProviderAdapterLogger` es un commit aparte |
+
+### Puerta del PR 4 (ejecutada)
+
+RESTORE ok; BUILD Release `-warnaserror` 0 advertencias 0 errores; `dotnet format --verify-no-changes` sin cambios; TEST: Domain 67, Application 323, Web 223, Infrastructure 263, Architecture 106, Api.IntegrationTests 464 (Docker disponible; no se tocaron contenedores, volúmenes, redes ni imágenes; sin prune); VULN (`--vulnerable --include-transitive`) limpio. `docs/api/openapi.json` restaurado con `git checkout` y sin commitear.
+
+### Decisiones fuera de spec (PR 4)
+
+- `AssistantProviderTraits.SupportsEffort` no cambia: el spike confirma los cuatro proveedores (design §12, V-2).
+- `IChatClientFactory` queda registrada (`TryAddSingleton`) y `AssistantChatClient` ya la usa en vez de la llamada estática, para que la PR 5 y las pruebas puedan sustituirla; `ChatClientFactory.Create` estático se conserva.
+- Ollama con 400 no expone estado HTTP (`OllamaException`/`InvalidOperationException`): la PR 6a decide si lo trata como `rejected` o lo deja en `unreachable` (design §12, V-3).
+- Para que la guarda `new Uri(` cuente la constante de Gemini, `ProviderEndpoints` usa `new Uri(...)` explícito en lugar de `new(...)`.
+- Tamaño: 333 líneas añadidas y 78 borradas (≈ 215 de pruebas, ≈ 60 de producción, resto documentos) frente a las ≈ 350 previstas.

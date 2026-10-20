@@ -34,6 +34,8 @@
     <!-- Proveedores del asistente (V-1 parte 2, asistente-ia): SDK oficial de Anthropic y cliente de Ollama. -->
     <PackageVersion Include="Anthropic" Version="12.58.0" />
     <PackageVersion Include="OllamaSharp" Version="5.5.0" />
+    <!-- Adaptador de OpenAI y Gemini (Chat Completions, PR 4 de asistente-config-responsable); misma versión que Microsoft.Extensions.AI. -->
+    <PackageVersion Include="Microsoft.Extensions.AI.OpenAI" Version="10.10.0" />
   </ItemGroup>
 
 </Project>

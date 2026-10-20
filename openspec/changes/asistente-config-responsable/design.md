@@ -385,9 +385,31 @@ Si la estrategia de entrega no admite excepción, se mantienen los cortes 3a/3b 
 ### Resultados de V-n en apply
 
 - **V-4 (PR 3a, verificado)**: `new AesGcm(key, 16)` con `tagSizeInBytes` explícito, cifrado/descifrado con AAD y rechazo de una etiqueta alterada (`CryptographicException`) funcionan igual en .NET 10.0.10 sobre Windows y en la imagen de ejecución del Dockerfile `mcr.microsoft.com/dotnet/aspnet:10.0-alpine` (.NET 10.0.13, Alpine 3.24, `AesGcm.IsSupported=True`, tamaños de etiqueta admitidos 12-16). Se ejecutó un único contenedor efímero `tt-pr3a-alpine-check` (`--rm`) con una aplicación de consola publicada fuera del repositorio. El diseño no cambia.
+- **V-1 (PR 4, verificado)**: `Microsoft.Extensions.AI.OpenAI` 10.10.0 (con `Microsoft.Extensions.AI` 10.10.0 y `Anthropic` 12.58.0) restaura y compila con `-warnaserror` sin NU1608 ni NU1903; arrastra `OpenAI` 2.13.0 y `System.ClientModel` 1.14.0. `dotnet list package --vulnerable --include-transitive` limpio en los once proyectos: no hizo falta elevar ninguna transitiva ni usar 10.10.1. NuGet fue alcanzable (`dotnet package search` devuelve 10.10.1 y 10.11.0, no usadas).
+- **V-2 (PR 4, spike con manejador de grabación, sin red)**: los cuatro adaptadores traducen `ChatOptions.Reasoning` con los tres niveles y ninguno envía nada con esfuerzo nulo. No hizo falta la contingencia de DD-12 (3) ni cambiar `AssistantProviderTraits.SupportsEffort` (sigue `true` en los cuatro).
+
+  | Proveedor | Campo del cuerpo | Con esfuerzo nulo |
+  |---|---|---|
+  | OpenAI (Chat Completions) | `reasoning_effort` = `low`/`medium`/`high` | ausente |
+  | Gemini (mismo cliente, `OpenAIClientOptions.Endpoint` = `ProviderEndpoints.GeminiOpenAi`; la petición va a esa URL) | `reasoning_effort` | ausente |
+  | Anthropic (`AnthropicThinkingMode.Adaptive` por defecto) | `output_config.effort` | ni `output_config.effort` ni `thinking` |
+  | Ollama (`OllamaApiClient(HttpClient, model)`) | `think` = `"low"`/`"medium"`/`"high"` | ausente |
+
+  Nombres confirmados: `OpenAIClientOptions.Transport` (`HttpClientPipelineTransport`), `.Endpoint`, `.NetworkTimeout`, `.RetryPolicy` (`new ClientRetryPolicy(1)`: una petición fallida con 5xx se repite una vez, 2 peticiones en total); `AnthropicClient.HttpClient` con `MaxRetries`; `OllamaApiClient(HttpClient, string)` exige `BaseAddress`. `ReasoningEffortLevel` de `ChatCompletionOptions` no se necesita.
+- **V-3 (PR 4, para la PR 6a)**: con respuestas simuladas 400/401/403/404/422/429/500 y reintentos desactivados:
+
+  | SDK | Excepción | Estado HTTP |
+  |---|---|---|
+  | OpenAI | `System.ClientModel.ClientResultException` (siempre, sin excepción interna) | propiedad `Status` (`int`) |
+  | Anthropic | `Anthropic.Exceptions.AnthropicApiException` y derivadas: `AnthropicBadRequestException`, `AnthropicUnauthorizedException`, `AnthropicForbiddenException`, `AnthropicNotFoundException`, `AnthropicUnprocessableEntityException`, `AnthropicRateLimitException` (todas bajo `Anthropic4xxException`) y `Anthropic5xxException` | propiedad `StatusCode` (`HttpStatusCode`) |
+  | Ollama | `System.Net.Http.HttpRequestException` para 401/403/404/422/429/5xx | `StatusCode` (`HttpStatusCode?`) |
+  | Ollama, caso 400 | `OllamaSharp.Models.Exceptions.OllamaException` (cuerpo `{}`) o `InvalidOperationException` (cuerpo con `error`), **sin** propiedad de estado | ninguna |
+
+  Consecuencia para el clasificador: Ollama con 400 no se puede clasificar por estado HTTP; la PR 6a debe tratar `OllamaException`/`InvalidOperationException` de Ollama como `rejected` solo si lo decide explícitamente, o dejarlo en `unreachable` (la contingencia de V-3). Un cuerpo de error no modifica el tipo para OpenAI ni Anthropic.
+- **V-5 (PR 4, verificado)**: `Src_DoesNotHardcodeModelNames` sigue verde con `ProviderEndpoints` (URL de Gemini `.../v1beta/openai/`) y los nombres `Gemini`/`OpenAI`; el patrón `gemini-` exige guion. Nada que reformular.
 
 ## 13. Preguntas abiertas
 
 - [ ] Confirmar con el product owner la política de provisión de la clave maestra en Railway (quién la genera y cómo se custodia la copia de seguridad).
-- [ ] Resultado del spike (V-2): se anotará en una sección «Resultados de V-n en apply», como en `asistente-ia`.
+- [x] Resultado del spike (V-2): anotado en «Resultados de V-n en apply» (PR 4).
 - [ ] Si se quiere lectura de la auditoría por API/UI en una versión posterior (no incluida en esta).
