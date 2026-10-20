@@ -18,6 +18,8 @@
   <ItemGroup>
     <Compile Include="..\TimeTracker.Infrastructure.Tests\Fakes\FakeChatClient.cs" Link="Fakes\FakeChatClient.cs" />
     <Compile Include="..\TimeTracker.Infrastructure.Tests\Fakes\HangingChatClient.cs" Link="Fakes\HangingChatClient.cs" />
+    <Compile Include="..\TimeTracker.Infrastructure.Tests\Fakes\DisposalTrackingChatClient.cs" Link="Fakes\DisposalTrackingChatClient.cs" />
+    <Compile Include="..\TimeTracker.Infrastructure.Tests\Fakes\RecordingChatClientFactory.cs" Link="Fakes\RecordingChatClientFactory.cs" />
   </ItemGroup>
 
 </Project>

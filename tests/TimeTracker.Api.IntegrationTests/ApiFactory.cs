@@ -9,6 +9,8 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Time.Testing;
 
+using TimeTracker.Infrastructure.Assistant;
+
 namespace TimeTracker.Api.IntegrationTests;
 
 /// <summary>
@@ -38,6 +40,12 @@ public class ApiFactory : WebApplicationFactory<Program>
 
     protected virtual string AuthenticatedRole => "Employee";
 
+    /// <summary>
+    /// El sondeo de la configuración guardada se elimina por defecto: la base de datos de estas pruebas no existe y no debe haber
+    /// conexiones en segundo plano. Solo las fábricas con PostgreSQL real que lo ejercitan lo conservan (DD-11).
+    /// </summary>
+    protected virtual bool KeepsAssistantSettingsPoller => false;
+
     public HttpClient CreateClientFor(Guid userId, string role)
     {
         var client = CreateDefaultClient();
@@ -55,7 +63,17 @@ public class ApiFactory : WebApplicationFactory<Program>
         builder.UseSetting("Cors:AllowedOrigins:0", ValidOrigin);
         builder.UseSetting("ConnectionStrings:Default", ValidConnectionString);
         builder.UseSetting("Jwt:SigningKey", ValidSigningKey);
-        builder.ConfigureTestServices(services => services.Replace(ServiceDescriptor.Singleton<TimeProvider>(Clock)));
+        builder.ConfigureTestServices(services =>
+        {
+            services.Replace(ServiceDescriptor.Singleton<TimeProvider>(Clock));
+            if (!KeepsAssistantSettingsPoller)
+            {
+                foreach (var poller in services.Where(descriptor => descriptor.ImplementationType == typeof(AssistantSettingsPoller)).ToList())
+                {
+                    services.Remove(poller);
+                }
+            }
+        });
     }
 
     /// <summary>Gancho entre la construcción del host y su arranque; solo lo usan las pruebas de la carrera de arranque.</summary>
