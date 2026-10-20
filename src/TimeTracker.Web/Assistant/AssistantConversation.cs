@@ -1,4 +1,3 @@
-using System.Globalization;
 using System.Net;
 
 using TimeTracker.Web.Http;
@@ -106,7 +105,7 @@ public sealed class AssistantConversation
                 ErrorMessage = detail ?? InvalidMessageFallback;
                 break;
             case HttpStatusCode.TooManyRequests:
-                ErrorMessage = (detail ?? TooManyRequestsFallback) + WaitHint(retryAfterSeconds);
+                ErrorMessage = (detail ?? TooManyRequestsFallback) + WaitHint.Describe(retryAfterSeconds);
                 break;
             case HttpStatusCode.ServiceUnavailable:
                 Notice = detail ?? UnavailableFallback;
@@ -117,13 +116,6 @@ public sealed class AssistantConversation
                 break;
         }
     }
-
-    private static string WaitHint(int? seconds) => seconds switch
-    {
-        null or <= 0 => string.Empty,
-        1 => " Espere 1 segundo antes de reintentar.",
-        _ => string.Create(CultureInfo.InvariantCulture, $" Espere unos {seconds} segundos antes de reintentar."),
-    };
 
     private void Add(ConversationTurn turn)
     {
