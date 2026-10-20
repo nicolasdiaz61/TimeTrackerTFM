@@ -1,6 +1,8 @@
+using System.Globalization;
 using System.Net;
 
 using TimeTracker.Web.Http;
+using TimeTracker.Web.Time;
 
 namespace TimeTracker.Web.Assistant;
 
@@ -25,6 +27,7 @@ public sealed class AssistantConfigurationForm
     public const string SavedMessage = "Configuración guardada.";
     public const string ResetMessage = "Configuración restablecida al entorno.";
     public const string ReviewFieldsMessage = "Revise los campos indicados.";
+    public const string NothingStoredMessage = "No hay configuración guardada: se usan los valores del entorno.";
 
     private const string EnvironmentSource = "env";
 
@@ -83,6 +86,19 @@ public sealed class AssistantConfigurationForm
         "none" => "Sin clave",
         _ => source,
     };
+
+    /// <summary>Cuándo y quién guardó la configuración vigente, con la hora del usuario; el nombre se muestra como texto.</summary>
+    public string UpdatedText(ILocalTimeZone zone)
+    {
+        if (Loaded?.UpdatedAt is not { } updatedAt)
+        {
+            return NothingStoredMessage;
+        }
+
+        var local = updatedAt.ToOffset(zone.OffsetAt(updatedAt));
+        var text = string.Create(CultureInfo.InvariantCulture, $"Última modificación: {local:dd/MM/yyyy HH:mm}");
+        return Loaded.UpdatedBy is { Length: > 0 } author ? $"{text} por {author}." : text + ".";
+    }
 
     /// <summary>Inicia una operación y limpia los mensajes anteriores; <see langword="false"/> si ya hay una en curso.</summary>
     public bool TryBegin()

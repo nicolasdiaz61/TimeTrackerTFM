@@ -2,6 +2,7 @@ using System.Net;
 
 using TimeTracker.Web.Assistant;
 using TimeTracker.Web.Http;
+using TimeTracker.Web.Tests.Support;
 
 namespace TimeTracker.Web.Tests.Assistant;
 
@@ -462,4 +463,21 @@ public class AssistantConfigurationFormTests
     [InlineData("<b>x</b>", "<b>x</b>")]
     public void SourceLabel_TranslatesTheKnownOriginsAndKeepsTheRestAsText(string source, string label)
         => Assert.Equal(label, AssistantConfigurationForm.SourceLabel(source));
+
+    [Fact]
+    public void UpdatedText_ShowsTheLocalTimeAndWhoChangedIt()
+    {
+        var form = Loaded(Dto() with { UpdatedAt = new DateTimeOffset(2026, 10, 19, 8, 30, 0, TimeSpan.Zero), UpdatedBy = "<b>Ana</b>" });
+
+        Assert.Equal("Última modificación: 19/10/2026 10:30 por <b>Ana</b>.", form.UpdatedText(new FixedOffsetTimeZone(TimeSpan.FromHours(2))));
+    }
+
+    [Fact]
+    public void UpdatedText_WithoutAnAuthorOmitsIt_AndWithoutRowSaysTheEnvironmentApplies()
+    {
+        var withoutAuthor = Loaded(Dto() with { UpdatedAt = new DateTimeOffset(2026, 10, 19, 8, 30, 0, TimeSpan.Zero) });
+        Assert.Equal("Última modificación: 19/10/2026 08:30.", withoutAuthor.UpdatedText(FixedOffsetTimeZone.Utc));
+
+        Assert.Equal(AssistantConfigurationForm.NothingStoredMessage, Loaded().UpdatedText(FixedOffsetTimeZone.Utc));
+    }
 }
