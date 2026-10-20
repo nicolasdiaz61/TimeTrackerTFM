@@ -137,14 +137,22 @@ public sealed class AesGcmCredentialProtectorTests
         Assert.Throws<CredentialProtectionUnavailableException>(() => Protect(protector));
     }
 
-    [Fact]
-    public void ADuplicatedVersion_DoesNotAffectOtherVersions()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void ADuplicatedVersion_FailsClosedEvenIfBothCopiesHoldTheSameKey(bool duplicateFirst)
     {
-        var protector = Create("2", ("1", KeyOne), ("01", KeyTwo), ("2", KeyTwo));
-        var old = Protect(Create("1", ("1", KeyOne)));
+        // Con la misma clave en ambas copias, «gana la primera» y «gana la última» descifrarían: solo el fallo cerrado no lo hace.
+        var protector = duplicateFirst
+            ? Create("2", ("01", KeyOne), ("1", KeyOne), ("2", KeyTwo))
+            : Create("2", ("1", KeyOne), ("01", KeyOne), ("2", KeyTwo));
+        var versionOne = Protect(Create("1", ("1", KeyOne)));
+        var versionTwo = Protect(Create("2", ("2", KeyTwo)));
 
         Assert.True(protector.IsAvailable);
-        Assert.False(protector.TryUnprotect(old, AssistantProvider.Anthropic, out _));
+        Assert.False(protector.TryUnprotect(versionOne, AssistantProvider.Anthropic, out _));
+        Assert.True(protector.TryUnprotect(versionTwo, AssistantProvider.Anthropic, out var plaintext));
+        Assert.Equal(Secret, plaintext!.Value);
     }
 
     [Theory]
