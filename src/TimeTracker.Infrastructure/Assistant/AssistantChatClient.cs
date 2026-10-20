@@ -29,8 +29,6 @@ public sealed class AssistantChatClient : IDisposable
     /// <summary>Instantánea vigente. Quien la use durante una petición debe leerla una sola vez.</summary>
     internal AssistantSnapshot Current => Volatile.Read(ref _current);
 
-    internal IChatClient? Pipeline => Current.Pipeline;
-
     /// <summary>Publica la instantánea nueva y devuelve la anterior, que se libera tras el periodo de gracia.</summary>
     internal AssistantSnapshot Swap(IChatClient? inner, AiOptions options, string version)
     {

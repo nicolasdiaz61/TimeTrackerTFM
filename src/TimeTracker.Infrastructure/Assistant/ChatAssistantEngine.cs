@@ -1,6 +1,5 @@
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Options;
 
 using TimeTracker.Application.Assistant;
 using TimeTracker.Application.Identity;
@@ -16,7 +15,6 @@ public sealed class ChatAssistantEngine(
     AssistantChatClient client,
     AssistantToolset toolset,
     ICurrentUser currentUser,
-    IOptions<AiOptions> options,
     TimeProvider timeProvider,
     ILogger<ChatAssistantEngine> logger) : IAssistantEngine
 {
@@ -32,12 +30,14 @@ public sealed class ChatAssistantEngine(
 
     public async Task<string?> ReplyAsync(AssistantConversation conversation, CancellationToken cancellationToken)
     {
-        if (client.Pipeline is not { } pipeline)
+        // Una sola lectura: un cambio de configuración a mitad de la petición no la afecta (DD-10).
+        var snapshot = client.Current;
+        if (snapshot.Pipeline is not { } pipeline)
         {
             return null;
         }
 
-        var settings = options.Value;
+        var settings = snapshot.Options;
         var provider = settings.ResolvedProvider?.ToString();
         var started = timeProvider.GetTimestamp();
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(settings.TimeoutSeconds), timeProvider);
