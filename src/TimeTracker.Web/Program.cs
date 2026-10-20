@@ -40,6 +40,7 @@ builder.Services.AddScoped(sp => new AuthApiClient(new HttpClient { BaseAddress 
 builder.Services.AddScoped(sp => new TimeEntriesApiClient(CreateAuthorizedClient(sp, apiBaseUri)));
 builder.Services.AddScoped(sp => new TeamApiClient(CreateAuthorizedClient(sp, apiBaseUri)));
 builder.Services.AddScoped(sp => new AssistantApiClient(CreateAuthorizedClient(sp, apiBaseUri)));
+builder.Services.AddScoped(sp => new AssistantConfigurationApiClient(CreateAuthorizedClient(sp, apiBaseUri)));
 
 await builder.Build().RunAsync();
 

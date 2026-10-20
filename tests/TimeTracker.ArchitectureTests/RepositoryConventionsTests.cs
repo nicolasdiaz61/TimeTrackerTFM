@@ -165,6 +165,66 @@ public class RepositoryConventionsTests
         Assert.Contains("href=\"asistente\"", menu, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public void Web_HasTheAssistantConfigurationPageOnlyForManagersWithPlainTextAndNoBrowserStorage()
+    {
+        var pagePath = Path.Combine(RepositoryRoot.Path, "src", "TimeTracker.Web", "Pages", "AssistantConfiguration.razor");
+        Assert.True(File.Exists(pagePath), "Falta src/TimeTracker.Web/Pages/AssistantConfiguration.razor.");
+        var page = ReadWeb("Pages/AssistantConfiguration.razor");
+
+        // El rol del JWT, igual que /equipo; la Web no referencia Domain, así que no puede usar nameof(UserRole.Manager).
+        Assert.Contains("@page \"/asistente/configuracion\"", page, StringComparison.Ordinal);
+        Assert.Contains("@attribute [Authorize(Roles = \"Manager\")]", page, StringComparison.Ordinal);
+
+        // Texto plano y sin almacenamiento del navegador (DD-17, V-5): ni la configuración ni la clave salen del componente.
+        var sources = WebSourceFiles()
+            .Where(file => Path.GetFileName(file).StartsWith("AssistantConfiguration", StringComparison.Ordinal))
+            .Select(file => File.ReadAllText(file))
+            .ToList();
+        Assert.Contains(page, sources);
+        string[] forbidden = ["MarkupString", "localStorage", "sessionStorage", "IJSRuntime", "innerHTML", "type=\"url\""];
+        Assert.All(sources, text =>
+        {
+            Assert.DoesNotContain(forbidden, word => text.Contains(word, StringComparison.Ordinal));
+            Assert.DoesNotContain("endpoint", text, StringComparison.OrdinalIgnoreCase);
+        });
+
+        // La clave: campo de contraseña, desactivado sin almacenamiento seguro y nunca escrito en otro elemento.
+        Assert.Contains("type=\"password\"", page, StringComparison.Ordinal);
+        Assert.Contains("autocomplete=\"new-password\"", page, StringComparison.Ordinal);
+        Assert.Contains("disabled=\"@(!form.CredentialEnabled)\"", page, StringComparison.Ordinal);
+        Assert.Single(System.Text.RegularExpressions.Regex.Matches(page, @"form\.Credential\b"));
+
+        // Avisos y acciones exigidos por la spec.
+        Assert.Contains("data-testid=\"data-sharing-notice\"", page, StringComparison.Ordinal);
+        Assert.Contains("tercero", page, StringComparison.Ordinal);
+        Assert.Contains("data-testid=\"company-scope-notice\"", page, StringComparison.Ordinal);
+        Assert.Contains("toda la empresa", page, StringComparison.Ordinal);
+        Assert.Contains("Guardar", page, StringComparison.Ordinal);
+        Assert.Contains("Probar conexión", page, StringComparison.Ordinal);
+        Assert.Contains("Restablecer al entorno", page, StringComparison.Ordinal);
+        Assert.Contains("aunque otro responsable", page, StringComparison.Ordinal);
+        Assert.Contains("clave configurada", page, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Web_LinksTheAssistantConfigurationOnlyInTheManagerBlockAndLeavesTheChatPageAlone()
+    {
+        var menu = ReadWeb("Layout/NavMenu.razor");
+        var managerStart = menu.IndexOf("<AuthorizeView Roles=\"Manager\"", StringComparison.Ordinal);
+        var managerEnd = menu.IndexOf("</AuthorizeView>", managerStart, StringComparison.Ordinal);
+        Assert.True(managerStart >= 0, "Falta el bloque de menú del Manager.");
+        Assert.Single(System.Text.RegularExpressions.Regex.Matches(menu, "asistente/configuracion"));
+        var managerBlock = menu[managerStart..managerEnd];
+        Assert.Contains("href=\"asistente/configuracion\"", managerBlock, StringComparison.Ordinal);
+        Assert.Contains("href=\"equipo\"", managerBlock, StringComparison.Ordinal);
+
+        Assert.Contains("AssistantConfigurationApiClient", ReadWeb("Program.cs"), StringComparison.Ordinal);
+        var chat = ReadWeb("Pages/Assistant.razor");
+        Assert.DoesNotContain("Configuration", chat, StringComparison.Ordinal);
+        Assert.Contains("@attribute [Authorize]", chat, StringComparison.Ordinal);
+    }
+
     private static string ReadWeb(string relativePath)
         => File.ReadAllText(Path.Combine(RepositoryRoot.Path, "src", "TimeTracker.Web", relativePath));
 
