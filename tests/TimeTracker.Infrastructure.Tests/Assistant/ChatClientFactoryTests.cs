@@ -1,8 +1,13 @@
+using System.ClientModel;
+using System.ClientModel.Primitives;
+
 using Anthropic;
 
 using Microsoft.Extensions.AI;
 
 using OllamaSharp;
+
+using OpenAI;
 
 using TimeTracker.Infrastructure.Assistant;
 
@@ -58,5 +63,68 @@ public sealed class ChatClientFactoryTests
     public void Create_WithAnUnrecognisedProvider_ReturnsNoClient()
     {
         Assert.Null(ChatClientFactory.Create(new AiOptions { Provider = "1", Model = "m", ApiKey = SecretKey }));
+    }
+
+    [Fact]
+    public void Create_WithOpenAI_UsesTheSdkDefaultEndpointAndTheConfiguredModel()
+    {
+        using var client = ChatClientFactory.Create(new AiOptions { Provider = "OpenAI", Model = "modelo-ficticio", ApiKey = SecretKey });
+
+        Assert.NotNull(client);
+        var metadata = client.GetService<ChatClientMetadata>();
+        Assert.Equal("modelo-ficticio", metadata?.DefaultModelId);
+        Assert.Equal(new Uri("https://api.openai.com/v1"), metadata?.ProviderUri);
+    }
+
+    [Fact]
+    public void Create_WithGemini_UsesTheFixedGeminiEndpoint()
+    {
+        using var client = ChatClientFactory.Create(new AiOptions { Provider = "Gemini", Model = "modelo-ficticio", ApiKey = SecretKey, Endpoint = "https://otra-url.invalid/" });
+
+        Assert.NotNull(client);
+        Assert.Equal(ProviderEndpoints.GeminiOpenAi, client.GetService<ChatClientMetadata>()?.ProviderUri);
+    }
+
+    [Fact]
+    public void CreateOpenAIClientOptions_UsesTheConfiguredTimeoutAndNoEndpointForOpenAI()
+    {
+        var options = ChatClientFactory.CreateOpenAIClientOptions(new AiOptions { Provider = "OpenAI", TimeoutSeconds = 17 });
+
+        Assert.Equal(TimeSpan.FromSeconds(17), options.NetworkTimeout);
+        Assert.Null(options.Endpoint);
+    }
+
+    [Fact]
+    public async Task OpenAIClient_RetriesOnceOnATransientFailure()
+    {
+        var handler = new CountingHandler();
+        var options = ChatClientFactory.CreateOpenAIClientOptions(new AiOptions { Provider = "OpenAI" });
+        options.Transport = new HttpClientPipelineTransport(new HttpClient(handler));
+        using var client = new OpenAIClient(new ApiKeyCredential(SecretKey), options).GetChatClient("m").AsIChatClient();
+
+        await Assert.ThrowsAsync<ClientResultException>(() => client.GetResponseAsync("hola"));
+
+        Assert.Equal(2, handler.Requests);
+    }
+
+    [Fact]
+    public void TheInjectableFactory_DelegatesToTheStaticOne()
+    {
+        IChatClientFactory factory = new DefaultChatClientFactory();
+
+        Assert.Null(factory.Create(new AiOptions { Provider = "None" }));
+        using var client = factory.Create(new AiOptions { Provider = "OpenAI", Model = "m", ApiKey = SecretKey });
+        Assert.NotNull(client);
+    }
+
+    private sealed class CountingHandler : HttpMessageHandler
+    {
+        public int Requests { get; private set; }
+
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            Requests++;
+            return Task.FromResult(new HttpResponseMessage(System.Net.HttpStatusCode.InternalServerError) { Content = new StringContent("{}") });
+        }
     }
 }
