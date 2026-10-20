@@ -102,4 +102,34 @@ public class ApiRequestTests
         Assert.Null(exception.StatusCode);
         Assert.Equal(ApiRequest.GenericErrorMessage, exception.Message);
     }
+
+    [Fact]
+    public async Task SendAsync_WithoutBody_NoContentIsSuccess()
+        => await ApiRequest.SendAsync(() => Task.FromResult(new HttpResponseMessage(HttpStatusCode.NoContent)), AssistantStatuses, CancellationToken.None);
+
+    [Fact]
+    public async Task SendAsync_WithoutBody_ReproducesTheDetailOfTheIndicatedStatusesOnly()
+    {
+        var conflict = await Assert.ThrowsAsync<ApiRequestException>(() => ApiRequest.SendAsync(
+            () => Task.FromResult(Problem(HttpStatusCode.Conflict, """{"detail":"La configuración cambió."}""")),
+            new HashSet<HttpStatusCode> { HttpStatusCode.Conflict }, CancellationToken.None));
+        Assert.Equal("La configuración cambió.", conflict.Message);
+        Assert.Equal(HttpStatusCode.Conflict, conflict.StatusCode);
+
+        var forbidden = await Assert.ThrowsAsync<ApiRequestException>(() => ApiRequest.SendAsync(
+            () => Task.FromResult(Problem(HttpStatusCode.Forbidden, """{"detail":"Texto interno."}""")),
+            new HashSet<HttpStatusCode> { HttpStatusCode.Conflict }, CancellationToken.None));
+        Assert.Equal(ApiRequest.GenericErrorMessage, forbidden.Message);
+        Assert.Equal(HttpStatusCode.Forbidden, forbidden.StatusCode);
+    }
+
+    [Fact]
+    public async Task SendAsync_WithoutBody_NetworkFailureIsGeneric()
+    {
+        var exception = await Assert.ThrowsAsync<ApiRequestException>(() => ApiRequest.SendAsync(
+            () => throw new HttpRequestException("socket"), AssistantStatuses, CancellationToken.None));
+
+        Assert.Null(exception.StatusCode);
+        Assert.Equal(ApiRequest.GenericErrorMessage, exception.Message);
+    }
 }
