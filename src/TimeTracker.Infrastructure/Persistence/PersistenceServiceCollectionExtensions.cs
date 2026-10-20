@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 
+using TimeTracker.Application.Assistant.Configuration;
 using TimeTracker.Application.DemoData;
 using TimeTracker.Application.TimeTracking;
 using TimeTracker.Application.Users;
@@ -18,6 +19,7 @@ public static class PersistenceServiceCollectionExtensions
         services.AddScoped<ITimeEntryRepository, TimeEntryRepository>();
         services.AddScoped<IUserRepository, UserRepository>();
         services.AddScoped<IDemoTimeEntryStore, DemoTimeEntryStore>();
+        services.AddScoped<IAssistantSettingsStore, AssistantSettingsStore>();
 
         return services;
     }

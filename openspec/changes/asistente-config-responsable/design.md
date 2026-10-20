@@ -148,7 +148,7 @@ Migración **`AddAssistantSettings`** (la marca de tiempo la asigna `dotnet ef`,
 | `updated_at` | timestamptz | NOT NULL |
 | `xmin` | xid | Token de concurrencia, igual que `time_entries` (`HasColumnName("xmin").HasColumnType("xid").ValueGeneratedOnAddOrUpdate().IsConcurrencyToken()`) |
 
-Token de API: `xmin` en decimal; `"0"` significa «sin fila» (un `xmin` real nunca es 0). Guardado: si el token es `"0"` se inserta con `id = 1` y una violación de unicidad (`23505`) o una fila existente da `409`; si no, se actualiza con el `xmin` esperado como valor original y `DbUpdateConcurrencyException` (o fila inexistente) da `409` sin modificar nada. La fila y la auditoría se guardan en **una** transacción (`SaveChanges` único). `DELETE` es incondicional (la spec no define token) e idempotente: `204` siempre; la auditoría `Reset` solo se inserta si existía fila. La lectura captura `PostgresException` con `SqlState = 42P01` (tabla inexistente) y devuelve «sin fila» (escenario «Tabla ausente»); cualquier otra excepción se propaga.
+Token de API: `xmin` en decimal; `"0"` significa «sin fila» (un `xmin` real nunca es 0). Guardado: si el token es `"0"` se inserta con `id = 1` y una violación de unicidad (`23505`) o una fila existente da `409`; si no, se actualiza con el `xmin` esperado como valor original y `DbUpdateConcurrencyException` (o fila inexistente) da `409` sin modificar nada. La fila y la auditoría se guardan en **una** transacción (`SaveChanges` único). `DELETE` es idempotente (`204` con o sin fila) pero no ciego: el caso de uso lee la fila y borra con su `xmin` como valor esperado (`DeleteAsync(expectedToken, audit)` devuelve `Deleted`, `NotFound` o `Conflict`); si otro Manager guardó entre la lectura y el borrado, no se borra ni se audita y responde `409` (sin token en la petición: lo captura el servidor). La auditoría `Reset` solo se inserta si se borró la fila; una fila ya borrada es `NotFound` (mismo estado final, `204`). La lectura captura `PostgresException` con `SqlState = 42P01` (tabla inexistente) y devuelve «sin fila» (escenario «Tabla ausente»); cualquier otra excepción se propaga.
 
 ### DD-9. Auditoría de solo inserción
 
@@ -217,7 +217,7 @@ Reutiliza `TeamEndpoints.ManagerPolicy`: la constante y el registro de la polít
 |---|---|---|
 | `GET /api/asistente/configuracion` | `200` configuración | 401, 403 |
 | `PUT /api/asistente/configuracion` | `200` mismo cuerpo que `GET` (token nuevo) | 400 (errores por campo), 401, 403, 409 |
-| `DELETE /api/asistente/configuracion` | `204` | 401, 403 |
+| `DELETE /api/asistente/configuracion` | `204` | 401, 403, 409 |
 | `POST /api/asistente/configuracion/prueba` | `200 { result, message }` | 400, 401, 403, 429 |
 
 Nombres JSON (camelCase, E-2). `GET`/`PUT` respuesta: `provider`, `model`, `timeoutSeconds`, `maxOutputTokens`, `effort` (valores efectivos; `effort` puede ser nulo), `sources` (objeto con `provider`, `model`, `timeoutSeconds`, `maxOutputTokens`, `effort`, `credential`: `env`/`stored`; `credential` también `none`), `credentialConfigured`, `credentialStorageAvailable`, `allowedProviders` (elementos `{ provider, requiresCredential, supportsEffort }`), `concurrencyToken`, `updatedAt`, `updatedBy` (nombre visible o nulo), `applied` (la configuración guardada es la que usa esta instancia). `PUT` petición: `provider`, `model`, `timeoutSeconds`, `maxOutputTokens`, `effort`, `credential` (solo escritura), `concurrencyToken`. Las peticiones usan DTO con tipos de cadena (patrón de `LoginCommand`) para validar en Application y devolver mensajes en español, y llevan `[JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]`: cualquier propiedad desconocida (`url`, `endpoint`, etc.) da `400` (E-7). Los `400` de validación usan `TypedResults.ValidationProblem` (errores por campo en español) y los de formato el `ProblemDetails` general. Cuerpo máximo: 8 KiB (`RequestSizeLimitAttribute`, `413`). La clave nunca aparece en ninguna respuesta; el campo se llama `credential` en la petición y `credentialConfigured` en la respuesta, de modo que la cadena `apikey` no entra en el contrato.
@@ -258,7 +258,7 @@ public interface IAssistantSettingsStore
     Task<AssistantSettings?> GetAsync(CancellationToken ct);                  // 42P01 => null
     Task<string> GetVersionAsync(CancellationToken ct);                       // "0" si no hay fila
     Task<SaveOutcome> SaveAsync(AssistantSettings next, string expectedToken, AuditEntry audit, CancellationToken ct); // Saved(token) | Conflict
-    Task<bool> DeleteAsync(AuditEntry audit, CancellationToken ct);          // true si existía la fila
+    Task<DeleteOutcome> DeleteAsync(string expectedToken, AuditEntry audit, CancellationToken ct); // Deleted | NotFound | Conflict
 }
 public interface IAssistantCredentialProtector
 {

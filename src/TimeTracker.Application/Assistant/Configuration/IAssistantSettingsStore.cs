@@ -40,6 +40,14 @@ public abstract record SaveOutcome
     public sealed record Conflict : SaveOutcome;
 }
 
+/// <summary>Resultado del borrado: <c>Conflict</c> si la fila cambió desde la lectura (no se borra ni se audita).</summary>
+public enum DeleteOutcome
+{
+    Deleted,
+    NotFound,
+    Conflict,
+}
+
 /// <summary>Almacén de la fila única de configuración. La auditoría solo admite inserción: se escribe en la misma transacción.</summary>
 public interface IAssistantSettingsStore
 {
@@ -51,6 +59,6 @@ public interface IAssistantSettingsStore
 
     Task<SaveOutcome> SaveAsync(AssistantSettings next, string expectedToken, AuditEntry audit, CancellationToken cancellationToken);
 
-    /// <summary>Borra la fila y audita solo si existía; devuelve si existía.</summary>
-    Task<bool> DeleteAsync(AuditEntry audit, CancellationToken cancellationToken);
+    /// <summary>Borra la fila con el token leído y audita solo si la borra. Sin fila: <c>NotFound</c> (ya está en el estado pedido); con fila y token distinto del actual: <c>Conflict</c>.</summary>
+    Task<DeleteOutcome> DeleteAsync(string expectedToken, AuditEntry audit, CancellationToken cancellationToken);
 }

@@ -8,24 +8,29 @@ public sealed class ResetAssistantSettingsUseCase(
     ICurrentUser currentUser,
     TimeProvider timeProvider)
 {
-    /// <summary>Borra la configuración guardada y vuelve al entorno. Devuelve si había fila; sin fila no audita ni recarga.</summary>
-    public async Task<bool> ExecuteAsync(CancellationToken cancellationToken)
+    /// <summary>Borra la configuración guardada y vuelve al entorno. Sin fila no audita ni recarga; si otro Manager guardó tras la lectura, no borra (<c>Conflict</c>).</summary>
+    public async Task<DeleteOutcome> ExecuteAsync(CancellationToken cancellationToken)
     {
         var previous = await store.GetAsync(cancellationToken);
+        if (previous is null)
+        {
+            return DeleteOutcome.NotFound;
+        }
+
         var audit = new AuditEntry(
             currentUser.EmployeeId,
             timeProvider.GetUtcNow(),
             AuditAction.Reset,
-            CredentialChanged: previous?.Credential is not null,
+            CredentialChanged: previous.Credential is not null,
             AuditSnapshot.From(previous),
             Current: null);
 
-        if (!await store.DeleteAsync(audit, cancellationToken))
+        var outcome = await store.DeleteAsync(previous.Version, audit, cancellationToken);
+        if (outcome == DeleteOutcome.Deleted)
         {
-            return false;
+            await reloader.ReloadAfterCommitAsync(cancellationToken);
         }
 
-        await reloader.ReloadAfterCommitAsync(cancellationToken);
-        return true;
+        return outcome;
     }
 }

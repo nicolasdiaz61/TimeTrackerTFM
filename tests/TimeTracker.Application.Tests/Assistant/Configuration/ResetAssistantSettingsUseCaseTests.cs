@@ -16,7 +16,7 @@ public class ResetAssistantSettingsUseCaseTests
     private readonly FakeReloader _reloader = new();
     private readonly FakeTimeProvider _time = new(new DateTimeOffset(2026, 10, 19, 9, 0, 0, TimeSpan.Zero));
 
-    private Task<bool> Reset()
+    private Task<DeleteOutcome> Reset()
         => new ResetAssistantSettingsUseCase(_store, _reloader, new FixedCurrentUser(Ana, UserRole.Manager), _time).ExecuteAsync(CancellationToken.None);
 
     [Fact]
@@ -24,7 +24,7 @@ public class ResetAssistantSettingsUseCaseTests
     {
         _store.Row = Stored(model: "db-m");
 
-        Assert.True(await Reset());
+        Assert.Equal(DeleteOutcome.Deleted, await Reset());
 
         Assert.Null(_store.Row);
         var audit = Assert.Single(_store.Audits);
@@ -37,7 +37,7 @@ public class ResetAssistantSettingsUseCaseTests
     [Fact]
     public async Task WithoutARow_NothingIsAuditedOrReloaded()
     {
-        Assert.False(await Reset());
+        Assert.Equal(DeleteOutcome.NotFound, await Reset());
 
         Assert.Empty(_store.Audits);
         Assert.Equal(0, _reloader.Calls);
@@ -49,8 +49,33 @@ public class ResetAssistantSettingsUseCaseTests
         _store.Row = Stored();
         _reloader.Fails = true;
 
-        Assert.True(await Reset());
+        Assert.Equal(DeleteOutcome.Deleted, await Reset());
 
         Assert.Null(_store.Row);
+    }
+
+    [Fact]
+    public async Task IfAnotherManagerSavesBetweenReadAndDelete_ReportsConflictAndKeepsTheNewRow()
+    {
+        _store.Row = Stored(model: "old-m");
+        _store.AfterRead = store => store.Row = Stored(model: "new-m", version: "11");
+
+        Assert.Equal(DeleteOutcome.Conflict, await Reset());
+
+        Assert.Equal("new-m", _store.Row!.Model);
+        Assert.Empty(_store.Audits);
+        Assert.Equal(0, _reloader.Calls);
+    }
+
+    [Fact]
+    public async Task IfAnotherManagerResetsFirst_IsIdempotentWithoutAuditingTwice()
+    {
+        _store.Row = Stored();
+        _store.AfterRead = store => store.Row = null;
+
+        Assert.Equal(DeleteOutcome.NotFound, await Reset());
+
+        Assert.Empty(_store.Audits);
+        Assert.Equal(0, _reloader.Calls);
     }
 }

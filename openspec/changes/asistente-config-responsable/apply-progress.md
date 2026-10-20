@@ -199,3 +199,49 @@ BUILD `-warnaserror` 0 advertencias 0 errores; FORMAT sin cambios; TEST: Domain 
 - El aviso de proveedor sin adaptador es un servicio hospedado propio (`ProviderAdapterLogger`) y `ChatClientFactory.LacksAdapter` desaparece con la PR 4.
 - La rama `ModelRequired` se sustituyó por `?? throw InvalidOperationException` (invariante): el compilador necesita un modelo no nulo y las reglas ya lo garantizan; sin `!`.
 - Las constantes de límites del validador son `public` para que las pruebas las usen.
+
+
+## PR 3b — Persistencia, migración y auditoría (rama `feat/asistente-config-pr3b-persistencia`)
+
+| Tarea | Estado | Commit |
+|---|---|---|
+| Arrastre a) prueba de versión duplicada | Hecha | `2fc84e3` |
+| Arrastre b) Restablecer con token de concurrencia | Hecha | `0bc62ee` |
+| 3b.1 Copia previa | Hecha (`..\TimeTracker.rollback\pr-3b\`: DbContext, snapshot, puerto, caso de uso, fakes, pruebas, `DependencyRuleTests`, `RepositoryConventionsTests`, spec, diseño, tareas, progreso) | |
+| 3b.2 a 3b.4 Almacén, entidades, configuraciones y migración | Hecha | `36f6607` |
+| 3b.5 Auditoría de solo inserción (AR) | Hecha | `59ee567` |
+| 3b.6 Contenido de la auditoría | Hecha | `97995f8` |
+| 3b.7 REFACTOR y puerta | Hecha | |
+
+### TDD Cycle Evidence (PR 3b)
+
+| Tarea | Archivo de prueba | Capa | RED | GREEN | TRIANGULAR | REFACTOR |
+|---|---|---|---|---|---|---|
+| a) | `AesGcmCredentialProtectorTests.ADuplicatedVersion_FailsClosedEvenIfBothCopiesHoldTheSameKey` | Infrastructure | Mutación temporal que revierte a «gana la última»: la prueba nueva falla (`Assert.False() Failure`); la anterior no distinguía porque las claves de las copias diferían | 33/33 | Las dos órdenes de aparición (`01` antes y después de `1`); aserción positiva de la versión 2 | Sin cambios de producción |
+| b) | `ResetAssistantSettingsUseCaseTests` + fake del almacén | Application | No compila: `DeleteOutcome` inexistente y `DeleteAsync(AuditEntry, ...)` sin token | 323/323 (un fallo intermedio: el fake devolvía `Conflict` con fila ausente; se corrigió el doble a `NotFound`, que es la semántica pedida) | Con fila, sin fila, recarga fallida, otro Manager guarda tras la lectura (`Conflict`, fila nueva intacta, sin auditoría ni recarga), otro Manager restablece antes (`NotFound`) | `Reset` ya no usa `previous?` (invariante tras el `null` temprano) |
+| 3b.2 | `AssistantSettingsStoreTests` | Integración (PostgreSQL 18, Testcontainers) | No compila: `AssistantSettingsStore` inexistente | 20/20 | Creación, segunda creación, actualización, token obsoleto, token sin fila, fallo de auditoría en creación y en actualización (se borra la tabla de auditoría: la fila no queda), ida y vuelta completa y con todo nulo, clave cifrada con el protector real, tres `CHECK` rechazadas y una aceptada | Mutación temporal (quitar el `xmin` esperado): falla `Save_WithAStaleToken_...` |
+| 3b.3 | `AssistantSettingsStoreTests` | Integración | Mismo RED (compilación) | Incluido en 20/20 | `Deleted`/`NotFound`/`Conflict`, `GetVersion` `"0"`/token, tabla ausente (`42P01`) → `null` y `"0"`, base inaccesible → la excepción se propaga | |
+| 3b.4 | `MigrationTests` (ampliada) | Integración | `Migrate_..._AppliesMigrationsInOrder` falla con la migración nueva (esperado 3, hay 4) | 40/40 con las del almacén | Aplica sobre datos sin alterar tablas existentes, `Down` borra solo las dos tablas, índice `occurred_at DESC`, identidad `ALWAYS` | |
+| 3b.5 | `AssistantAuditAppendOnlyTests` | Architecture | Mutación temporal (`ExecuteDeleteAsync` sobre la entidad de auditoría en el almacén): falla con el enunciado ofensor | 10/10 | Detección de `Remove`, `ExecuteDelete`, `Update` y SQL `DELETE`/`UPDATE`; ignora `Add`, `Remove(row)` de la fila de configuración y SQL de otra tabla | |
+| 3b.6 | `AssistantSettingsAuditTests` | Integración | Verde a la primera (el almacén ya serializaba `AuditSnapshot`); mutación temporal que añade un campo con la clave: fallan las 3 pruebas | 3/3 | Alta con clave, actualización conservándola y restablecimiento | |
+
+### Work Unit Evidence (PR 3b)
+
+| Evidencia | Valor |
+|---|---|
+| Prueba focal | `dotnet test tests/TimeTracker.Api.IntegrationTests --filter "FullyQualifiedName~AssistantSettingsStore|FullyQualifiedName~AssistantSettingsAudit|FullyQualifiedName~MigrationTests"` = 47/47; `dotnet test tests/TimeTracker.ArchitectureTests --filter FullyQualifiedName~AuditAppendOnly` = 10/10 |
+| Arnés de ejecución | PostgreSQL 18 real (Testcontainers), una base nueva y migrada por prueba; migración aplicada y revertida en `MigrationTests` |
+| Límite de rollback | Un commit por unidad; `Down` de `AddAssistantSettings` borra solo `assistant_settings` y `assistant_settings_audit` |
+
+### Puerta del PR 3b (ejecutada)
+
+RESTORE ok; BUILD `-warnaserror` (Release) 0 advertencias 0 errores; FORMAT sin cambios; TEST: Domain 67, Application 323, Web 223, Infrastructure 243, Architecture 104, Api.IntegrationTests 467 (Docker disponible; sin tocar contenedores existentes), todo en verde. Entorno limpio de variables `Ai__*`, etc. VULN no ejecutado (no se añadieron paquetes). `docs/api/openapi.json` restaurado y fuera de los commits.
+
+### Decisiones fuera de spec (PR 3b)
+
+- `DeleteAsync(expectedToken, audit)` devuelve `DeleteOutcome` (`Deleted`, `NotFound`, `Conflict`) y `ResetAssistantSettingsUseCase` devuelve el mismo enum; el endpoint de la PR 6b traducirá `Conflict` a `409` y `Deleted`/`NotFound` a `204`. Sin fila (o fila ya borrada por otro) es `NotFound`, no conflicto: el estado final pedido ya se cumple. Spec (escenario «Restablecer con token obsoleto»), diseño (DD-8, puerto, tabla de DD-14) y tareas actualizados.
+- Las entidades (`AssistantSettingsRecord`, `AssistantSettingsAuditRecord`) son `internal` y se registran con `ApplyConfigurationsFromAssembly`: `TimeTrackerDbContext` no cambia (sin `DbSet` público; el almacén usa `Set<T>()`). `AssistantSettingsStore` es público y se registra como scoped en `AddPersistence`.
+- La migración generada incluía una columna `xmin` real; se eliminó a mano de `Up` (igual que en `time_entries`: es la columna de sistema). El índice `occurred_at DESC` queda como `descending: new bool[0]` (en EF, vacío = todas descendentes) y la prueba lo confirma en `pg_indexes`.
+- La fila de auditoría guarda `provider`, `effort` y demás en el JSON con nombres camelCase y `effort` en minúsculas (`low|medium|high`), igual que la columna `effort`.
+- `MigrationTests.Migrate_OnEmptyDatabase_AppliesMigrationsInOrder` se actualizó de 3 a 4 migraciones.
+- Tamaño: 1.439 líneas añadidas en 20 archivos (≈ 390 son la migración generada `Designer` y el snapshot; ≈ 270 de producción manual y ≈ 600 de pruebas) frente a las ≈ 300 estimadas más los arrastres. Se propone contar el código generado fuera del presupuesto (decisión 2 pendiente del forecast).
