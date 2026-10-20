@@ -152,7 +152,7 @@ Token de API: `xmin` en decimal; `"0"` significa «sin fila» (un `xmin` real nu
 
 ### DD-9. Auditoría de solo inserción
 
-`assistant_settings_audit`: `id` bigint identidad (PK), `occurred_at` timestamptz, `actor_id` uuid, `action` varchar(16) (`Saved`/`Reset`, con CHECK), `credential_changed` boolean, `previous` jsonb NULL, `current` jsonb NULL (índice por `occurred_at` descendente). Los JSON contienen solo valores no secretos: `provider`, `model`, `timeoutSeconds`, `maxOutputTokens`, `effort`, `credentialConfigured`. «Cambio de clave» = `credential_changed = true` (puesta, sustituida o descartada por cambio de proveedor), sin su valor ni su forma cifrada. Garantía de solo inserción: el puerto expone únicamente `Add` (ninguna operación de actualización o borrado), una prueba de arquitectura busca `Remove`/`Update`/`ExecuteDelete`/`ExecuteUpdate` sobre la entidad, y `UpdatedBy` sale de `ICurrentUser` (token). Alternativa descartada por ahora: trigger de PostgreSQL que impida `UPDATE`/`DELETE` (defensa útil pero complica la limpieza de las pruebas de integración y la operación; se puede añadir después sin cambiar el modelo). La v1 no ofrece lectura de auditoría por API (YAGNI); se consulta por SQL.
+`assistant_settings_audit`: `id` bigint identidad (PK), `occurred_at` timestamptz, `actor_id` uuid, `action` varchar(16) (`Saved`/`Reset`, con CHECK), `credential_changed` boolean, `previous` jsonb NULL, `current` jsonb NULL (índice por `occurred_at` descendente). Los JSON contienen solo valores no secretos: `provider`, `model`, `timeoutSeconds`, `maxOutputTokens`, `effort`, `credentialConfigured`. «Cambio de clave» = `credential_changed = true` (puesta, sustituida o descartada por cambio de proveedor), sin su valor ni su forma cifrada. Garantía de solo inserción: el puerto expone únicamente `Add` (ninguna operación de actualización o borrado), una prueba de arquitectura busca `Remove`/`Update`/`ExecuteDelete`/`ExecuteUpdate` sobre la entidad, y `UpdatedBy` sale de `ICurrentUser` (token). Actualización de PR 8: se añadió además un trigger de PostgreSQL (migración `AddAssistantAuditImmutability`) que rechaza `UPDATE`, `DELETE` y `TRUNCATE` sobre la tabla, incluso para su propietario; no complicó las pruebas porque cada una usa una base propia. La v1 no ofrece lectura de auditoría por API (YAGNI); se consulta por SQL.
 
 ### DD-10. Instantánea inmutable y recarga en caliente
 
@@ -408,6 +408,22 @@ Si la estrategia de entrega no admite excepción, se mantienen los cortes 3a/3b 
   Consecuencia para el clasificador: Ollama con 400 no se puede clasificar por estado HTTP; la PR 6a debe tratar `OllamaException`/`InvalidOperationException` de Ollama como `rejected` solo si lo decide explícitamente, o dejarlo en `unreachable` (la contingencia de V-3). Un cuerpo de error no modifica el tipo para OpenAI ni Anthropic.
 - **V-5 (PR 4, verificado)**: `Src_DoesNotHardcodeModelNames` sigue verde con `ProviderEndpoints` (URL de Gemini `.../v1beta/openai/`) y los nombres `Gemini`/`OpenAI`; el patrón `gemini-` exige guion. Nada que reformular.
 - **V-6 (PR 5, verificado)**: el orden de arranque se cumple sin marcar la instantánea inicial como «no cargada». `DatabaseMigrationHostedService` migra en `StartingAsync`; `AssistantSettingsPoller` hace la primera carga en `StartAsync` (acotada a 10 s) y Kestrel es el último servicio alojado. Pruebas de integración con PostgreSQL: la tabla existe en la primera lectura (base vacía con migraciones al arrancar) y el primer chat usa la fila ya cargada. Dos hallazgos: (1) `BackgroundService.StartAsync` no ejecuta `ExecuteAsync` de forma síncrona en este entorno, así que el `PeriodicTimer` se crea en `StartAsync` y no en `ExecuteAsync`; (2) el sondeo no se registra al exportar OpenAPI (`DocumentGeneration.IsRunningUnderTool`), que no debe tocar la base de datos.
+
+- **V-7 (PR 6b, verificado)**: `JsonUnmappedMemberHandling.Disallow` en un `record` posicional con valores por defecto da `400` `problem+json` (no `500`) con `ThrowOnBadRequest` activo; no hizo falta validar la lista de propiedades a mano. Quitando el atributo, `url`/`endpoint` darían `500` en el `PUT` y `200` en la prueba (mutación). `.ProducesValidationProblem()` documenta el `400` con `errors` en `openapi.json` (`OpenApiContractTests`). Matiz de PR 8: un valor numérico que no es entero JSON también da `400`, pero general y sin mapa por campo (véase la sección 14).
+- **V-8 (PR 6b, verificado en PR 8)**: la constante y el registro de la política `Manager` viven en `Api/Security/AuthorizationPolicies` (`AddAuthorizationPolicies()`); `AddTeam()` ya no registra políticas y no queda ninguna referencia a `TeamEndpoints.ManagerPolicy` en `src/` ni en `tests/`. `AuthorizationCoverageTests` fija que la política se registra una vez, exige el rol `Manager` y que `/equipo` y la configuración la usan.
+
+| V | Estado | Dónde |
+|---|---|---|
+| V-1 | Cerrada | PR 4 |
+| V-2 | Cerrada, sin contingencia | PR 4 (spike con manejador de grabación) |
+| V-3 | Cerrada; Ollama 400 = `unreachable` aceptado | PR 4 y sección 14 |
+| V-4 | Cerrada | PR 3a (Alpine) |
+| V-5 | Cerrada | PR 4; guarda vigente en `RepositoryConventionsTests` |
+| V-6 | Cerrada; el orden de arranque lo vigilan `AssistantSettingsStartupOrderTests` y, con dos instancias, `AssistantSettingsMultiInstanceTests` | PR 5 y PR 8 |
+| V-7 | Cerrada | PR 6b |
+| V-8 | Cerrada | PR 6b |
+
+`openspec/config.yaml` no se edita en esta fase (la actualización de la lista de ADR vigentes queda a decisión del usuario, tarea 8.3).
 
 ## 13. Preguntas abiertas
 
