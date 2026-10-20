@@ -65,8 +65,9 @@ public static class ChatClientFactory
     }
 
     // OllamaSharp no expone el plazo si crea él el HttpClient, y no libera uno ajeno: este se libera con el cliente de chat.
+    // Sin seguir redirecciones: un 307 reenviaría la conversación a un host distinto del Endpoint elegido por el entorno.
     internal static HttpClient CreateOllamaHttpClient(AiOptions options, HttpMessageHandler? handler = null)
-        => new(handler ?? new HttpClientHandler())
+        => new(handler ?? new HttpClientHandler { AllowAutoRedirect = false })
         {
             BaseAddress = new Uri(options.Endpoint!),
             Timeout = TimeSpan.FromSeconds(options.TimeoutSeconds),

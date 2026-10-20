@@ -1,5 +1,8 @@
 using System.ClientModel;
 using System.ClientModel.Primitives;
+using System.Net;
+using System.Net.Sockets;
+using System.Text;
 
 using Anthropic;
 
@@ -111,6 +114,47 @@ public sealed class ChatClientFactoryTests
             new AiOptions { Provider = "Ollama", Model = "m", Endpoint = "http://localhost:11434/", TimeoutSeconds = 1 }, new HangingHandler());
 
         await Assert.ThrowsAnyAsync<Exception>(() => client.GetResponseAsync("hola"));
+    }
+
+    [Fact]
+    public async Task OllamaClient_DoesNotFollowARedirectToAnotherHost()
+    {
+        // Un 307 conserva el método y el cuerpo: seguirlo reenviaría la conversación a un host que el entorno no eligió.
+        using var destination = new TcpListener(IPAddress.Parse("127.0.0.2"), 0);
+        destination.Start();
+        using var origin = new TcpListener(IPAddress.Loopback, 0);
+        origin.Start();
+        var destinationPort = ((IPEndPoint)destination.LocalEndpoint).Port;
+        var originPort = ((IPEndPoint)origin.LocalEndpoint).Port;
+        var served = RedirectOnce(origin, $"http://127.0.0.2:{destinationPort}/api/chat");
+        using var client = ChatClientFactory.CreateOllamaClient(
+            new AiOptions { Provider = "Ollama", Model = "m", Endpoint = $"http://127.0.0.1:{originPort}/", TimeoutSeconds = 2 });
+
+        await Assert.ThrowsAnyAsync<Exception>(() => client.GetResponseAsync("hola").WaitAsync(TimeSpan.FromSeconds(10)));
+
+        await served.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.False(destination.Pending(), "El destino de la redirección recibió una conexión.");
+    }
+
+    private static async Task RedirectOnce(TcpListener origin, string location)
+    {
+        using var connection = await origin.AcceptTcpClientAsync();
+        var stream = connection.GetStream();
+        var buffer = new byte[4096];
+        var received = new StringBuilder();
+        while (!received.ToString().Contains("\r\n\r\n", StringComparison.Ordinal))
+        {
+            var read = await stream.ReadAsync(buffer);
+            if (read == 0)
+            {
+                break;
+            }
+
+            received.Append(Encoding.ASCII.GetString(buffer, 0, read));
+        }
+
+        var response = $"HTTP/1.1 307 Temporary Redirect\r\nLocation: {location}\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
+        await stream.WriteAsync(Encoding.ASCII.GetBytes(response));
     }
 
     [Fact]
