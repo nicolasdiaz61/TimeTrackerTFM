@@ -59,6 +59,14 @@ public sealed class AiOptions
 
     public bool IsEnabled => ResolvedProvider is not (null or AiProvider.None);
 
+    /// <summary>Copia independiente: modificar la original o la copia no afecta a la otra (el diccionario también se duplica).</summary>
+    internal AiOptions Copy()
+    {
+        var copy = (AiOptions)MemberwiseClone();
+        copy.MasterKeys = new Dictionary<string, string?>(MasterKeys);
+        return copy;
+    }
+
     /// <summary>Esfuerzo configurado por nombre, o <c>null</c> si falta o no es <c>low</c>, <c>medium</c> o <c>high</c> (nunca por número).</summary>
     public AssistantEffort? ResolvedEffort
         => Enum.GetValues<AssistantEffort>().Cast<AssistantEffort?>().FirstOrDefault(
