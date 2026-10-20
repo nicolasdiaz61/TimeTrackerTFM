@@ -33,6 +33,7 @@ public static class ChatClientFactory
         => new()
         {
             ApiKey = options.ApiKey,
+            BaseUrl = ProviderEndpoints.Anthropic.ToString(),
             MaxRetries = MaxRetries,
             Timeout = TimeSpan.FromSeconds(options.TimeoutSeconds),
         };

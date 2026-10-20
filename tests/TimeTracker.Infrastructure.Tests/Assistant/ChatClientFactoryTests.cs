@@ -50,6 +50,37 @@ public sealed class ChatClientFactoryTests
     }
 
     [Fact]
+    public async Task AnthropicClient_SendsTheKeyToTheFixedUrlEvenIfTheEnvironmentSetsAnother()
+    {
+        const string variable = "ANTHROPIC_BASE_URL";
+        var previous = Environment.GetEnvironmentVariable(variable);
+        Environment.SetEnvironmentVariable(variable, "https://desvio.invalid/");
+        try
+        {
+            var handler = new CountingHandler();
+            var client = ChatClientFactory.CreateAnthropicClient(new AiOptions { Provider = "Anthropic", Model = "m", ApiKey = SecretKey });
+            using var probe = new HttpClient(handler);
+            var routed = client.WithOptions(options => options with { HttpClient = probe });
+
+            await Assert.ThrowsAnyAsync<Exception>(() => routed.AsIChatClient("m").GetResponseAsync("hola"));
+
+            Assert.Equal(ProviderEndpoints.Anthropic.Host, handler.LastHost);
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable(variable, previous);
+        }
+    }
+
+    [Fact]
+    public void CreateAnthropicClient_UsesTheConfiguredTimeout()
+    {
+        var client = ChatClientFactory.CreateAnthropicClient(new AiOptions { Provider = "Anthropic", Model = "m", ApiKey = SecretKey, TimeoutSeconds = 17 });
+
+        Assert.Equal(TimeSpan.FromSeconds(17), client.Timeout);
+    }
+
+    [Fact]
     public void Create_WithOllama_ReturnsAnOllamaClientForTheConfiguredEndpointAndModel()
     {
         using var client = ChatClientFactory.Create(new AiOptions { Provider = "ollama", Model = "modelo-ficticio", Endpoint = "http://localhost:11434/" });
@@ -121,9 +152,12 @@ public sealed class ChatClientFactoryTests
     {
         public int Requests { get; private set; }
 
+        public string? LastHost { get; private set; }
+
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
             Requests++;
+            LastHost = request.RequestUri?.Host;
             return Task.FromResult(new HttpResponseMessage(System.Net.HttpStatusCode.InternalServerError) { Content = new StringContent("{}") });
         }
     }
