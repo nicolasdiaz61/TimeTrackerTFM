@@ -557,7 +557,7 @@ Incluye los puntos de seguimiento (a-h) acordados en las revisiones anteriores, 
 | 8.1 dos instancias y señal de fin de sondeo | Hecha | `3f8186b` |
 | 8.2 guardas de arquitectura | Hecha | `83a97c8` |
 | 8.3 V-1..V-8 cerradas en `design.md` | Hecha (`openspec/config.yaml` NO editado: pendiente de aprobación del usuario) | `a1705d1` |
-| 8.4 README y ADR 0018 | Hecha (custodia de la clave maestra sigue como pregunta abierta para el product owner) | `2ba6b73` |
+| 8.4 README y ADR 0019 (nuevo; el 0018 queda como en main) | Hecha (custodia de la clave maestra sigue como pregunta abierta para el product owner) | `2ba6b73` |
 | 8.5 puerta final | Pasada; **parada de `sdd-verify` pendiente** | `5f76da4` y este registro |
 
 ### TDD Cycle Evidence (PR 8)
@@ -590,7 +590,7 @@ BUILD de la solución con `-warnaserror` 0 advertencias 0 errores; `dotnet forma
 ### Decisiones fuera de spec (PR 8)
 
 - **d) Se mantiene `int?`** en los DTO numéricos y se documenta como desviación aceptada de DD-14 (sección 14 de `design.md`): cambiar a cadenas altera el contrato publicado, la Web y todas las pruebas de Application.
-- **Trigger y no `REVOKE`** para la auditoría: el propietario de la tabla (el rol de la aplicación) no queda frenado por un `REVOKE`. Cubre también `TRUNCATE`. Esto contradice la alternativa descartada del ADR 0018 original (aún sin fusionar en main), que se reescribió en esta rama; si el ADR ya estuviera aceptado en main, debería sustituirse por otro.
+- **Trigger y no `REVOKE`** para la auditoría: el propietario de la tabla (el rol de la aplicación) no queda frenado por un `REVOKE`. Cubre también `TRUNCATE`. El ADR 0018 ya estaba fusionado en main y no se reescribe (AGENTS §8): el matiz sobre la alternativa descartada del trigger va en el ADR 0019 nuevo, que lo complementa.
 - **`Fail` nunca vacía la clave** (ni con 400 ni con 409): solo la vacía un éxito o recargar desde el servidor.
 - **Señal de pruebas en producción:** `AssistantSettingsPoller.PollCompleted` (evento público) para esperar sin tiempo real; sin coste en ejecución normal.
 - `UpdatedByNameResolver` (nuevo, Api) centraliza la degradación de `updatedBy` y registra solo el tipo de la excepción.
@@ -602,5 +602,5 @@ BUILD de la solución con `-warnaserror` 0 advertencias 0 errores; `dotnet forma
 - **7.6** (verificación manual en Chrome) y su `verify-report.md`: pendientes del orquestador.
 - **Parada de `sdd-verify`: pendiente** (no ejecutada).
 - **`openspec/config.yaml`** sin editar (requiere aprobación del usuario).
-- **Custodia de la clave maestra en Railway** (§13): pregunta abierta para el product owner, documentada en README y ADR 0018.
+- **Custodia de la clave maestra en Railway** (§13): pregunta abierta para el product owner, documentada en README y ADR 0019.
 - **Archivo de `asistente-config-responsable`**: tras la verificación.

@@ -258,7 +258,7 @@ railway variables set Ai__ActiveMasterKeyVersion=1 -s api
 
 `Cors__AllowedOrigins__0` es obligatoria (sin ella la API no arranca) y debe ser el origen de la Web. Si quiere que el responsable pueda elegir otro proveedor, defina `Ai__AllowedProviders`; por defecto solo puede usar el del entorno. La rotación de la clave maestra está en «Configuración del asistente por el responsable».
 
-Riesgos y decisiones pendientes de este despliegue (detalle en el [ADR 0018](docs/adr/0018-configuracion-del-asistente-por-el-responsable.md)):
+Riesgos y decisiones pendientes de este despliegue (detalle en el [ADR 0019](docs/adr/0019-auditoria-inmutable-y-despliegue-de-la-configuracion-del-asistente.md)):
 
 - **Datos personales a un tercero.** Con un proveedor en la nube, los nombres y las horas de los fichajes consultados salen hacia ese tercero bajo la clave que aporta el responsable. Revise el contrato de tratamiento antes de usar datos reales.
 - **Riesgo de la API Responses de OpenAI.** La v1 usa solo la API de chat; algunos modelos de OpenAI exigen Responses para usar herramientas. La prueba de conexión no usa herramientas y puede dar `ok` aunque el chat falle con ese modelo.
@@ -364,6 +364,7 @@ openspec/                     Especificaciones y cambios (Spec Driven Developmen
 16. [Vista mensual de fichajes y hora local en la Web](docs/adr/0016-vista-mensual-y-hora-local.md)
 17. [Asistente de IA con herramientas de solo lectura](docs/adr/0017-asistente-ia-con-herramientas-de-solo-lectura.md)
 18. [Configuración del asistente por el responsable](docs/adr/0018-configuracion-del-asistente-por-el-responsable.md)
+19. [Auditoría inmutable y despliegue de la configuración del asistente](docs/adr/0019-auditoria-inmutable-y-despliegue-de-la-configuracion-del-asistente.md)
 
 ## Integración continua
 

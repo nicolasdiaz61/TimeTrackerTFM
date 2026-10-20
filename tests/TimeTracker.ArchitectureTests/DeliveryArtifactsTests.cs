@@ -309,14 +309,14 @@ public partial class DeliveryArtifactsTests
     // --- ADR (SA-20, SA-21, SA-22) ---
 
     [Fact]
-    public void Adr_Directory_HasEighteenAdrsWithFourSections()
+    public void Adr_Directory_HasNineteenAdrsWithFourSections()
     {
         string[] sections = ["## Contexto", "## Decisión", "## Consecuencias", "## Alternativas"];
         var adrs = Directory.GetFiles(Path.Combine(RepositoryRoot.Path, "docs", "adr"), "0*.md")
             .Order(StringComparer.Ordinal)
             .ToList();
 
-        Assert.Equal(18, adrs.Count);
+        Assert.Equal(19, adrs.Count);
         for (var index = 0; index < adrs.Count; index++)
         {
             var name = Path.GetFileName(adrs[index]);
@@ -418,20 +418,29 @@ public partial class DeliveryArtifactsTests
     }
 
     [Fact]
-    public void Adr0018_DocumentsTheRailwayDeploymentTheResponsesRiskTheDatabaseGuardAndTheOpenKeyCustodyQuestion()
+    public void Adr0019_ComplementsAdr0018WithTheDatabaseGuardTheRailwayDeploymentAndTheOpenKeyCustodyQuestion()
     {
-        var adr = ReadRepositoryFile("docs/adr/0018-configuracion-del-asistente-por-el-responsable.md");
+        var adr = ReadRepositoryFile("docs/adr/0019-auditoria-inmutable-y-despliegue-de-la-configuracion-del-asistente.md");
 
         string[] required =
         [
-            "Railway", "Ai__MasterKeys__1", "Ai__ActiveMasterKeyVersion=1", "Cors__AllowedOrigins__0", "Responses", "custodia",
-            "pregunta abierta", "product owner", "trigger", "UPDATE", "DELETE", "TRUNCATE", "configuración única", "cualquier Manager",
+            "ADR 0018", "matiza", "Railway", "Ai__MasterKeys__1", "--stdin", "Ai__ActiveMasterKeyVersion=1", "Cors__AllowedOrigins__0",
+            "Responses", "datos personales", "tercero", "custodia", "pregunta abierta", "product owner", "trigger", "UPDATE", "DELETE",
+            "TRUNCATE", "REVOKE", "configuración única", "cualquier Manager",
         ];
         var missing = required.Where(text => !adr.Contains(text, StringComparison.OrdinalIgnoreCase)).ToList();
-        Assert.True(missing.Count == 0, $"El ADR 0018 no menciona: {string.Join(", ", missing)}");
+        Assert.True(missing.Count == 0, $"El ADR 0019 no menciona: {string.Join(", ", missing)}");
+        Assert.DoesNotMatch(@"Ai__MasterKeys__\d+\s*=\s*[^\s`|]", adr);
+    }
 
-        // La decisión ya no descarta el trigger: el ADR no puede contradecir la migración.
-        Assert.DoesNotContain("Disparador de inmutabilidad en la base de datos para la auditoría:", adr, StringComparison.Ordinal);
+    [Fact]
+    public void Adr0018_IsKeptAsMergedBecauseAdrsAreNotRewritten()
+    {
+        var adr = ReadRepositoryFile("docs/adr/0018-configuracion-del-asistente-por-el-responsable.md");
+
+        Assert.DoesNotContain("AddAssistantAuditImmutability", adr, StringComparison.Ordinal);
+        Assert.DoesNotContain("ADR 0019", adr, StringComparison.Ordinal);
+        Assert.Contains("Disparador de inmutabilidad en la base de datos para la auditoría:", adr, StringComparison.Ordinal);
     }
 
     [Fact]
