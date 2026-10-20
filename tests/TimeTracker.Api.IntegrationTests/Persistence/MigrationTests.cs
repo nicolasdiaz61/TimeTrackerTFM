@@ -44,10 +44,11 @@ public class MigrationTests(PostgresFixture postgres)
         var migrations = await QueryAsync(connectionString, "SELECT \"MigrationId\" FROM \"__EFMigrationsHistory\" ORDER BY \"MigrationId\"");
         var tables = await QueryAsync(connectionString, "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public'");
 
-        Assert.Equal(3, migrations.Count);
+        Assert.Equal(4, migrations.Count);
         Assert.Contains(migrations, migration => migration.EndsWith("_InitialTimeEntries", StringComparison.Ordinal));
         Assert.EndsWith("_AddUsers", migrations[1], StringComparison.Ordinal);
         Assert.EndsWith("_AddTimeEntryType", migrations[2], StringComparison.Ordinal);
+        Assert.EndsWith("_AddAssistantSettings", migrations[3], StringComparison.Ordinal);
         Assert.Contains("time_entries", tables);
         Assert.Contains("users", tables);
     }
@@ -129,6 +130,64 @@ public class MigrationTests(PostgresFixture postgres)
         Assert.DoesNotContain("ck_time_entries_type", checks);
         Assert.Equal([entryId.ToString()], ids);
     }
+
+    [Fact]
+    public async Task AddAssistantSettings_OnDatabaseWithData_OnlyAddsTheTwoTablesAndKeepsTheRows()
+    {
+        var connectionString = await postgres.CreateEmptyDatabaseAsync();
+        var entryId = Guid.NewGuid();
+        await using (var context = postgres.CreateContext(connectionString))
+        {
+            await MigrateToAsync(context, "_AddTimeEntryType");
+            await ExecuteAsync(
+                connectionString,
+                $"INSERT INTO time_entries (id, employee_id, clock_in_at, clock_out_at, type) VALUES ('{entryId}', '{Guid.NewGuid()}', '2026-10-12T08:00:00Z', '2026-10-12T09:00:00Z', 'Break')");
+            var before = await TableShapeAsync(connectionString);
+
+            await context.Database.MigrateAsync(CancellationToken.None);
+
+            var after = await TableShapeAsync(connectionString);
+            Assert.Equal(before, after.Where(line => !line.StartsWith("assistant_settings", StringComparison.Ordinal)));
+            Assert.Contains(after, line => line.StartsWith("assistant_settings:", StringComparison.Ordinal));
+            Assert.Contains(after, line => line.StartsWith("assistant_settings_audit:", StringComparison.Ordinal));
+        }
+
+        Assert.Equal([entryId.ToString()], await QueryAsync(connectionString, "SELECT id::text FROM time_entries"));
+    }
+
+    [Fact]
+    public async Task AddAssistantSettings_Down_DropsOnlyTheTwoNewTables()
+    {
+        var connectionString = await postgres.CreateEmptyDatabaseAsync();
+        await using var context = postgres.CreateContext(connectionString);
+        await MigrateToAsync(context, "_AddTimeEntryType");
+        var before = await TableShapeAsync(connectionString);
+        await context.Database.MigrateAsync(CancellationToken.None);
+
+        await MigrateToAsync(context, "_AddTimeEntryType");
+
+        Assert.Equal(before, await TableShapeAsync(connectionString));
+        Assert.DoesNotContain("assistant_settings", await QueryAsync(connectionString, "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public'"));
+        Assert.DoesNotContain("assistant_settings_audit", await QueryAsync(connectionString, "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public'"));
+    }
+
+    [Fact]
+    public async Task AssistantSettingsAudit_HasADescendingIndexByOccurrenceAndIdentityKey()
+    {
+        var definitions = await QueryAsync(postgres.ConnectionString, "SELECT indexdef FROM pg_indexes WHERE tablename = 'assistant_settings_audit'");
+        var identity = await QueryAsync(postgres.ConnectionString, "SELECT is_identity || ':' || identity_generation FROM information_schema.columns WHERE table_name = 'assistant_settings_audit' AND column_name = 'id'");
+
+        Assert.Contains(definitions, definition => definition.Contains("ix_assistant_settings_audit_occurred_at", StringComparison.Ordinal)
+            && definition.Contains("occurred_at DESC", StringComparison.Ordinal));
+        Assert.Equal(["YES:ALWAYS"], identity);
+    }
+
+    // Una línea por tabla con sus columnas, tipos y nulabilidad: sirve para comprobar que una migración no altera tablas existentes.
+    private static async Task<List<string>> TableShapeAsync(string connectionString)
+        => await QueryAsync(
+            connectionString,
+            "SELECT table_name || ':' || string_agg(column_name || '/' || data_type || '/' || is_nullable, ',' ORDER BY column_name) "
+            + "FROM information_schema.columns WHERE table_schema = 'public' GROUP BY table_name ORDER BY table_name");
 
     [Fact]
     public async Task Check_RejectsUnknownType()

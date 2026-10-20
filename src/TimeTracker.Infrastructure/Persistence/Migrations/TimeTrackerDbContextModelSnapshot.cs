@@ -123,6 +123,131 @@ namespace TimeTracker.Infrastructure.Persistence.Migrations
                         });
                 });
 
+            modelBuilder.Entity("TimeTracker.Infrastructure.Persistence.AssistantSettingsAuditRecord", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityAlwaysColumn(b.Property<long>("Id"));
+
+                    b.Property<string>("Action")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)")
+                        .HasColumnName("action");
+
+                    b.Property<Guid>("ActorId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("actor_id");
+
+                    b.Property<bool>("CredentialChanged")
+                        .HasColumnType("boolean")
+                        .HasColumnName("credential_changed");
+
+                    b.Property<string>("Current")
+                        .HasColumnType("jsonb")
+                        .HasColumnName("current");
+
+                    b.Property<DateTimeOffset>("OccurredAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("occurred_at");
+
+                    b.Property<string>("Previous")
+                        .HasColumnType("jsonb")
+                        .HasColumnName("previous");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("OccurredAt")
+                        .IsDescending()
+                        .HasDatabaseName("ix_assistant_settings_audit_occurred_at");
+
+                    b.ToTable("assistant_settings_audit", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_assistant_settings_audit_action", "action IN ('Saved', 'Reset')");
+                        });
+                });
+
+            modelBuilder.Entity("TimeTracker.Infrastructure.Persistence.AssistantSettingsRecord", b =>
+                {
+                    b.Property<short>("Id")
+                        .HasColumnType("smallint")
+                        .HasColumnName("id");
+
+                    b.Property<byte[]>("CredentialCiphertext")
+                        .HasColumnType("bytea")
+                        .HasColumnName("credential_ciphertext");
+
+                    b.Property<short?>("CredentialKeyVersion")
+                        .HasColumnType("smallint")
+                        .HasColumnName("credential_key_version");
+
+                    b.Property<byte[]>("CredentialNonce")
+                        .HasColumnType("bytea")
+                        .HasColumnName("credential_nonce");
+
+                    b.Property<string>("Effort")
+                        .HasMaxLength(8)
+                        .HasColumnType("character varying(8)")
+                        .HasColumnName("effort");
+
+                    b.Property<int?>("MaxOutputTokens")
+                        .HasColumnType("integer")
+                        .HasColumnName("max_output_tokens");
+
+                    b.Property<string>("Model")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("model");
+
+                    b.Property<string>("Provider")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)")
+                        .HasColumnName("provider");
+
+                    b.Property<int?>("TimeoutSeconds")
+                        .HasColumnType("integer")
+                        .HasColumnName("timeout_seconds");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<Guid>("UpdatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("updated_by");
+
+                    b.Property<uint>("xmin")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("assistant_settings", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_assistant_settings_credential_all_or_none", "(credential_ciphertext IS NULL AND credential_nonce IS NULL AND credential_key_version IS NULL) OR (credential_ciphertext IS NOT NULL AND credential_nonce IS NOT NULL AND credential_key_version IS NOT NULL)");
+
+                            t.HasCheckConstraint("ck_assistant_settings_credential_nonce_length", "credential_nonce IS NULL OR octet_length(credential_nonce) = 12");
+
+                            t.HasCheckConstraint("ck_assistant_settings_effort", "effort IN ('low', 'medium', 'high')");
+
+                            t.HasCheckConstraint("ck_assistant_settings_max_output_tokens", "max_output_tokens BETWEEN 64 AND 4096");
+
+                            t.HasCheckConstraint("ck_assistant_settings_model", "char_length(model) >= 1");
+
+                            t.HasCheckConstraint("ck_assistant_settings_provider", "provider IN ('None', 'Anthropic', 'OpenAI', 'Gemini', 'Ollama')");
+
+                            t.HasCheckConstraint("ck_assistant_settings_singleton", "id = 1");
+
+                            t.HasCheckConstraint("ck_assistant_settings_timeout_seconds", "timeout_seconds BETWEEN 5 AND 55");
+                        });
+                });
+
             modelBuilder.Entity("TimeTracker.Domain.Users.UserAccount", b =>
                 {
                     b.HasOne("TimeTracker.Domain.Users.UserAccount", null)
