@@ -12,7 +12,7 @@ Notas de verificación:
 
 ### Requirement: Texto cifrado vinculado a la compañía (formato v2)
 
-El cifrado AES-256-GCM DEBERÍA usar como datos asociados autenticados (AAD) un valor que incluya el `company_id` de la fila (formato v2), de modo que un texto cifrado copiado a la fila de otra compañía NO se autentique al descifrarlo. El formato DEBERÍA guardar su identificador de formato junto al texto cifrado y a la versión de clave maestra. Al descifrar, el sistema DEBERÍA probar primero v2 con el `company_id` de la fila y, solo si el registro es v1, descifrar con el AAD v1. Un fallo de autenticación DEBE conservar la última configuración válida de la compañía, sin devolver ninguna clave, y NO DEBE afectar a otras compañías.
+El cifrado AES-256-GCM DEBERÍA usar como datos asociados autenticados (AAD) un valor que incluya el `company_id` de la fila (formato v2), de modo que un texto cifrado copiado a la fila de otra compañía NO se autentique al descifrarlo. El formato NO guarda ningún identificador de formato junto al texto cifrado (sin cambio de esquema): se deduce al descifrar. El sistema DEBERÍA probar primero v2 con el `company_id` de la fila y, solo si la autenticación v2 falla y la fila pertenece a la compañía por defecto (la única donde pueden existir registros v1, creados antes del cambio), descifrar con el AAD v1; una fila v1 en cualquier otra compañía NO DEBE descifrarse. Un fallo de autenticación DEBE conservar la última configuración válida de la compañía, sin devolver ninguna clave, y NO DEBE afectar a otras compañías.
 
 #### Scenario: Ida y vuelta v2
 - DADO una clave maestra válida y la compañía A
@@ -25,9 +25,14 @@ El cifrado AES-256-GCM DEBERÍA usar como datos asociados autenticados (AAD) un 
 - ENTONCES falla la autenticación, no se devuelve ninguna clave, B conserva su última configuración válida (o queda deshabilitada) y A no se ve afectada
 
 #### Scenario: Registro v1 heredado
-- DADO una fila en formato v1 creada antes del cambio
+- DADO una fila en formato v1 de la compañía por defecto, creada antes del cambio
 - CUANDO se resuelve la configuración efectiva de su compañía
 - ENTONCES se descifra correctamente con el AAD v1
+
+#### Scenario: Registro v1 en otra compañía
+- DADO una fila en formato v1 copiada a la fila de una compañía distinta de la por defecto
+- CUANDO se resuelve la configuración efectiva de esa compañía
+- ENTONCES no se descifra, no se devuelve ninguna clave y se conserva su última configuración válida (o queda deshabilitada)
 
 #### Scenario: Manipulación detectada en v2
 - DADO un texto cifrado v2 alterado en un byte
@@ -41,7 +46,7 @@ El cifrado AES-256-GCM DEBERÍA usar como datos asociados autenticados (AAD) un 
 
 ### Requirement: Recifrado oportunista de v1 a v2
 
-Cuando se guarda la fila de configuración de una compañía (con o sin clave nueva) y su clave cifrada actual es descifrable en formato v1, el sistema DEBERÍA recifrarla en formato v2 con la versión de clave maestra activa dentro del mismo guardado (`ReEncryptOrKeep`: si no puede descifrarla o no hay clave maestra, conserva el valor tal cual). Una lectura NO DEBE escribir. El recifrado NO DEBE registrar ni auditar la clave y NO DEBE alterar la fila de otra compañía.
+Cuando se guarda la fila de configuración de una compañía (con o sin clave nueva) y su clave cifrada actual es descifrable en formato v1, el sistema DEBERÍA recifrarla en formato v2 (solo en la compañía por defecto, donde existen registros v1) con la versión de clave maestra activa dentro del mismo guardado (`ReEncryptOrKeep`: si no puede descifrarla o no hay clave maestra, conserva el valor tal cual). Una lectura NO DEBE escribir. El recifrado NO DEBE registrar ni auditar la clave y NO DEBE alterar la fila de otra compañía.
 
 #### Scenario: Recifrado al guardar
 - DADO una fila v1 descifrable y un `PUT` sin clave nueva
@@ -69,6 +74,6 @@ Cuando se guarda la fila de configuración de una compañía (con o sin clave nu
 - ENTONCES ninguno contiene la clave en claro ni cifrada
 
 #### Scenario: Otras compañías intactas
-- DADO filas v1 de A y de B y un guardado del Manager de A
+- DADO filas v1 de la compañía por defecto (A) y de B (copiada manualmente) y un guardado del Manager de A
 - CUANDO termina
 - ENTONCES la fila de B sigue en v1 con el mismo `xmin`

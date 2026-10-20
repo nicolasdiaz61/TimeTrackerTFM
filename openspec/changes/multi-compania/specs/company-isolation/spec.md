@@ -16,12 +16,12 @@ Fuera de alcance: RLS de PostgreSQL (diferida, ver `solution-architecture`), per
 
 ### Requirement: Tabla de compañías y compañía por defecto
 
-La base DEBE tener la tabla `companies` con `id` (uuid, clave primaria), `name` (texto, 1 a 100 caracteres), `name_normalized` (texto con índice único), `status` (texto con `CHECK` que solo admite `Active` y `Suspended`) y `created_at` (`timestamp with time zone`), todas obligatorias. `name_normalized` DEBE ser el nombre sin espacios exteriores, con los espacios consecutivos colapsados y en minúsculas (cultura invariante); NO DEBE plegar acentos. La migración DEBE crear una compañía por defecto con un identificador fijo y constante en el código (el mismo valor en todos los entornos), que es también la compañía de demostración (ver `demo-data`) y que recibe los datos previos al cambio. Un usuario de una compañía con `status` distinto de `Active` NO DEBE poder iniciar sesión (misma respuesta `401` genérica que unas credenciales erróneas); los tokens ya emitidos conservan su validez hasta caducar (límite aceptado y documentado).
+La base DEBE tener la tabla `companies` con `id` (uuid, clave primaria), `name` (texto, 1 a 100 caracteres), `name_normalized` (texto con índice único), `status` (texto con `CHECK` que solo admite `Active` y `Suspended`) y `created_at` (`timestamp with time zone`) y `uses_platform_assistant` (booleano, valor por defecto `false`), todas obligatorias. `uses_platform_assistant` indica si la compañía puede usar la configuración y la clave de IA de plataforma (`Ai__ApiKey`): solo una compañía con el indicador en `true` PUEDE usarla; cualquier otra compañía, mientras no tenga fila de configuración propia, tiene el asistente deshabilitado (ver `assistant-settings`). Ningún endpoint DEBE poder modificar el indicador; la compañía por defecto nace con `uses_platform_assistant` = `true` y toda compañía registrada, con `false`. `name_normalized` DEBE ser el nombre sin espacios exteriores, con los espacios consecutivos colapsados y en minúsculas (cultura invariante); NO DEBE plegar acentos. La migración DEBE crear una compañía por defecto con un identificador fijo y constante en el código (el mismo valor en todos los entornos), que es también la compañía de demostración (ver `demo-data`) y que recibe los datos previos al cambio. Un usuario de una compañía con `status` distinto de `Active` NO DEBE poder iniciar sesión (misma respuesta `401` genérica que unas credenciales erróneas); los tokens ya emitidos conservan su validez hasta caducar (límite aceptado y documentado).
 
 #### Scenario: Columnas y restricciones de companies
 - DADO la base migrada
 - CUANDO se consulta `information_schema.columns`, `pg_indexes` y `pg_constraint` para `companies`
-- ENTONCES existen las cinco columnas indicadas, todas no nulas, el índice único sobre `name_normalized` y el `CHECK` de `status`
+- ENTONCES existen las seis columnas indicadas, todas no nulas, `uses_platform_assistant` con valor por defecto `false`, el índice único sobre `name_normalized` y el `CHECK` de `status`
 
 #### Scenario: Nombre duplicado tras normalizar
 - DADO una compañía con `name_normalized` = `acme norte`
@@ -37,6 +37,11 @@ La base DEBE tener la tabla `companies` con `id` (uuid, clave primaria), `name` 
 - DADO dos bases distintas migradas desde cero
 - CUANDO se lee la compañía por defecto de cada una
 - ENTONCES ambas tienen el mismo `id`, `status` = `Active` y existe exactamente una
+
+#### Scenario: Indicador de asistente de plataforma
+- DADO la base migrada y una compañía registrada después
+- CUANDO se lee `uses_platform_assistant` de la compañía por defecto y de la registrada
+- ENTONCES la primera tiene `true` y la segunda `false`
 
 #### Scenario: Compañía no activa no inicia sesión
 - DADO un usuario cuya compañía tiene `status` = `Suspended`
@@ -103,7 +108,7 @@ El correo DEBE seguir siendo único en toda la base (índice único global sobre
 
 ### Requirement: La compañía sale solo del token
 
-La compañía de cada operación DEBE obtenerse exclusivamente del claim `cid` del token ya validado, mediante `ICompanyContext` (puerto de Application, adaptador en `Api`, que lee `ICurrentUser.CompanyId`; ver `authentication`). La compañía NO DEBE leerse de la ruta, la consulta, el cuerpo, las cabeceras ni el historial del asistente, y ningún caso de uso, herramienta ni endpoint DEBE recibirla como parámetro. El contrato `docs/api/openapi.json` NO DEBE contener ningún parámetro ni propiedad llamada `companyId` (sin distinguir mayúsculas). Un contexto sin compañía (sin usuario autenticado, claim ausente o inválido) DEBE lanzar una excepción en el adaptador y NO DEBE devolver una compañía por defecto.
+La compañía de cada operación DEBE obtenerse exclusivamente del claim `cid` del token ya validado, mediante `ICompanyContext` (puerto de Application, adaptador en `Api`, alimentado por `ICurrentUser.CompanyId`; ver `authentication`). `ICompanyContext` DEBE exponer la compañía como valor anulable (`Guid?`): sin usuario autenticado, o con un claim ausente o inválido, la compañía es nula y NO DEBE devolverse una compañía por defecto; el contexto no lanza excepción, de modo que el filtro global falla cerrado (cero filas, ver «Filtro global de consulta que falla cerrado»). Quien lanza una excepción es `ICurrentUser.CompanyId` (ver `authentication`). La compañía NO DEBE leerse de la ruta, la consulta, el cuerpo, las cabeceras ni el historial del asistente, y ningún caso de uso, herramienta ni endpoint DEBE recibirla como parámetro. El contrato `docs/api/openapi.json` NO DEBE contener ningún parámetro ni propiedad llamada `companyId` (sin distinguir mayúsculas).
 
 #### Scenario: Compañía del token
 - DADO un token con `cid` = compañía A
@@ -123,7 +128,7 @@ La compañía de cada operación DEBE obtenerse exclusivamente del claim `cid` d
 #### Scenario: Sin compañía en el contexto
 - DADO un contexto HTTP sin usuario autenticado
 - CUANDO se resuelve `ICompanyContext`
-- ENTONCES se lanza una excepción y no se devuelve ninguna compañía
+- ENTONCES su compañía es nula, no se devuelve ninguna compañía por defecto y no se lanza ninguna excepción (cualquier consulta posterior devuelve cero filas)
 
 #### Scenario: Contrato sin companyId
 - DADO el contrato regenerado
@@ -161,7 +166,7 @@ La compañía de cada operación DEBE obtenerse exclusivamente del claim `cid` d
 
 ### Requirement: Lista cerrada de usos de IgnoreQueryFilters
 
-Todo uso de `IgnoreQueryFilters` en `src/` DEBE figurar en una lista cerrada declarada en una prueba de arquitectura, con su motivo. La lista DEBE limitarse a: búsqueda de usuario por correo en el inicio de sesión (la compañía aún no se conoce), comprobación global de unicidad de correo y de nombre de compañía en el registro, lectura global de las versiones de configuración del asistente por el sondeo (todas las compañías) y la carga de la configuración de una compañía concreta por el registro de instantáneas, y siembra de la compañía demo. Un uso nuevo fuera de la lista DEBE hacer fallar la prueba.
+Todo uso de `IgnoreQueryFilters` en `src/` DEBE figurar en una lista cerrada declarada en una prueba de arquitectura, con su motivo. La lista DEBE limitarse a dos sitios: `UserRepository.FindByEmailAsync` (búsqueda de usuario por correo en el inicio de sesión y en la siembra, donde la compañía aún no se conoce; el correo es único global) y `AssistantSettingsStore.ListVersionsAsync` (lectura global de las versiones de configuración del asistente por el sondeo, todas las compañías, solo `company_id` y versión). No necesitan `IgnoreQueryFilters`: la lectura de `companies` (sin filtro global, incluida la del nombre y el estado de la compañía del usuario autenticado, por clave primaria), las comprobaciones de unicidad de correo y de nombre en el registro (se apoyan en las restricciones únicas), la carga de la configuración de una compañía por el registro de instantáneas y la siembra de la compañía demo (ambas actúan dentro del contexto de su compañía). Un uso nuevo fuera de la lista DEBE hacer fallar la prueba.
 
 #### Scenario: Usos conocidos
 - DADO el código de `src/`

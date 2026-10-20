@@ -1,22 +1,27 @@
 # Especificación: employee-management
 
-Cambio: `multi-compania`. Capacidad NUEVA; todos los requisitos son `ADDED`. Define el alta de personas (Employees y Managers) por un Manager dentro de su propia compañía, la contraseña temporal de un solo uso, el cambio de contraseña obligatorio en el primer inicio de sesión, el endpoint de cambio de contraseña y el tope de personas por compañía. La política de contraseñas se especifica en `company-registration`; el token y la sesión, en `authentication`; las tablas, en `team-access` y `company-isolation`.
+Cambio: `multi-compania`. Capacidad NUEVA; todos los requisitos son `ADDED`. Define el alta de personas (Employees y Managers) por un Manager dentro de su propia compañía, la contraseña temporal de un solo uso, su regeneración antes del primer acceso, el cambio de contraseña obligatorio en el primer inicio de sesión, el endpoint de cambio de contraseña y el tope de personas por compañía. La política de contraseñas se especifica en `company-registration`; el token y la sesión, en `authentication`; las tablas, en `team-access` y `company-isolation`.
 
 Decisiones firmes: alta por un Manager con contraseña temporal de un solo uso y cambio forzado en el primer inicio (`MustChangePassword`); un Manager puede crear otros Managers solo dentro de su compañía, sin jerarquías nuevas; topes por compañía configurables por entorno y no editables por el Manager.
 
-Supuestos de contrato fijados por esta especificación (el diseño puede ajustar nombres de ruta con nota en el diseño): `POST /api/employees` para el alta y `POST /api/auth/change-password` para el cambio de contraseña; la contraseña temporal la genera el servidor y se devuelve una sola vez.
+Supuestos de contrato fijados por esta especificación (el diseño puede ajustar nombres de ruta con nota en el diseño): `POST /api/employees` para el alta, `POST /api/employees/{memberId}/temporary-password` para regenerar la contraseña temporal y `POST /api/auth/change-password` para el cambio de contraseña; la contraseña temporal la genera el servidor y se devuelve una sola vez (en el alta o en la regeneración). Los límites de tasa de 30 peticiones por minuto del alta y de la regeneración y los 3 reintentos acotados del tope bajo concurrencia son valores propuestos por el diseño y adoptados aquí como parte del contrato.
 
 Notas de verificación:
 - «Respuesta idéntica» significa mismo estado, tipo de medio (`application/problem+json`, sin parámetros), `type`, `title` y `detail`, salvo `traceId`.
 - Las contraseñas de las pruebas son valores inventados y reconocibles.
 
-Fuera de alcance: baja, edición y cambio de rol de personas, restablecimiento de contraseña por un Manager o por correo, caducidad de la contraseña temporal, listado administrativo de todas las personas de la compañía, jerarquías de más de un nivel, importación masiva y supresión y exportación de datos (RGPD, posposición explícita).
+Fuera de alcance: baja, edición y cambio de rol de personas, restablecimiento de contraseña por correo y cualquier restablecimiento por un Manager distinto de la regeneración de la contraseña temporal antes del primer acceso (ver «Regenerar la contraseña temporal»), caducidad de la contraseña temporal, listado administrativo de todas las personas de la compañía, jerarquías de más de un nivel, importación masiva y supresión y exportación de datos (RGPD, posposición explícita).
 
 ## ADDED Requirements
 
 ### Requirement: Alta de personas por un Manager
 
-`POST /api/employees` DEBE exigir autenticación y la política de Manager (sin token `401`; con rol distinto de `Manager` `403`, antes de evaluar el cuerpo). El cuerpo DEBE aceptar `displayName` (1 a 100 caracteres tras recortar), `email` (válido y normalizado según `UserAccount`), `role` (`Employee` o `Manager`; por defecto `Employee`) y `managerId` (opcional). La persona DEBE crearse siempre en la compañía del token, con `must_change_password` = `true`. `managerId` por defecto DEBE ser el Manager que crea; si se indica otro, DEBE ser un usuario de la misma compañía; un `managerId` de otra compañía y uno inexistente DEBEN producir exactamente la misma respuesta `400` con error en el campo `managerId`. La respuesta `201` DEBE incluir `id`, `displayName`, `email`, `role` y `temporaryPassword` (ver «Contraseña temporal de un solo uso») y NO DEBE incluir el hash ni la compañía. Las propiedades desconocidas (por ejemplo `companyId`, `passwordHash`) NO DEBEN tener efecto. Un correo ya existente en cualquier compañía DEBE responder `409` con un `detail` genérico que no indique la compañía ni el rol.
+`POST /api/employees` DEBE exigir autenticación y la política de Manager (sin token `401`; con rol distinto de `Manager` `403`, antes de evaluar el cuerpo). El cuerpo DEBE aceptar `displayName` (1 a 100 caracteres tras recortar), `email` (válido y normalizado según `UserAccount`), `role` (`Employee` o `Manager`; por defecto `Employee`) y `managerId` (opcional). La persona DEBE crearse siempre en la compañía del token, con `must_change_password` = `true`. `managerId` por defecto DEBE ser el Manager que crea; si se indica otro, DEBE ser un usuario con rol `Manager` de la misma compañía; un `managerId` de otra compañía y uno inexistente DEBEN producir exactamente la misma respuesta `400` con error en el campo `managerId`. La respuesta `201` DEBE incluir `id`, `displayName`, `email`, `role` y `temporaryPassword` (ver «Contraseña temporal de un solo uso») y NO DEBE incluir el hash ni la compañía. Las propiedades desconocidas (por ejemplo `companyId`, `passwordHash`) NO DEBEN tener efecto. Un correo ya existente en cualquier compañía DEBE responder `409` con un `detail` genérico que no indique la compañía ni el rol. El alta DEBE limitarse a 30 peticiones por minuto y por usuario autenticado (política `employee-create`; `429` al superarlo, con `Retry-After` y cabeceras CORS).
+
+#### Scenario: Límite de tasa del alta
+- DADO un Manager con 30 altas (correctas o no) en el último minuto
+- CUANDO envía la siguiente
+- ENTONCES recibe `429` con `Retry-After` y no se crea nada
 
 #### Scenario: Manager da de alta a un Employee
 - DADO un Manager de la compañía A autenticado
@@ -79,7 +84,7 @@ Un Manager PUEDE crear personas con `role` = `Manager` únicamente en su propia 
 
 ### Requirement: Contraseña temporal de un solo uso
 
-El servidor DEBE generar la contraseña temporal con un generador criptográficamente seguro, de al menos 16 caracteres y que cumpla la política de contraseñas. DEBE devolverse una sola vez en la respuesta `201` del alta (con `Cache-Control: no-store`) y almacenarse solo como hash. NO DEBE persistirse en claro, registrarse, aparecer en filas de auditoría ni devolverse en ninguna otra respuesta. Solo sirve para iniciar sesión y cambiarla (ver «Cambio de contraseña obligatorio»); tras el cambio, la contraseña temporal DEBE dejar de ser válida.
+El servidor DEBE generar la contraseña temporal con un generador criptográficamente seguro, de al menos 16 caracteres y que cumpla la política de contraseñas. DEBE devolverse una sola vez en la respuesta `201` del alta o en la `200` de la regeneración (ambas con `Cache-Control: no-store`) y almacenarse solo como hash. NO DEBE persistirse en claro, registrarse, aparecer en filas de auditoría ni devolverse en ninguna otra respuesta. Solo sirve para iniciar sesión y cambiarla (ver «Cambio de contraseña obligatorio»); tras el cambio, la contraseña temporal DEBE dejar de ser válida.
 
 #### Scenario: Cumple la política
 - DADO 50 altas consecutivas
@@ -94,12 +99,46 @@ El servidor DEBE generar la contraseña temporal con un generador criptográfica
 #### Scenario: Una sola vez
 - DADO un alta correcta y un registrador que captura los mensajes
 - CUANDO se inspeccionan el registro y las demás respuestas de la API
-- ENTONCES la contraseña temporal solo aparece en la respuesta `201` del alta
+- ENTONCES la contraseña temporal solo aparece en la respuesta `201` del alta (o, tras regenerarla, en la `200` de la regeneración)
 
 #### Scenario: Inválida tras el cambio
 - DADO una persona que cambió su contraseña
 - CUANDO inicia sesión con la temporal
 - ENTONCES recibe el `401` genérico de credenciales no válidas
+
+### Requirement: Regenerar la contraseña temporal
+
+`POST /api/employees/{memberId}/temporary-password` DEBE exigir autenticación y la política de Manager (sin token `401`; con rol distinto de `Manager` `403`). Solo PUEDE regenerar la contraseña temporal de una persona de su propia compañía, y solo mientras esa persona tenga `must_change_password` = `true` (aún no ha cambiado la contraseña temporal; es el criterio de «antes del primer acceso»). Un `memberId` de otra compañía y uno inexistente DEBEN producir exactamente la misma respuesta `404` `application/problem+json` (ver `company-isolation`). Si la persona ya cambió su contraseña, DEBE responder `409` sin modificar nada. Con éxito, el servidor DEBE generar una contraseña temporal nueva con las mismas reglas de «Contraseña temporal de un solo uso», sustituir el hash (manteniendo `must_change_password` = `true`) y responder `200` con `{ temporaryPassword }` y `Cache-Control: no-store`, una sola vez; la contraseña anterior DEBE dejar de ser válida. La operación DEBE limitarse a 30 peticiones por minuto y por usuario autenticado (política propia; `429` al superarlo, con `Retry-After` y cabeceras CORS). DEBE registrar únicamente metadatos (instante, resultado, identificadores del Manager y de la persona) y NUNCA la contraseña, ni anterior ni nueva, en registros ni en filas de auditoría. La petición NO DEBE aceptar compañía ni contraseña del cliente.
+
+#### Scenario: Regeneración correcta
+- DADO una persona de la compañía A con cambio pendiente y su Manager de A
+- CUANDO el Manager envía `POST /api/employees/{memberId}/temporary-password`
+- ENTONCES recibe `200` con `temporaryPassword` y `Cache-Control: no-store`, la contraseña nueva cumple la política (16 caracteres o más), `must_change_password` sigue en `true`, la persona inicia sesión con la nueva y ya no con la anterior
+
+#### Scenario: Persona que ya cambió su contraseña
+- DADO una persona con `must_change_password` = `false`
+- CUANDO su Manager envía la regeneración
+- ENTONCES recibe `409` y el hash no cambia
+
+#### Scenario: Persona de otra compañía o inexistente
+- DADO una persona con cambio pendiente de la compañía B y, por separado, un `memberId` inexistente
+- CUANDO el Manager de A envía la regeneración con cada uno
+- ENTONCES ambas respuestas son `404` idénticas (salvo `traceId`) y el hash de la persona de B no cambia
+
+#### Scenario: Anónimo y Employee
+- DADO una petición sin token y otra con un token de `Employee`
+- CUANDO envían la regeneración
+- ENTONCES reciben `401` y `403` respectivamente y no cambia ningún hash
+
+#### Scenario: Una sola vez y sin registro
+- DADO una regeneración correcta y un registrador que captura los mensajes
+- CUANDO se inspeccionan el registro y las demás respuestas de la API
+- ENTONCES la contraseña nueva solo aparece en la respuesta `200` de la regeneración y ningún mensaje contiene la contraseña anterior ni la nueva
+
+#### Scenario: Límite de tasa de la regeneración
+- DADO un Manager con 30 peticiones de regeneración en el último minuto
+- CUANDO envía otra
+- ENTONCES recibe `429` con `Retry-After` y no cambia ningún hash
 
 ### Requirement: Cambio de contraseña obligatorio en el primer inicio de sesión
 
@@ -166,7 +205,7 @@ Mientras `must_change_password` sea `true`, el inicio de sesión DEBE emitir un 
 
 ### Requirement: Tope de personas por compañía
 
-El número de usuarios de una compañía (Employees y Managers) NO DEBE superar `Company:MaxEmployees` (configurable por entorno; ver `startup-configuration`; el Manager NO puede editarlo). Un alta que lo superaría DEBE responder `409` `application/problem+json` con un `detail` en español propio de este caso (distinto del de correo repetido) y no crear nada. El tope DEBE respetarse bajo concurrencia: con el tope a una persona de ser alcanzado y varias altas simultáneas, exactamente una DEBE tener éxito. El tope de una compañía NO DEBE afectar a otra.
+El número de usuarios de una compañía (Employees y Managers) NO DEBE superar `Company:MaxEmployees` (configurable por entorno; ver `startup-configuration`; el Manager NO puede editarlo). Un alta que lo superaría DEBE responder `409` `application/problem+json` con un `detail` en español propio de este caso (distinto del de correo repetido) y no crear nada. El tope DEBE respetarse bajo concurrencia: con el tope a una persona de ser alcanzado y varias altas simultáneas, exactamente una DEBE tener éxito. La implementación PUEDE reintentar el alta ante un conflicto de serialización de la base de datos, con un máximo de 3 reintentos; agotados sin resolverse, el resultado DEBE seguir respetando el tope (nunca más usuarios que el tope) y NO DEBE ser un `500` con datos internos. El tope de una compañía NO DEBE afectar a otra.
 
 #### Scenario: Tope alcanzado
 - DADO `Company__MaxEmployees=3` y una compañía con 3 usuarios
@@ -195,19 +234,24 @@ El número de usuarios de una compañía (Employees y Managers) NO DEBE superar 
 
 ### Requirement: Contrato OpenAPI del alta y del cambio de contraseña
 
-`docs/api/openapi.json` DEBE incluir `post` en `/api/employees` (respuestas `201`, `400`, `401`, `403` y `409`) y `post` en `/api/auth/change-password` (`200`, `400`, `401`, `403`, `429`), con la exigencia Bearer, y NO DEBE contener parámetros ni propiedades `companyId`, `passwordHash` ni `employeeId` en esas operaciones. La respuesta del alta DEBE ser el único esquema que contiene `temporaryPassword`.
+`docs/api/openapi.json` DEBE incluir `post` en `/api/employees` (respuestas `201`, `400`, `401`, `403`, `409` y `429`), `post` en `/api/employees/{memberId}/temporary-password` (`200`, `401`, `403`, `404`, `409` y `429`) y `post` en `/api/auth/change-password` (`200`, `400`, `401`, `403`, `429`), con la exigencia Bearer, y NO DEBE contener parámetros ni propiedades `companyId`, `passwordHash` ni `employeeId` en esas operaciones (el `memberId` de la ruta de regeneración sí es válido). Los esquemas de respuesta del alta y de la regeneración DEBEN ser los únicos que contienen `temporaryPassword`.
 
 #### Scenario: Rutas y respuestas
 - DADO el contrato regenerado
 - CUANDO se leen ambas rutas
 - ENTONCES existen solo `post`, con Bearer y las respuestas indicadas
 
+#### Scenario: Ruta de regeneración
+- DADO el contrato regenerado
+- CUANDO se lee `/api/employees/{memberId}/temporary-password`
+- ENTONCES existe solo `post`, con Bearer y las respuestas `200`, `401`, `403`, `404`, `409` y `429`
+
 #### Scenario: Sin campos prohibidos
 - DADO el contrato regenerado
 - CUANDO se buscan `companyId`, `passwordHash` y `employeeId` en esas operaciones
 - ENTONCES no aparecen
 
-#### Scenario: Único esquema con contraseña temporal
+#### Scenario: Esquemas con contraseña temporal
 - DADO el contrato regenerado
 - CUANDO se busca `temporaryPassword`
-- ENTONCES aparece solo en el esquema de respuesta del alta
+- ENTONCES aparece solo en los esquemas de respuesta del alta y de la regeneración

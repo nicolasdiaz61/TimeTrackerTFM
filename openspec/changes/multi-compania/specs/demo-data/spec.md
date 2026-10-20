@@ -68,7 +68,7 @@ La siembra de usuarios demo (contraseña pública documentada en el README) NO D
 
 ### Requirement: Clave de IA de plataforma solo para la compañía demo
 
-El asistente de la compañía demo PUEDE usar la configuración y la clave de plataforma `Ai:*` del entorno de forma explícita; ninguna otra compañía DEBE usarla (ver `assistant-configuration` y `assistant-settings`). Los usuarios y fichajes de la demo NO DEBEN otorgar acceso al asistente de otra compañía.
+El asistente de la compañía demo PUEDE usar la configuración y la clave de plataforma `Ai:*` del entorno de forma explícita; ninguna otra compañía DEBE usarla (ver `assistant-configuration` y `assistant-settings`). La condición se expresa con `companies.uses_platform_assistant` (ver `company-isolation`): la compañía demo nace con el indicador en `true` y es la única que lo tiene. Los usuarios y fichajes de la demo NO DEBEN otorgar acceso al asistente de otra compañía.
 
 #### Scenario: Demo con la clave de plataforma
 - DADO un entorno con `Ai__Provider` y `Ai__ApiKey` válidos, la compañía demo sin fila y un `IChatClient` falso

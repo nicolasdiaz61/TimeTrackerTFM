@@ -105,6 +105,30 @@ Con `Seed:DemoUsers` = `true` y `Registration:Enabled` = `true`, la API NO DEBE 
 - CUANDO la API falla al arrancar
 - ENTONCES la excepción (y sus internas) no contiene ninguno de los dos valores
 
+### Requirement: El registro abierto en producción exige ForwardedHeaders
+
+Con `Registration:Enabled` = `true` y el entorno `Production`, la API NO DEBE arrancar si `ForwardedHeaders:Enabled` no es `true`: el mensaje en español DEBE nombrar `ForwardedHeaders:Enabled` y explicar que, sin él, el límite por IP del registro (ver `company-registration`) comparte una sola partición para todos los clientes. La validación DEBE ocurrir antes de cualquier migración o siembra y NO DEBE imprimir ningún código de invitación ni otro valor secreto. Con el registro cerrado (valor por defecto) o fuera de `Production`, `ForwardedHeaders` sigue siendo opcional y apagado por defecto (ADR 0013).
+
+#### Scenario: Registro abierto en producción sin ForwardedHeaders
+- DADO `ASPNETCORE_ENVIRONMENT=Production`, `Registration__Enabled=true` con un código válido y `ForwardedHeaders__Enabled` sin definir
+- CUANDO la API intenta arrancar
+- ENTONCES el arranque falla con un mensaje que contiene `ForwardedHeaders:Enabled`, no se aplica ninguna migración ni siembra y el mensaje no contiene el código
+
+#### Scenario: Registro abierto en producción con ForwardedHeaders
+- DADO `Production`, `Registration__Enabled=true` con un código válido y `ForwardedHeaders__Enabled=true`
+- CUANDO la API arranca
+- ENTONCES arranca
+
+#### Scenario: Registro abierto fuera de producción
+- DADO `Development`, `Registration__Enabled=true` con un código válido y `ForwardedHeaders__Enabled` sin definir
+- CUANDO la API arranca
+- ENTONCES arranca
+
+#### Scenario: Registro cerrado en producción
+- DADO `Production`, `Registration__Enabled` sin definir y `ForwardedHeaders__Enabled` sin definir
+- CUANDO la API arranca
+- ENTONCES arranca (el requisito solo se aplica con el registro abierto)
+
 ### Requirement: Documentación en `.env.example` de las claves multi-compañía
 
 `.env.example` DEBE documentar `Registration__Enabled` como línea activa con valor `false`, `Registration__InviteCodes` como línea comentada (`#`) sin valor real y `Company__MaxEmployees` como línea comentada con su valor por defecto (50), además de `Ai__RequestsPerMinutePerCompany`, `Ai__DailyRequestsPerCompany` y `Ai__MaxLoadedCompanies` como líneas comentadas con sus valores por defecto (30, 500 y 100). Los comentarios DEBEN indicar que el registro está cerrado por defecto, que se abre solo cuando el aislamiento está probado y desplegado, que los códigos de invitación son secretos que se definen únicamente en el entorno del despliegue (Railway) y nunca en el archivo, que no puede combinarse con `Seed__DemoUsers=true`, que los topes por compañía se fijan por entorno y no los edita un Manager, y que la clave maestra de cifrado vive solo en Railway. `docker-compose.yml` NO DEBE activar `Registration__Enabled` ni definir códigos de invitación. NO DEBE aparecer ningún código de invitación con valor ni clave maestra con valor en el repositorio.

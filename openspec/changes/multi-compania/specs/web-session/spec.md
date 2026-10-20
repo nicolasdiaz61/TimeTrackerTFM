@@ -226,6 +226,25 @@ La ruta `/equipo/alta` DEBE exigir sesión con rol `Manager` (sin sesión navega
 - CUANDO se revisan sus controles
 - ENTONCES no hay controles de baja ni de edición de personas
 
+### Requirement: Regenerar la contraseña temporal desde la página de equipo
+
+La página de equipo (`/equipo`) DEBE ofrecer a un Manager, para cada persona de su lista, la acción «Regenerar contraseña temporal», que invoca `POST /api/employees/{memberId}/temporary-password` (ver `employee-management`). Como la lista no indica quién tiene el cambio pendiente, la acción puede ofrecerse a toda la lista y la Web DEBE mostrar en español el `detail` del `409` cuando la persona ya cambió su contraseña. Con `200` DEBE mostrar la contraseña temporal UNA SOLA VEZ, como texto plano y con los mismos avisos y restricciones de almacenamiento que `/equipo/alta`; DEBE pedir una confirmación previa y NO DEBE enviar identificadores de compañía ni contraseñas. Un `404`, `401`, `403` o `429` se muestran según el flujo común.
+
+#### Scenario: Regeneración correcta
+- DADO un Manager con una persona de cambio pendiente en `/equipo`
+- CUANDO confirma «Regenerar contraseña temporal»
+- ENTONCES se muestra la contraseña nueva con el aviso de que no se volverá a mostrar y desaparece al cerrar el aviso o navegar a otra ruta
+
+#### Scenario: Persona que ya cambió su contraseña
+- DADO una respuesta `409` con `detail` en español
+- CUANDO se muestra el error
+- ENTONCES se muestra ese `detail`, no se muestra ninguna contraseña y la pantalla sigue operativa
+
+#### Scenario: Sin almacenamiento del navegador
+- DADO la contraseña temporal regenerada mostrada
+- CUANDO se inspeccionan `localStorage`, `sessionStorage` y la URL
+- ENTONCES no contienen la contraseña
+
 ### Requirement: Textos de las páginas nuevas en español y sin datos técnicos
 
 Todos los textos de `/registro`, `/cambiar-contrasena` y `/equipo/alta` DEBEN estar en español (registro neutro). Ningún mensaje DEBE mostrar trazas, nombres de excepciones, tokens, el código de invitación, identificadores internos ni identificadores de compañía. La lógica de presentación sin interfaz (mapeo de estados HTTP a mensajes, validación de coincidencia de la confirmación, redirección por cambio pendiente) DEBE estar en clases puras cubiertas con pruebas unitarias en `TimeTracker.Web.Tests` que no llaman a la API real.

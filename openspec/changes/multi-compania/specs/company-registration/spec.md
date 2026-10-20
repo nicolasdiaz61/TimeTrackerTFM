@@ -39,7 +39,7 @@ Fuera de alcance: verificación de correo, recuperación de contraseña, proveed
 
 ### Requirement: Código de invitación secreto
 
-El cuerpo DEBE incluir `inviteCode`. El código DEBE compararse con cada código de `Registration:InviteCodes` en tiempo constante (sin cortocircuito por longitud ni por posición del primer carácter distinto; p. ej. `CryptographicOperations.FixedTimeEquals` sobre resúmenes de igual longitud). El código DEBE comprobarse antes que cualquier otra regla del registro, de modo que un `409` por correo o nombre repetido solo pueda observarlo quien conoce un código válido. Un código ausente, en blanco, incorrecto o de más de 128 caracteres DEBE responder `403` `application/problem+json` con un `detail` genérico en español, sin indicar cuál fue la causa. Un código válido NO se consume: sigue siendo válido hasta que se retire del entorno (rotación por el entorno). El código NO DEBE aparecer en respuestas, registros, contrato OpenAPI ni mensajes de error.
+El cuerpo DEBE incluir `inviteCode`. El código DEBE compararse con cada código de `Registration:InviteCodes` en tiempo constante (sin cortocircuito por longitud ni por posición del primer carácter distinto; p. ej. `CryptographicOperations.FixedTimeEquals` sobre resúmenes de igual longitud). El código DEBE comprobarse antes que cualquier otra regla del registro, de modo que un `409` por correo o nombre repetido solo pueda observarlo quien conoce un código válido. Un código ausente, en blanco, incorrecto o de más de 128 caracteres DEBE responder `403` `application/problem+json` con un `detail` genérico en español, sin indicar cuál fue la causa. Un código válido NO se consume: sigue siendo válido hasta que se retire del entorno (rotación por el entorno). Como no se registra cuál de los códigos se aceptó, la rotación ante un código filtrado consiste en sustituir la lista completa de `Registration__InviteCodes` por códigos nuevos y redistribuirlos. El código NO DEBE aparecer en respuestas, registros, contrato OpenAPI ni mensajes de error.
 
 #### Scenario: Código válido
 - DADO `Registration__InviteCodes=codigo-prueba-0123456789` y un cuerpo válido con ese código
@@ -208,7 +208,7 @@ El nombre de compañía DEBE ser único según `name_normalized` (solo duplicado
 
 ### Requirement: Privacidad del registro
 
-El servicio DEBE registrar únicamente metadatos del registro (resultado: creado, rechazado por código, por validación, por duplicado o por límite; instante; identificador de la compañía creada). NO DEBE registrar contraseñas, códigos de invitación, correos ni nombres de personas o de compañías.
+El servicio DEBE registrar únicamente metadatos del registro (resultado: creado, rechazado por código, por validación, por duplicado o por límite; instante; identificador de la compañía creada). NO DEBE registrar contraseñas, códigos de invitación (ni su posición o índice en la lista, ni ningún derivado del código aceptado), correos ni nombres de personas o de compañías.
 
 #### Scenario: Metadatos presentes
 - DADO un registrador que captura los mensajes y un registro correcto
@@ -219,3 +219,8 @@ El servicio DEBE registrar únicamente metadatos del registro (resultado: creado
 - DADO el mismo registrador, un correo, un nombre y una contraseña reconocibles
 - CUANDO se envían registros correctos e incorrectos
 - ENTONCES ningún mensaje contiene esos valores ni el código de invitación
+
+#### Scenario: Sin posición del código aceptado
+- DADO dos códigos válidos configurados y un registro correcto con el segundo
+- CUANDO se inspeccionan los mensajes del registrador
+- ENTONCES ninguno indica cuál de los códigos se aceptó ni su posición en la lista
