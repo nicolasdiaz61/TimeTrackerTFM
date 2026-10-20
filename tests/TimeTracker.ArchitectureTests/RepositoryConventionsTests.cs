@@ -289,9 +289,9 @@ public class RepositoryConventionsTests
     }
 
     [Fact]
-    public void InfrastructureAssistant_CreatesUrisOnlyInProviderEndpointsAndTheOllamaEndpoint()
+    public void InfrastructureAssistant_BuildsNoUriOutsideTheApprovedSyntacticForms()
     {
-        // Sin URL elegida por el Manager (SSRF, DD-3): las únicas direcciones salen de una constante fija o del entorno (Ollama).
+        // Sin URL elegida por el Manager (SSRF, DD-3): las únicas direcciones salen de una constante fija o del entorno (Ollama). Guarda sintáctica; sus límites están en UriCreation.
         var offenders = SourceFiles("src/TimeTracker.Infrastructure/Assistant")
             .Where(file => CreatesUnapprovedUri(Path.GetFileName(file), File.ReadAllText(file)))
             .Select(file => Path.GetRelativePath(RepositoryRoot.Path, file))
@@ -310,6 +310,14 @@ public class RepositoryConventionsTests
     [InlineData("System.Uri.TryCreate (value, UriKind.Absolute, out var u);")]
     [InlineData("var b = new UriBuilder(value);")]
     [InlineData("var b = new System.UriBuilder { Host = value };")]
+    [InlineData("var u = new global::System.Uri(value);")]
+    [InlineData("var b = new global::System.UriBuilder(value);")]
+    [InlineData("global::System.Uri.TryCreate(value, UriKind.Absolute, out var u);")]
+    [InlineData("Uri u = new(value);")]
+    [InlineData("Uri? u = new(\"https://a\");")]
+    [InlineData("private static readonly Uri A = new  (value);")]
+    [InlineData("public Uri A { get; } = new(value);")]
+    [InlineData("client.BaseAddress = new(value);")]
     public void UriScanner_DetectsEveryWayOfBuildingAnAddress(string source)
     {
         Assert.True(CreatesUnapprovedUri("OtroArchivo.cs", source));
@@ -319,6 +327,8 @@ public class RepositoryConventionsTests
     [InlineData("var id = Guid.NewGuid();")]
     [InlineData("Uri? uri = null;")]
     [InlineData("var text = uri.ToString();")]
+    [InlineData("List<string> items = new();")]
+    [InlineData("var request = new HttpRequestMessage();")]
     public void UriScanner_IgnoresCodeThatBuildsNoAddress(string source)
     {
         Assert.False(CreatesUnapprovedUri("OtroArchivo.cs", source));
@@ -345,8 +355,14 @@ public class RepositoryConventionsTests
         Assert.False(CreatesUnapprovedUri("ProviderEndpoints.cs", "public static readonly Uri A = new Uri(\"https://a/\");"));
     }
 
+    // Análisis sintáctico por expresión regular: cubre `new Uri(...)`/`new UriBuilder` (con `System.` o `global::System.`),
+    // `Uri.TryCreate(...)` y `new(...)` de tipo inferido cuando el tipo `Uri` aparece en la misma declaración (campo, local o
+    // propiedad) o se asigna a `BaseAddress`/`RequestUri`. No cubre `Uri` obtenido por otras vías (conversión desde `string` en
+    // `HttpRequestMessage`, `new(...)` asignado a un destino de tipo `Uri` con otro nombre, reflexión): son límites de la guarda,
+    // no garantías. La defensa real contra el SSRF es que las URL de los proveedores sean constantes (DD-3).
     private static readonly System.Text.RegularExpressions.Regex UriCreation = new(
-        @"new\s*(System\.)?Uri\s*\(|(System\.)?Uri\.TryCreate\s*\(|new\s*(System\.)?UriBuilder\b",
+        @"new\s*(global::)?(System\.)?Uri\s*\(|(global::)?(System\.)?Uri\.TryCreate\s*\(|new\s*(global::)?(System\.)?UriBuilder\b"
+        + @"|\bUri\??\s+\w+\s*=\s*new\s*\(|\bUri\??\s+\w+\s*\{[^}]*\}\s*=\s*new\s*\(|\b(BaseAddress|RequestUri)\s*=\s*new\s*\(",
         System.Text.RegularExpressions.RegexOptions.CultureInvariant);
 
     // Formas exactas permitidas por archivo: la fábrica solo construye la dirección de Ollama a partir de Ai:Endpoint, y el
