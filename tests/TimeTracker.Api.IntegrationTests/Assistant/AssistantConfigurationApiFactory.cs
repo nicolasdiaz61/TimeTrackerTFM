@@ -4,6 +4,8 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 
 using TimeTracker.Application.Assistant.Configuration;
+using TimeTracker.Application.Users;
+using TimeTracker.Domain.Users;
 using TimeTracker.Infrastructure.Assistant;
 using TimeTracker.Infrastructure.Tests.Fakes;
 
@@ -19,7 +21,8 @@ internal sealed class AssistantConfigurationApiFactory(
     string? connectionString = null,
     string role = "Manager",
     bool masterKeyAvailable = true,
-    IAssistantSettingsStore? store = null) : ApiFactory
+    IAssistantSettingsStore? store = null,
+    IUserRepository? users = null) : ApiFactory
 {
     public const string EnvironmentModel = "modelo-env";
 
@@ -59,6 +62,11 @@ internal sealed class AssistantConfigurationApiFactory(
         {
             services.Replace(ServiceDescriptor.Singleton<IChatClientFactory>(ChatFactory));
             services.Replace(ServiceDescriptor.Singleton<IAssistantConnectionTester>(Tester));
+            if (users is not null)
+            {
+                services.Replace(ServiceDescriptor.Scoped(_ => users));
+            }
+
             if (store is not null)
             {
                 services.Replace(ServiceDescriptor.Singleton(store));
@@ -128,4 +136,19 @@ internal sealed class RacingDeleteStore : IAssistantSettingsStore
 
     public Task<DeleteOutcome> DeleteAsync(string expectedToken, AuditEntry audit, CancellationToken cancellationToken)
         => Task.FromResult(DeleteOutcome.Conflict);
+}
+
+/// <summary>Repositorio cuya consulta del nombre visible falla: la configuración ya se confirmó y debe seguir respondiendo.</summary>
+internal sealed class DisplayNameFailingUserRepository : IUserRepository
+{
+    public Task<string?> FindDisplayNameAsync(Guid userId, CancellationToken cancellationToken)
+        => throw new TimeoutException("consulta del nombre visible fallida");
+
+    public Task<UserAccount?> FindByEmailAsync(string normalizedEmail, CancellationToken cancellationToken) => throw new NotSupportedException();
+
+    public Task<IReadOnlyList<UserAccount>> ListDirectReportsAsync(Guid managerId, int limit, CancellationToken cancellationToken) => throw new NotSupportedException();
+
+    public Task<UserAccount?> FindDirectReportAsync(Guid managerId, Guid memberId, CancellationToken cancellationToken) => throw new NotSupportedException();
+
+    public Task AddAsync(UserAccount user, CancellationToken cancellationToken) => throw new NotSupportedException();
 }
