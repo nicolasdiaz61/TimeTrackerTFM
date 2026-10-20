@@ -414,3 +414,15 @@ Si la estrategia de entrega no admite excepción, se mantienen los cortes 3a/3b 
 - [ ] Confirmar con el product owner la política de provisión de la clave maestra en Railway (quién la genera y cómo se custodia la copia de seguridad).
 - [x] Resultado del spike (V-2): anotado en «Resultados de V-n en apply» (PR 4).
 - [ ] Si se quiere lectura de la auditoría por API/UI en una versión posterior (no incluida en esta).
+
+## 14. Desviaciones y riesgos aceptados (apply)
+
+### Desviación aceptada de DD-14: campos numéricos del PUT
+
+DD-14 pedía tipos de cadena en el DTO para devolver `400` por campo en español ante un valor no numérico. El DTO conserva `int?` en `timeoutSeconds` y `maxOutputTokens`, de modo que un valor que no es un entero JSON (`"abc"`, `1.5`, `true`, un número fuera de rango) recibe el `400` general de formato (`problem+json`, sin mapa `errors` y sin repetir el valor). Motivos:
+
+- Pasar a cadenas cambia el contrato publicado (`integer` → `string` en `openapi.json`) y obliga a que el cliente envíe `"20"` en lugar de `20`; la Web ya envía enteros y sus pruebas de nombres JSON exactos dependen de ello.
+- `AssistantSettingsInput` (Application) también es `int?` y lo usan todas las pruebas de reglas, de casos de uso y de la prueba de conexión; migrarlo a texto exige reescribirlas sin que ninguna regla de negocio cambie.
+- Los límites 5-55 y 64-4096 sí se validan por campo en español; el caso afectado solo lo produce un cliente que no es la Web (el campo del formulario es numérico), y el `400` no revela ningún valor ni toca la fila.
+
+`AssistantConfigurationStrictBodyTests.Put_WithANonIntegerNumericField_...` fija el comportamiento. Si más adelante se publica la API a terceros, el cambio correcto es pasar ambos DTO y `AssistantSettingsInput` a cadenas, con cambio de contrato explícito.
