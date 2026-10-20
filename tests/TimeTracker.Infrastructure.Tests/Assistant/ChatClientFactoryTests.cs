@@ -99,19 +99,19 @@ public sealed class ChatClientFactoryTests
     {
         var handler = new CountingHandler();
         using var client = ChatClientFactory.CreateOllamaClient(
-            new AiOptions { Provider = "Ollama", Model = "m", Endpoint = "http://localhost:11434/", TimeoutSeconds = 17 }, handler);
+            new AiOptions { Provider = "Ollama", Model = "m", Endpoint = "http://localhost:11434/", TimeoutSeconds = 17 }, () => handler);
 
         var ollama = client.GetService<OllamaApiClient>();
         Assert.Equal(new Uri("http://localhost:11434/"), ollama?.Uri);
         Assert.Equal(TimeSpan.FromSeconds(17), ChatClientFactory.CreateOllamaHttpClient(
-            new AiOptions { Endpoint = "http://localhost:11434/", TimeoutSeconds = 17 }, handler).Timeout);
+            new AiOptions { Endpoint = "http://localhost:11434/", TimeoutSeconds = 17 }, () => handler).Timeout);
     }
 
     [Fact]
     public async Task OllamaClient_GivesUpWhenTheServerDoesNotAnswerWithinTheTimeout()
     {
         using var client = ChatClientFactory.CreateOllamaClient(
-            new AiOptions { Provider = "Ollama", Model = "m", Endpoint = "http://localhost:11434/", TimeoutSeconds = 1 }, new HangingHandler());
+            new AiOptions { Provider = "Ollama", Model = "m", Endpoint = "http://localhost:11434/", TimeoutSeconds = 1 }, () => new HangingHandler());
 
         await Assert.ThrowsAnyAsync<Exception>(() => client.GetResponseAsync("hola"));
     }
@@ -157,12 +157,68 @@ public sealed class ChatClientFactoryTests
         await stream.WriteAsync(Encoding.ASCII.GetBytes(response));
     }
 
+    public static TheoryData<string> InvalidOllamaEndpoints => new()
+    {
+        "no-es-una-url-http",
+        "/ruta/relativa",
+        "ftp://localhost:11434/",
+        "file:///etc/hosts",
+    };
+
+    [Theory]
+    [MemberData(nameof(InvalidOllamaEndpoints))]
+    public void CreateOllamaHttpClient_WithAnInvalidEndpoint_FailsBeforeCreatingAnyHandler(string endpoint)
+    {
+        var handlersCreated = 0;
+
+        var exception = Assert.Throws<InvalidOperationException>(() => ChatClientFactory.CreateOllamaHttpClient(
+            new AiOptions { Provider = "Ollama", Model = "m", Endpoint = endpoint },
+            () =>
+            {
+                handlersCreated++;
+                return new CountingHandler();
+            }));
+
+        Assert.Equal(0, handlersCreated);
+        Assert.Contains("Ai:Endpoint", exception.Message, StringComparison.Ordinal);
+        Assert.DoesNotContain(endpoint, exception.Message, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [MemberData(nameof(InvalidOllamaEndpoints))]
+    public void Create_WithOllamaAndAnInvalidEndpoint_FailsClearlyWithoutTheValue(string endpoint)
+    {
+        var exception = Assert.Throws<InvalidOperationException>(
+            () => ChatClientFactory.Create(new AiOptions { Provider = "Ollama", Model = "m", Endpoint = endpoint }));
+
+        Assert.Contains("Ai:Endpoint", exception.Message, StringComparison.Ordinal);
+        Assert.Contains("http", exception.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain(endpoint, exception.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void CreateOllamaHttpClient_WithAValidEndpoint_CreatesTheHandlerOnce()
+    {
+        var handlersCreated = 0;
+
+        using var http = ChatClientFactory.CreateOllamaHttpClient(
+            new AiOptions { Provider = "Ollama", Model = "m", Endpoint = "https://ollama.ejemplo.test:11434/" },
+            () =>
+            {
+                handlersCreated++;
+                return new CountingHandler();
+            });
+
+        Assert.Equal(1, handlersCreated);
+        Assert.Equal(new Uri("https://ollama.ejemplo.test:11434/"), http.BaseAddress);
+    }
+
     [Fact]
     public void OllamaClient_ReleasesItsHttpClientWhenDisposed()
     {
         var handler = new CountingHandler();
         var client = ChatClientFactory.CreateOllamaClient(
-            new AiOptions { Provider = "Ollama", Model = "m", Endpoint = "http://localhost:11434/" }, handler);
+            new AiOptions { Provider = "Ollama", Model = "m", Endpoint = "http://localhost:11434/" }, () => handler);
 
         client.Dispose();
 

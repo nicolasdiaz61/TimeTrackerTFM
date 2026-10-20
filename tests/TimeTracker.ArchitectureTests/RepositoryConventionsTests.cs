@@ -325,9 +325,10 @@ public class RepositoryConventionsTests
     }
 
     [Theory]
-    [InlineData("ChatClientFactory.cs", "BaseAddress = new Uri(options.Endpoint!),", false)]
+    [InlineData("ChatClientFactory.cs", "Uri.TryCreate(options.Endpoint, UriKind.Absolute, out var endpoint) && endpoint.Scheme is \"http\"", false)]
     [InlineData("ChatClientFactory.cs", "BaseAddress = new Uri(\"https://evil.example/\"),", true)]
     [InlineData("ChatClientFactory.cs", "BaseAddress = new Uri(options.ApiKey!),", true)]
+    [InlineData("ChatClientFactory.cs", "BaseAddress = new Uri(options.Endpoint!),", true)]
     [InlineData("ChatClientFactory.cs", "Uri.TryCreate(options.Endpoint, UriKind.Absolute, out var u);", true)]
     [InlineData("ChatClientFactory.cs", "var b = new UriBuilder(options.Endpoint!);", true)]
     [InlineData("AiOptionsValidator.cs", "Uri.TryCreate(value, UriKind.Absolute, out var uri) && uri.Scheme is \"http\"", false)]
@@ -352,7 +353,7 @@ public class RepositoryConventionsTests
     // validador solo comprueba que ese valor sea http/https sin conservar la dirección. Cualquier otra forma es un desvío posible.
     private static readonly Dictionary<string, string> AllowedUriForms = new()
     {
-        ["ChatClientFactory.cs"] = "new Uri(options.Endpoint!)",
+        ["ChatClientFactory.cs"] = "Uri.TryCreate(options.Endpoint, UriKind.Absolute, out var endpoint)",
         ["AiOptionsValidator.cs"] = "Uri.TryCreate(value, UriKind.Absolute, out var uri)",
     };
 

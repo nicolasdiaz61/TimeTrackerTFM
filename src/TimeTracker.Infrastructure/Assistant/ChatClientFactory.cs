@@ -58,20 +58,30 @@ public static class ChatClientFactory
         }
     }
 
-    internal static IChatClient CreateOllamaClient(AiOptions options, HttpMessageHandler? handler = null)
+    internal static IChatClient CreateOllamaClient(AiOptions options, Func<HttpMessageHandler>? handlerFactory = null)
     {
-        var http = CreateOllamaHttpClient(options, handler);
+        var http = CreateOllamaHttpClient(options, handlerFactory);
         return new OwnedHttpClientChatClient(new OllamaApiClient(http, options.Model!), http);
     }
 
     // OllamaSharp no expone el plazo si crea él el HttpClient, y no libera uno ajeno: este se libera con el cliente de chat.
+    // La dirección se valida antes de crear el manejador para no dejar uno sin liberar si el Endpoint es inválido.
     // Sin seguir redirecciones: un 307 reenviaría la conversación a un host distinto del Endpoint elegido por el entorno.
-    internal static HttpClient CreateOllamaHttpClient(AiOptions options, HttpMessageHandler? handler = null)
-        => new(handler ?? new HttpClientHandler { AllowAutoRedirect = false })
+    internal static HttpClient CreateOllamaHttpClient(AiOptions options, Func<HttpMessageHandler>? handlerFactory = null)
+    {
+        var endpoint = ParseOllamaEndpoint(options);
+        return new HttpClient(handlerFactory?.Invoke() ?? new HttpClientHandler { AllowAutoRedirect = false })
         {
-            BaseAddress = new Uri(options.Endpoint!),
+            BaseAddress = endpoint,
             Timeout = TimeSpan.FromSeconds(options.TimeoutSeconds),
         };
+    }
+
+    // El mensaje nombra la clave y nunca el valor: la dirección puede llevar credenciales en la URL.
+    private static Uri ParseOllamaEndpoint(AiOptions options)
+        => Uri.TryCreate(options.Endpoint, UriKind.Absolute, out var endpoint) && endpoint.Scheme is "http" or "https"
+            ? endpoint
+            : throw new InvalidOperationException("Ai:Endpoint debe ser una URL absoluta con esquema http o https.");
 
     internal static AnthropicClient CreateAnthropicClient(AiOptions options)
         => new()
