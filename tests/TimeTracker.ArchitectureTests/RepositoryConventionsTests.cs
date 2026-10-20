@@ -266,6 +266,52 @@ public class RepositoryConventionsTests
     }
 
     [Fact]
+    public void OpenAIAdapter_IsDeclaredOnlyInInfrastructureAndItsNamespaceIsUsedOnlyThere()
+    {
+        var central = Load("Directory.Packages.props").Descendants("PackageVersion")
+            .Single(reference => (string?)reference.Attribute("Include") == "Microsoft.Extensions.AI.OpenAI");
+        Assert.Equal("10.10.0", (string?)central.Attribute("Version"));
+
+        // El SDK `OpenAI` llega transitivo: ningún proyecto lo declara directamente, y solo Infrastructure usa su espacio de nombres.
+        var declared = ProjectPaths
+            .Where(path => Load(path).Descendants("PackageReference")
+                .Any(reference => (string?)reference.Attribute("Include") is "OpenAI" or "Microsoft.Extensions.AI.OpenAI"))
+            .ToList();
+        Assert.Equal(["src/TimeTracker.Infrastructure/TimeTracker.Infrastructure.csproj"], declared.Where(path => path.StartsWith("src/", StringComparison.Ordinal)));
+
+        var offenders = SourceFiles("src")
+            .Where(file => !file.Contains("TimeTracker.Infrastructure", StringComparison.Ordinal))
+            .Where(file => File.ReadAllLines(file).Any(line => line.TrimStart().StartsWith("using ", StringComparison.Ordinal)
+                && (line.Contains("OpenAI", StringComparison.Ordinal))))
+            .Select(file => Path.GetRelativePath(RepositoryRoot.Path, file))
+            .ToList();
+        Assert.True(offenders.Count == 0, $"Usan el espacio de nombres de OpenAI fuera de Infrastructure: {string.Join(", ", offenders)}");
+    }
+
+    [Fact]
+    public void InfrastructureAssistant_CreatesUrisOnlyInProviderEndpointsAndTheFactory()
+    {
+        // Sin URL elegida por el Manager (SSRF, DD-3): las únicas direcciones salen de una constante fija o del entorno (Ollama).
+        string[] allowed = ["ProviderEndpoints.cs", "ChatClientFactory.cs"];
+
+        var offenders = SourceFiles("src/TimeTracker.Infrastructure/Assistant")
+            .Where(file => !allowed.Contains(Path.GetFileName(file)))
+            .Where(file => System.Text.RegularExpressions.Regex.IsMatch(File.ReadAllText(file), @"new\s+(System\.)?Uri\("))
+            .Select(file => Path.GetRelativePath(RepositoryRoot.Path, file))
+            .ToList();
+        Assert.True(offenders.Count == 0, $"Crean un Uri fuera de ProviderEndpoints y la fábrica: {string.Join(", ", offenders)}");
+
+        Assert.Contains("new Uri(", File.ReadAllText(Path.Combine(RepositoryRoot.Path, "src/TimeTracker.Infrastructure/Assistant/ProviderEndpoints.cs")), StringComparison.Ordinal);
+    }
+
+    private static IEnumerable<string> SourceFiles(string directory)
+    {
+        var separators = new[] { $"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}", $"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}" };
+        return Directory.EnumerateFiles(Path.Combine(RepositoryRoot.Path, directory), "*.cs", SearchOption.AllDirectories)
+            .Where(file => !separators.Any(file.Contains));
+    }
+
+    [Fact]
     public void Src_DoesNotHardcodeModelNames()
     {
         // El modelo y el proveedor se eligen solo por configuración (AGENTS §7): ningún nombre de modelo en el código.

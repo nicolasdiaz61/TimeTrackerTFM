@@ -6,5 +6,5 @@ namespace TimeTracker.Infrastructure.Assistant;
 /// </summary>
 internal static class ProviderEndpoints
 {
-    public static readonly Uri GeminiOpenAi = new("https://generativelanguage.googleapis.com/v1beta/openai/");
+    public static readonly Uri GeminiOpenAi = new Uri("https://generativelanguage.googleapis.com/v1beta/openai/");
 }
