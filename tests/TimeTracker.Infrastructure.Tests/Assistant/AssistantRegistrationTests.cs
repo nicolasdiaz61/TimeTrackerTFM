@@ -38,6 +38,16 @@ public sealed class AssistantRegistrationTests
     }
 
     [Fact]
+    public async Task TheConnectionTester_IsRegisteredAndDoesNotNeedAProvider()
+    {
+        await using var provider = Build();
+
+        await using var scope = provider.CreateAsyncScope();
+
+        Assert.Equal("AssistantConnectionTester", scope.ServiceProvider.GetRequiredService<IAssistantConnectionTester>().GetType().Name);
+    }
+
+    [Fact]
     public async Task WithoutProvider_TheContainerBuildsAndTheEngineIsDisabled()
     {
         await using var provider = Build();

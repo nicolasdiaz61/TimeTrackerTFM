@@ -35,6 +35,8 @@ public static class AssistantServiceCollectionExtensions
         services.AddSingleton<IAssistantEnvironment, ConfigurationAssistantEnvironment>();
         services.AddSingleton<IAssistantSettingsLoader, AssistantSettingsLoader>();
         services.AddSingleton<IAssistantRuntimeReloader, AssistantRuntimeReloader>();
+        // Sin estado: crea y desecha un cliente por prueba y no comparte nada con la instantánea del chat (DD-13).
+        services.AddSingleton<IAssistantConnectionTester, AssistantConnectionTester>();
         services.AddSingleton<IAssistantQuota, InMemoryAssistantQuota>();
         services.AddScoped<AssistantToolset>();
         services.AddScoped<IAssistantEngine, ChatAssistantEngine>();
