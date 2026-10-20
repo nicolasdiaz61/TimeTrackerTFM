@@ -34,21 +34,21 @@ public sealed class AssistantSettingsPollerTests : IAsyncLifetime
         _client.Dispose();
     }
 
-    private static async Task WaitUntilAsync(Func<bool> condition)
+    // Avanza un intervalo y espera la señal explícita de «vuelta terminada» del sondeo (sin esperas por tiempo real).
+    private async Task TickAsync()
     {
-        var deadline = DateTime.UtcNow.AddSeconds(5);
-        while (!condition())
+        var completed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        void OnCompleted() => completed.TrySetResult();
+        _poller.PollCompleted += OnCompleted;
+        try
         {
-            Assert.True(DateTime.UtcNow < deadline, "La condición esperada no se cumplió a tiempo.");
-            await Task.Delay(5);
+            _time.Advance(TimeSpan.FromSeconds(PollSeconds));
+            await completed.Task.WaitAsync(TimeSpan.FromSeconds(10));
         }
-    }
-
-    private async Task TickAsync(int expectedReads)
-    {
-        _time.Advance(TimeSpan.FromSeconds(PollSeconds));
-        await WaitUntilAsync(() => _loader.Reads >= expectedReads);
-        await Task.Delay(20);
+        finally
+        {
+            _poller.PollCompleted -= OnCompleted;
+        }
     }
 
     [Fact]
@@ -57,18 +57,18 @@ public sealed class AssistantSettingsPollerTests : IAsyncLifetime
         await _poller.StartAsync(CancellationToken.None);
         Assert.Equal((1, 0), (_loader.Reads, _loader.Loads));
 
-        await TickAsync(2);
+        await TickAsync();
         Assert.Equal(0, _loader.Loads);
 
         _loader.StoredVersion = "5";
-        await TickAsync(3);
+        await TickAsync();
         Assert.Equal(1, _loader.Loads);
 
-        await TickAsync(4);
+        await TickAsync();
         Assert.Equal(1, _loader.Loads);
 
         _loader.StoredVersion = "6";
-        await TickAsync(5);
+        await TickAsync();
         Assert.Equal(2, _loader.Loads);
     }
 
@@ -79,12 +79,12 @@ public sealed class AssistantSettingsPollerTests : IAsyncLifetime
         _loader.StoredVersion = "21";
         _loader.LastRejectedVersion = "21";
 
-        await TickAsync(2);
-        await TickAsync(3);
+        await TickAsync();
+        await TickAsync();
         Assert.Equal(0, _loader.Loads);
 
         _loader.StoredVersion = "22";
-        await TickAsync(4);
+        await TickAsync();
         Assert.Equal(1, _loader.Loads);
     }
 
@@ -94,9 +94,11 @@ public sealed class AssistantSettingsPollerTests : IAsyncLifetime
         await _poller.StartAsync(CancellationToken.None);
 
         _time.Advance(TimeSpan.FromSeconds(PollSeconds - 1));
-        await Task.Delay(50);
-
         Assert.Equal(1, _loader.Reads);
+
+        // El primer sondeo llega justo al cumplirse el intervalo completo, y es uno solo.
+        await TickAsync();
+        Assert.Equal(2, _loader.Reads);
     }
 
     [Fact]
@@ -105,9 +107,9 @@ public sealed class AssistantSettingsPollerTests : IAsyncLifetime
         await _poller.StartAsync(CancellationToken.None);
         _loader.ReadFailure = new TimeoutException($"sin conexión con {Secret}");
 
-        await TickAsync(2);
-        await TickAsync(3);
-        await TickAsync(4);
+        await TickAsync();
+        await TickAsync();
+        await TickAsync();
 
         var warning = Assert.Single(_logger.Entries);
         Assert.Equal(LogLevel.Warning, warning.Level);
@@ -121,16 +123,16 @@ public sealed class AssistantSettingsPollerTests : IAsyncLifetime
     {
         await _poller.StartAsync(CancellationToken.None);
         _loader.ReadFailure = new TimeoutException();
-        await TickAsync(2);
+        await TickAsync();
 
         _loader.ReadFailure = null;
-        await TickAsync(3);
-        await TickAsync(4);
+        await TickAsync();
+        await TickAsync();
 
         Assert.Equal([LogLevel.Warning, LogLevel.Information], _logger.Entries.Select(entry => entry.Level));
 
         _loader.ReadFailure = new TimeoutException();
-        await TickAsync(5);
+        await TickAsync();
 
         Assert.Equal([LogLevel.Warning, LogLevel.Information, LogLevel.Warning], _logger.Entries.Select(entry => entry.Level));
     }
@@ -142,8 +144,8 @@ public sealed class AssistantSettingsPollerTests : IAsyncLifetime
         _loader.StoredVersion = "8";
         _loader.LoadFailure = new InvalidOperationException($"fallo con {Secret}");
 
-        await TickAsync(2);
-        await TickAsync(3);
+        await TickAsync();
+        await TickAsync();
 
         var warning = Assert.Single(_logger.Entries);
         Assert.Contains(nameof(InvalidOperationException), warning.Message, StringComparison.Ordinal);
@@ -180,9 +182,8 @@ public sealed class AssistantSettingsPollerTests : IAsyncLifetime
         _loader.LoadGate = new TaskCompletionSource();
 
         var starting = _poller.StartAsync(CancellationToken.None);
-        await WaitUntilAsync(() => _loader.Loads == 1);
+        await _loader.LoadStarted.WaitAsync(TimeSpan.FromSeconds(10));
         _time.Advance(TimeSpan.FromSeconds(9));
-        await Task.Delay(30);
         Assert.False(starting.IsCompleted);
 
         _time.Advance(TimeSpan.FromSeconds(1));
@@ -191,7 +192,7 @@ public sealed class AssistantSettingsPollerTests : IAsyncLifetime
         var warning = Assert.Single(_logger.Entries);
         Assert.Contains("10", warning.Message, StringComparison.Ordinal);
         _loader.LoadGate = null;
-        await TickAsync(2);
+        await TickAsync();
         Assert.Equal("9", _client.Current.Version);
     }
 
@@ -203,7 +204,7 @@ public sealed class AssistantSettingsPollerTests : IAsyncLifetime
         using var cancellation = new CancellationTokenSource();
 
         var starting = _poller.StartAsync(cancellation.Token);
-        await WaitUntilAsync(() => _loader.Loads == 1);
+        await _loader.LoadStarted.WaitAsync(TimeSpan.FromSeconds(10));
         await cancellation.CancelAsync();
 
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => starting);
@@ -216,7 +217,6 @@ public sealed class AssistantSettingsPollerTests : IAsyncLifetime
         await _poller.StopAsync(CancellationToken.None);
 
         _time.Advance(TimeSpan.FromSeconds(PollSeconds * 3));
-        await Task.Delay(50);
 
         Assert.Equal(1, _loader.Reads);
     }

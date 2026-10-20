@@ -22,6 +22,12 @@ public sealed class AssistantSettingsPoller(
     private PeriodicTimer? _timer;
     private bool _failing;
 
+    /// <summary>
+    /// Se levanta al terminar cada vuelta de sondeo (también la primera carga y las vueltas fallidas), cuando la instantánea
+    /// ya está publicada. Es la señal que usan las pruebas para esperar sin depender del tiempo real.
+    /// </summary>
+    public event Action? PollCompleted;
+
     public override async Task StartAsync(CancellationToken cancellationToken)
     {
         await LoadFirstTimeAsync(cancellationToken);
@@ -89,6 +95,10 @@ public sealed class AssistantSettingsPoller(
                 _failing = true;
                 AssistantSettingsLog.PollFailed(logger, exception.GetType().Name);
             }
+        }
+        finally
+        {
+            PollCompleted?.Invoke();
         }
     }
 }
