@@ -180,7 +180,7 @@ El servidor DEBE mantener un catálogo fijo de proveedores `Anthropic`, `OpenAI`
 
 ### Requirement: Deshabilitar, prioridad y restablecer
 
-La configuración efectiva DEBE resolverse como fila guardada sobre entorno. Un proveedor guardado `None` DEBE deshabilitar el asistente aunque el entorno defina uno (el endpoint del chat responde `503`). `DELETE /api/asistente/configuracion` DEBE borrar la fila y restablecer los valores del entorno, y registrar auditoría; DEBE responder `204` incluso cuando no existe fila. Sin fila, o si la tabla no existe, DEBEN usarse los valores del entorno.
+La configuración efectiva DEBE resolverse como fila guardada sobre entorno. Un proveedor guardado `None` DEBE deshabilitar el asistente aunque el entorno defina uno (el endpoint del chat responde `503`). `DELETE /api/asistente/configuracion` DEBE borrar la fila y restablecer los valores del entorno, y registrar auditoría; DEBE responder `204` incluso cuando no existe fila, y `409` sin borrar ni auditar si otro Manager modificó la fila entre su lectura y el borrado. Sin fila, o si la tabla no existe, DEBEN usarse los valores del entorno.
 
 #### Scenario: Guardado gana al entorno
 - DADO `Ai__Model=env-m` y una fila con modelo `db-m`
@@ -201,6 +201,11 @@ La configuración efectiva DEBE resolverse como fila guardada sobre entorno. Un 
 - DADO que no existe fila
 - CUANDO el Manager invoca `DELETE`
 - ENTONCES responde `204` y no se inserta ninguna fila de auditoría
+
+#### Scenario: Restablecer con token obsoleto
+- DADO que el Manager A inicia `DELETE` y otro Manager guarda una configuración nueva entre la lectura de la fila y el borrado
+- CUANDO se ejecuta el borrado con el token leído por A
+- ENTONCES responde `409`, la fila nueva se conserva y no se inserta ninguna fila de auditoría
 
 #### Scenario: Tabla ausente
 - DADO una base de datos sin la tabla de configuración

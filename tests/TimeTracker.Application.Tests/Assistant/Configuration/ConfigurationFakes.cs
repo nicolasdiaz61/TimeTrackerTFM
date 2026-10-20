@@ -15,7 +15,15 @@ internal sealed class InMemorySettingsStore : IAssistantSettingsStore
 
     public int Writes { get; private set; }
 
-    public Task<AssistantSettings?> GetAsync(CancellationToken cancellationToken) => Task.FromResult(Row);
+    /// <summary>Simula a otro Manager que cambia la fila justo después de leerla.</summary>
+    public Action<InMemorySettingsStore>? AfterRead { get; set; }
+
+    public Task<AssistantSettings?> GetAsync(CancellationToken cancellationToken)
+    {
+        var read = Row;
+        AfterRead?.Invoke(this);
+        return Task.FromResult(read);
+    }
 
     public Task<string> GetVersionAsync(CancellationToken cancellationToken) => Task.FromResult(Row?.Version ?? "0");
 
@@ -33,17 +41,22 @@ internal sealed class InMemorySettingsStore : IAssistantSettingsStore
         return Task.FromResult<SaveOutcome>(new SaveOutcome.Saved(token));
     }
 
-    public Task<bool> DeleteAsync(AuditEntry audit, CancellationToken cancellationToken)
+    public Task<DeleteOutcome> DeleteAsync(string expectedToken, AuditEntry audit, CancellationToken cancellationToken)
     {
         if (Row is null)
         {
-            return Task.FromResult(false);
+            return Task.FromResult(DeleteOutcome.NotFound);
+        }
+
+        if (Row.Version != expectedToken)
+        {
+            return Task.FromResult(DeleteOutcome.Conflict);
         }
 
         Row = null;
         Writes++;
         Audits.Add(audit);
-        return Task.FromResult(true);
+        return Task.FromResult(DeleteOutcome.Deleted);
     }
 }
 
