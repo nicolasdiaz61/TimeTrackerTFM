@@ -85,9 +85,44 @@ public sealed class ChatClientFactoryTests
     {
         using var client = ChatClientFactory.Create(new AiOptions { Provider = "ollama", Model = "modelo-ficticio", Endpoint = "http://localhost:11434/" });
 
-        var ollama = Assert.IsType<OllamaApiClient>(client);
+        var ollama = client?.GetService<OllamaApiClient>();
+        Assert.NotNull(ollama);
         Assert.Equal("modelo-ficticio", ollama.SelectedModel);
         Assert.Equal(new Uri("http://localhost:11434/"), ollama.Uri);
+    }
+
+    [Fact]
+    public void CreateOllamaClient_UsesTheEndpointAsBaseAddressAndTheConfiguredTimeout()
+    {
+        var handler = new CountingHandler();
+        using var client = ChatClientFactory.CreateOllamaClient(
+            new AiOptions { Provider = "Ollama", Model = "m", Endpoint = "http://localhost:11434/", TimeoutSeconds = 17 }, handler);
+
+        var ollama = client.GetService<OllamaApiClient>();
+        Assert.Equal(new Uri("http://localhost:11434/"), ollama?.Uri);
+        Assert.Equal(TimeSpan.FromSeconds(17), ChatClientFactory.CreateOllamaHttpClient(
+            new AiOptions { Endpoint = "http://localhost:11434/", TimeoutSeconds = 17 }, handler).Timeout);
+    }
+
+    [Fact]
+    public async Task OllamaClient_GivesUpWhenTheServerDoesNotAnswerWithinTheTimeout()
+    {
+        using var client = ChatClientFactory.CreateOllamaClient(
+            new AiOptions { Provider = "Ollama", Model = "m", Endpoint = "http://localhost:11434/", TimeoutSeconds = 1 }, new HangingHandler());
+
+        await Assert.ThrowsAnyAsync<Exception>(() => client.GetResponseAsync("hola"));
+    }
+
+    [Fact]
+    public void OllamaClient_ReleasesItsHttpClientWhenDisposed()
+    {
+        var handler = new CountingHandler();
+        var client = ChatClientFactory.CreateOllamaClient(
+            new AiOptions { Provider = "Ollama", Model = "m", Endpoint = "http://localhost:11434/" }, handler);
+
+        client.Dispose();
+
+        Assert.True(handler.Disposed);
     }
 
     [Fact]
@@ -148,9 +183,20 @@ public sealed class ChatClientFactoryTests
         Assert.NotNull(client);
     }
 
+    private sealed class HangingHandler : HttpMessageHandler
+    {
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            await Task.Delay(Timeout.Infinite, cancellationToken);
+            return new HttpResponseMessage();
+        }
+    }
+
     private sealed class CountingHandler : HttpMessageHandler
     {
         public int Requests { get; private set; }
+
+        public bool Disposed { get; private set; }
 
         public string? LastHost { get; private set; }
 
@@ -159,6 +205,12 @@ public sealed class ChatClientFactoryTests
             Requests++;
             LastHost = request.RequestUri?.Host;
             return Task.FromResult(new HttpResponseMessage(System.Net.HttpStatusCode.InternalServerError) { Content = new StringContent("{}") });
+        }
+
+        protected override void Dispose(bool disposing)
+        {
+            Disposed = true;
+            base.Dispose(disposing);
         }
     }
 }
