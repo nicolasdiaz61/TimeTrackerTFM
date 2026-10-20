@@ -27,10 +27,14 @@ public static class AssistantServiceCollectionExtensions
         services.AddSingleton(provider =>
         {
             var options = provider.GetRequiredService<IOptions<AiOptions>>().Value;
-            return new AssistantChatClient(provider.GetRequiredService<IChatClientFactory>().Create(options), options);
+            return new AssistantChatClient(provider.GetRequiredService<IChatClientFactory>().Create(options), options, provider.GetRequiredService<TimeProvider>());
         });
         // Singleton: decodifica y valida las claves maestras una sola vez; sin clave activa válida queda no disponible.
         services.AddSingleton<IAssistantCredentialProtector, AesGcmCredentialProtector>();
+        // Recarga en caliente (DD-10, DD-11): el cargador es singleton y abre su propio ámbito para el DbContext. El sondeo lo registra Api.
+        services.AddSingleton<IAssistantEnvironment, ConfigurationAssistantEnvironment>();
+        services.AddSingleton<IAssistantSettingsLoader, AssistantSettingsLoader>();
+        services.AddSingleton<IAssistantRuntimeReloader, AssistantRuntimeReloader>();
         services.AddSingleton<IAssistantQuota, InMemoryAssistantQuota>();
         services.AddScoped<AssistantToolset>();
         services.AddScoped<IAssistantEngine, ChatAssistantEngine>();
