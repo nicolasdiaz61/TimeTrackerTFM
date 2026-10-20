@@ -61,6 +61,18 @@ public sealed class AssistantRegistrationTests
         Assert.True(scope.ServiceProvider.GetRequiredService<IAssistantEngine>().IsEnabled);
     }
 
+    [Theory]
+    [InlineData("OpenAI")]
+    [InlineData("gemini")]
+    public async Task WithOpenAIOrGemini_TheEngineIsEnabledWithoutContactingTheProvider(string name)
+    {
+        await using var provider = Build(("Ai:Provider", name), ("Ai:Model", "modelo-ficticio"), ("Ai:ApiKey", "clave-prueba-no-real"));
+
+        await using var scope = provider.CreateAsyncScope();
+
+        Assert.True(scope.ServiceProvider.GetRequiredService<IAssistantEngine>().IsEnabled);
+    }
+
     [Fact]
     public async Task Lifetimes_ClientAndQuotaAreSingletonsAndEngineAndToolsetAreScoped()
     {
