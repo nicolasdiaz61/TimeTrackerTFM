@@ -125,6 +125,32 @@ public sealed class ChatClientFactoryTests
         Assert.True(handler.Disposed);
     }
 
+    public static TheoryData<string, string> MissingRequiredValues => new()
+    {
+        { "Anthropic", nameof(AiOptions.ApiKey) },
+        { "Anthropic", nameof(AiOptions.Model) },
+        { "OpenAI", nameof(AiOptions.ApiKey) },
+        { "OpenAI", nameof(AiOptions.Model) },
+        { "Gemini", nameof(AiOptions.ApiKey) },
+        { "Gemini", nameof(AiOptions.Model) },
+        { "Ollama", nameof(AiOptions.Endpoint) },
+        { "Ollama", nameof(AiOptions.Model) },
+    };
+
+    [Theory]
+    [MemberData(nameof(MissingRequiredValues))]
+    public void Create_WithoutARequiredValue_FailsClearlyAndWithoutSecrets(string provider, string missing)
+    {
+        var options = new AiOptions { Provider = provider, Model = "m", ApiKey = SecretKey, Endpoint = "http://localhost:11434/" };
+        typeof(AiOptions).GetProperty(missing)!.SetValue(options, "  ");
+
+        var exception = Assert.Throws<InvalidOperationException>(() => ChatClientFactory.Create(options));
+
+        Assert.Contains($"Ai:{missing}", exception.Message, StringComparison.Ordinal);
+        Assert.Contains(provider, exception.Message, StringComparison.Ordinal);
+        Assert.DoesNotContain(SecretKey, exception.Message, StringComparison.Ordinal);
+    }
+
     [Fact]
     public void Create_WithAnUnrecognisedProvider_ReturnsNoClient()
     {

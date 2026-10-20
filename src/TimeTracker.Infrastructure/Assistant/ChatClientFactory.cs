@@ -24,13 +24,39 @@ public static class ChatClientFactory
     // Ollama no recibe reintento: OllamaSharp no lo ofrece y un servidor local caído no se arregla reintentando.
     private const int MaxRetries = 1;
 
-    public static IChatClient? Create(AiOptions options) => options.ResolvedProvider switch
+    public static IChatClient? Create(AiOptions options)
     {
-        AiProvider.Anthropic => CreateAnthropicClient(options).AsIChatClient(options.Model),
-        AiProvider.OpenAI or AiProvider.Gemini => CreateOpenAIClient(options).GetChatClient(options.Model).AsIChatClient(),
-        AiProvider.Ollama => CreateOllamaClient(options),
-        _ => null,
-    };
+        // Se revalida aquí y no solo al arrancar: la PR 5 crea clientes con valores resueltos en caliente, que pueden venir incompletos.
+        EnsureRequiredValues(options);
+        return options.ResolvedProvider switch
+        {
+            AiProvider.Anthropic => CreateAnthropicClient(options).AsIChatClient(options.Model),
+            AiProvider.OpenAI or AiProvider.Gemini => CreateOpenAIClient(options).GetChatClient(options.Model).AsIChatClient(),
+            AiProvider.Ollama => CreateOllamaClient(options),
+            _ => null,
+        };
+    }
+
+    // El mensaje nombra el valor que falta y nunca su contenido: la clave no debe llegar a un registro.
+    private static void EnsureRequiredValues(AiOptions options)
+    {
+        if (options.ResolvedProvider is not ({ } provider and not AiProvider.None))
+        {
+            return;
+        }
+
+        var required = provider == AiProvider.Ollama
+            ? new (string Name, string? Value)[] { (nameof(AiOptions.Model), options.Model), (nameof(AiOptions.Endpoint), options.Endpoint) }
+            : [(nameof(AiOptions.Model), options.Model), (nameof(AiOptions.ApiKey), options.ApiKey)];
+
+        foreach (var (name, value) in required)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                throw new InvalidOperationException($"Falta Ai:{name}, requerido por el proveedor {provider}.");
+            }
+        }
+    }
 
     internal static IChatClient CreateOllamaClient(AiOptions options, HttpMessageHandler? handler = null)
     {
