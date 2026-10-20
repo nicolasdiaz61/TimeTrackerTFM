@@ -288,3 +288,44 @@ RESTORE ok; BUILD Release `-warnaserror` 0 advertencias 0 errores; `dotnet forma
 - Ollama con 400 no expone estado HTTP (`OllamaException`/`InvalidOperationException`): la PR 6a decide si lo trata como `rejected` o lo deja en `unreachable` (design §12, V-3).
 - Para que la guarda `new Uri(` cuente la constante de Gemini, `ProviderEndpoints` usa `new Uri(...)` explícito en lugar de `new(...)`.
 - Tamaño: 333 líneas añadidas y 78 borradas (≈ 215 de pruebas, ≈ 60 de producción, resto documentos) frente a las ≈ 350 previstas.
+
+## PR 4.1 — Correcciones de la revisión de la PR 4 (rama `fix/asistente-config-pr4-1-revision`)
+
+| Tarea | Estado | Commit |
+|---|---|---|
+| 4.1.1 URL base de Anthropic | Hecha | `cf62c3f` |
+| 4.1.2 + 4.1.3 Comentario del reintento y HttpClient de Ollama | Hechas | `590c94a` |
+| 4.1.4 Revalidación en `Create` | Hecha | `f5b15b5` |
+| 4.1.5 Un tipo por archivo y spike sin duplicación | Hecha | `30ece23` |
+| 4.1.6 Guarda de `Uri` | Hecha | `6b590f2` |
+
+### TDD Cycle Evidence (PR 4.1)
+
+| Tarea | Archivo de prueba | Capa | RED | GREEN | TRIANGULAR | REFACTOR |
+|---|---|---|---|---|---|---|
+| 4.1.1 | `ChatClientFactoryTests` | Infrastructure | `Expected: "api.anthropic.com" Actual: "desvio.invalid"`: con `ANTHROPIC_BASE_URL` definida el SDK enviaba la petición al host del entorno (desvío real demostrado). La prueba del `Timeout` salió verde a la primera: el valor ya se asignaba | 15/15 | Variable restaurada en `finally`; no depende del entorno de la máquina; `Timeout` con 17 s | Ninguno |
+| 4.1.3 | `ChatClientFactoryTests` | Infrastructure | No compila: `CreateOllamaClient` y `CreateOllamaHttpClient` inexistentes | 18/18 | `BaseAddress` y `Timeout`; manejador que no responde con `TimeoutSeconds = 1` (sin sockets); liberación del manejador al desechar | `OwnedHttpClientChatClient` en su archivo |
+| 4.1.2 | (comentario) | N/A | N/A | N/A | N/A | Valor real citado de `ChatAssistantEngine`: `CancellationTokenSource(TimeoutSeconds)`, 25 s por defecto |
+| 4.1.4 | `ChatClientFactoryTests` | Infrastructure | 8 casos: 7 «No exception was thrown» y 1 `ArgumentNullException` en vez de `InvalidOperationException` | 43/43 (con registro) | 2 valores × 4 proveedores; el mensaje nombra `Ai:<valor>` y el proveedor y no contiene la clave | Ninguno |
+| 4.1.5 | `ReasoningEffortSpikeTests`, `ChatClientFactoryTests` | Infrastructure | N/A (refactor con pruebas verdes antes y después) | 43/43 | Teorías por tabla `Dictionary` + `MemberData` (12 casos de esfuerzo + 4 sin esfuerzo + URL de Gemini) | `DefaultChatClientFactory.cs` |
+| 4.1.6 | `RepositoryConventionsTests` | Architecture | La guarda endurecida detectó un caso real: `AiOptionsValidator` usa `Uri.TryCreate` (solo valida http/https). Mutación temporal con `new UriBuilder(...)` en `Assistant/Mut.cs`: la guarda falla y el archivo se borró | 126/126 | 8 formas detectadas, 3 negativas, formas exactas permitidas en fábrica y validador | `SourceFiles` usa `IsBuildOutput` |
+
+### Work Unit Evidence (PR 4.1)
+
+| Evidencia | Valor |
+|---|---|
+| Prueba focal | `dotnet test tests/TimeTracker.Infrastructure.Tests --filter "FullyQualifiedName~ChatClientFactory\|FullyQualifiedName~ReasoningEffortSpike"` = 43/43; `dotnet test tests/TimeTracker.ArchitectureTests` = 126/126 |
+| Arnés de ejecución | Manejadores HTTP sin red (de grabación, que no responde y contador) sobre los clientes reales; ninguna llamada a un proveedor ni clave real |
+| Límite de rollback | Revertir los 5 commits por orden inverso; cada uno es independiente salvo que 4.1.3 y 4.1.4 tocan `ChatClientFactory.cs` |
+
+### Puerta del PR 4.1 (ejecutada)
+
+BUILD Release `-warnaserror` 0 advertencias 0 errores; `dotnet format --verify-no-changes` sin cambios; TEST: Domain 67, Application 323, Web 223, Infrastructure 280, Architecture 126, Api.IntegrationTests 464 (Docker disponible; no se tocaron contenedores, volúmenes, redes ni imágenes; sin prune); VULN (`--vulnerable --include-transitive`) limpio. `docs/api/openapi.json` restaurado con `git checkout` y sin commitear.
+
+### Decisiones fuera de spec (PR 4.1)
+
+- `OwnedHttpClientChatClient` (`DelegatingChatClient`): OllamaSharp no libera un `HttpClient` ajeno ni expone el plazo si crea el suyo; `GetService<OllamaApiClient>()` sigue resolviendo el cliente interno.
+- `ChatClientFactory.Create` valida antes de construir (no en cada helper interno): los helpers internos conservan `!` porque solo se invocan tras la validación o desde pruebas con valores completos.
+- La guarda de `Uri` admite una forma exacta en `AiOptionsValidator.cs` (`Uri.TryCreate(value, UriKind.Absolute, out var uri)`), descubierta por la propia guarda endurecida: el validador solo comprueba el esquema y no conserva la dirección.
+- Límite del escáner: no detecta `new(...)` con tipo inferido; `ProviderEndpoints` usa `new Uri(...)` explícito y la PR 4 ya lo exigía.
+- La prueba de la variable de entorno modifica estado del proceso: se restaura en `finally`; las demás pruebas que construyen clientes de Anthropic usan manejadores y no dependen de la URL base.

@@ -134,6 +134,17 @@ La previsión de carga de revisión está al final («Review Workload Forecast»
 
 ---
 
+## PR 4.1 — Correcciones de la revisión de la PR 4 (≈ 150 líneas)
+
+- [x] 4.1.1 RED+GREEN Anthropic con URL base fija (`ProviderEndpoints.Anthropic`) aunque `ANTHROPIC_BASE_URL` diga otra; `Timeout` = `TimeoutSeconds`.
+- [x] 4.1.2 Comentario de `MaxRetries` veraz (plazo por intento, peor caso ≈ 2 × `TimeoutSeconds`, tope global del motor) y Ollama sin reintento.
+- [x] 4.1.3 RED+GREEN Ollama con `HttpClient` propio (`Timeout`, `BaseAddress` = `Ai:Endpoint`) liberado con el cliente de chat.
+- [x] 4.1.4 RED+GREEN `ChatClientFactory.Create` falla con `InvalidOperationException` sin secretos si falta un valor requerido (8 casos).
+- [x] 4.1.5 REFACTOR `DefaultChatClientFactory` en su archivo; spike con `CreateOpenAIClientOptions`, `ProviderEndpoints.GeminiOpenAi` y tabla proveedor → campo.
+- [x] 4.1.6 Guarda de `Uri` endurecida (`new Uri(`, `Uri.TryCreate`, `UriBuilder`), formas exactas permitidas y casos del escáner; `IsBuildOutput` reutilizado.
+
+---
+
 ## PR 5 — Recarga en caliente (≈ 380 líneas)
 
 **Objetivo:** instantánea inmutable, motor sobre instantánea, cargador, poller y recargador. **Rollback:** revertir `AssistantChatClient`, motor y registro del poller (sin poller el sistema usa el entorno). **Comando:** `T-IF` + `T-I --filter "FullyQualifiedName~Reload"`. Depende de 3b y 4.
