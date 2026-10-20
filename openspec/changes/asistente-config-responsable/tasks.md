@@ -109,13 +109,13 @@ La previsión de carga de revisión está al final («Review Workload Forecast»
 
 **Objetivo:** `assistant_settings` + `assistant_settings_audit` y `AssistantSettingsStore`. **Rollback:** `dotnet ef migrations remove` / `Down` elimina ambas tablas; revertir entidades y `DbContext`. **Comando:** `T-I --filter "FullyQualifiedName~AssistantSettingsStore"` (Docker). Depende de 2 (puertos).
 
-- [ ] 3b.1 **Copia previa** de `INF/Persistence/TimeTrackerDbContext.cs`, el snapshot del modelo y `AR/` de convenciones de migraciones.
-- [ ] 3b.2 RED `IT/Assistant/AssistantSettingsStoreTests` (Testcontainers): crear con token `"0"`; segunda creación → `Conflict`; `xmin` obsoleto → `Conflict` sin cambios; fila y auditoría en una transacción (fallo de auditoría no deja la fila); `CHECK id = 1`, tres columnas de clave todas nulas o todas presentes y nonce de 12 bytes; la columna cifrada no contiene `clave-prueba-123456`. Cubre AS «Concurrencia optimista» (Token obsoleto, Primera creación); CP «Cifrado en reposo» (Ida y vuelta, persistido sin texto claro) · DD-8.
-- [ ] 3b.3 RED `AssistantSettingsStoreTests`: `DeleteAsync` devuelve `true`/`false` y solo audita si había fila; `GetAsync` con la tabla ausente (`42P01`) → `null` y otra excepción se propaga; `GetVersionAsync` = `"0"` sin fila. Cubre AS «Restablecer sin fila», «Tabla ausente» · DD-8, 11.
-- [ ] 3b.4 GREEN: entidades, `AssistantSettingsConfiguration`, `AssistantSettingsAuditConfiguration` (`xmin` igual que `time_entries`, índice por `occurred_at` desc), `AssistantSettingsStore`, `DbContext`; migración `AddAssistantSettings` (+ `Designer`, snapshot). `Down` borra ambas tablas.
-- [ ] 3b.5 RED `AR/AssistantAuditAppendOnlyTests`: ninguna referencia a `Update`/`Remove`/`ExecuteDelete`/`ExecuteUpdate` sobre la entidad de auditoría; el puerto solo expone `Add`. Cubre AS «Auditoría…» (Solo inserción), DD-9. GREEN.
-- [ ] 3b.6 RED `IT`: la auditoría guarda `previous`/`current` solo con `provider`, `model`, `timeoutSeconds`, `maxOutputTokens`, `effort`, `credentialConfigured`, y `credential_changed` sin clave en claro ni cifrada. Cubre AS «Registro de un cambio», «Cambio de clave»; CP «Auditoría». GREEN.
-- [ ] 3b.7 REFACTOR y puerta de PR (la migración no altera tablas existentes).
+- [x] 3b.1 **Copia previa** de `INF/Persistence/TimeTrackerDbContext.cs`, el snapshot del modelo y `AR/` de convenciones de migraciones.
+- [x] 3b.2 RED `IT/Assistant/AssistantSettingsStoreTests` (Testcontainers): crear con token `"0"`; segunda creación → `Conflict`; `xmin` obsoleto → `Conflict` sin cambios; fila y auditoría en una transacción (fallo de auditoría no deja la fila); `CHECK id = 1`, tres columnas de clave todas nulas o todas presentes y nonce de 12 bytes; la columna cifrada no contiene `clave-prueba-123456`. Cubre AS «Concurrencia optimista» (Token obsoleto, Primera creación); CP «Cifrado en reposo» (Ida y vuelta, persistido sin texto claro) · DD-8.
+- [x] 3b.3 RED `AssistantSettingsStoreTests`: `DeleteAsync(token)` devuelve `Deleted`/`NotFound`/`Conflict` y solo audita si borra la fila; `GetAsync` con la tabla ausente (`42P01`) → `null` y otra excepción se propaga; `GetVersionAsync` = `"0"` sin fila. Cubre AS «Restablecer sin fila», «Tabla ausente» · DD-8, 11.
+- [x] 3b.4 GREEN: entidades, `AssistantSettingsConfiguration`, `AssistantSettingsAuditConfiguration` (`xmin` igual que `time_entries`, índice por `occurred_at` desc), `AssistantSettingsStore`, `DbContext`; migración `AddAssistantSettings` (+ `Designer`, snapshot). `Down` borra ambas tablas.
+- [x] 3b.5 RED `AR/AssistantAuditAppendOnlyTests`: ninguna referencia a `Update`/`Remove`/`ExecuteDelete`/`ExecuteUpdate` sobre la entidad de auditoría; el puerto solo expone `Add`. Cubre AS «Auditoría…» (Solo inserción), DD-9. GREEN.
+- [x] 3b.6 RED `IT`: la auditoría guarda `previous`/`current` solo con `provider`, `model`, `timeoutSeconds`, `maxOutputTokens`, `effort`, `credentialConfigured`, y `credential_changed` sin clave en claro ni cifrada. Cubre AS «Registro de un cambio», «Cambio de clave»; CP «Auditoría». GREEN.
+- [x] 3b.7 REFACTOR y puerta de PR (la migración no altera tablas existentes).
 
 ---
 
