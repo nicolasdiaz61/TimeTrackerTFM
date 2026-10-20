@@ -36,8 +36,8 @@ La previsión de carga de revisión está al final («Review Workload Forecast»
 
 ## Tarea 0 — Requisito previo: archivar `asistente-ia`
 
-- [ ] 0.1 **Requiere aprobación explícita del usuario antes de ejecutarse.** Ejecutar `sdd-archive` de `asistente-ia`; comprobar que existen `openspec/specs/assistant-configuration/` y `openspec/specs/startup-configuration/`. Cubre: orden de archivo de la propuesta y de AC/SC.
-- [ ] 0.2 Si no fuera posible archivar, **no empezar PR 1**: decidir con el usuario fusionar los deltas MODIFIED a mano en el informe de archivo (regla `archive` de `config.yaml`: avisar de deltas que cambian escenarios vigentes, p. ej. `Gemini` → `GitHubModels`).
+- [x] 0.1 **Requiere aprobación explícita del usuario antes de ejecutarse.** Ejecutar `sdd-archive` de `asistente-ia`; comprobar que existen `openspec/specs/assistant-configuration/` y `openspec/specs/startup-configuration/`. Cubre: orden de archivo de la propuesta y de AC/SC. _Cumplida: `asistente-ia` está archivado en `openspec/changes/archive/2026-10-18-asistente-ia` y existen las specs vigentes._
+- [x] 0.2 Si no fuera posible archivar, **no empezar PR 1**: decidir con el usuario fusionar los deltas MODIFIED a mano en el informe de archivo (regla `archive` de `config.yaml`: avisar de deltas que cambian escenarios vigentes, p. ej. `Gemini` → `GitHubModels`). _No aplica: 0.1 se cumplió._
 
 ---
 
@@ -196,7 +196,7 @@ La previsión de carga de revisión está al final («Review Workload Forecast»
 - [x] 7.3 RED `WT` de `AssistantConfigurationApiClient` (sobrecarga de `ApiRequest` con estados `{ BadRequest, Conflict, TooManyRequests }`): éxito, `400` con errores, `409`, `429`. GREEN.
 - [x] 7.4 RED `WT/RepositoryConventionsTests`: la página no usa `localStorage`/`sessionStorage`/`MarkupString`; no contiene reglas de negocio ni espacios de nombres de IA. Cubre AS «Sin almacenamiento del navegador», «Texto plano» · DD-17, V-5. GREEN `Pages/AssistantConfiguration.razor` (`[Authorize(Roles = nameof(UserRole.Manager))]`, avisos de datos personales y alcance a toda la empresa, botones Guardar, «Probar conexión» y «Restablecer al entorno» con confirmación, origen de cada valor, campo de clave tipo contraseña desactivado si `credentialStorageAvailable` es falso).
 - [x] 7.5 GREEN `NavMenu` (enlace solo en el bloque Manager junto a «Equipo»), registro en `Program.cs`, estilos; la página `/asistente` no cambia. Cubre AS «Acceso de Employee», «Chat sin cambios».
-- [ ] 7.6 Verificación manual en Chrome (registrar en `verify-report.md`): Manager ve avisos y guarda; Employee sin enlace y «acceso denegado» por URL directa; clave vaciada; DOM sin clave. Puerta de PR.
+- [x] 7.6 Verificación manual en Chrome (registrar en `verify-report.md`): Manager ve avisos y guarda; Employee sin enlace y «acceso denegado» por URL directa; clave vaciada; DOM sin clave. Puerta de PR. _Hecha el 2026-10-20 contra un entorno local (ya apagado), registrada en la sección 7 de `verify-report.md`: el Manager ve el enlace «Config. asistente» y los dos avisos, guarda con Ollama y la clave queda vacía y fuera del HTML y de `localStorage`; el Employee no ve el enlace y por URL directa recibe «No tiene permiso para ver esta página.». No se comprobó por navegador `sessionStorage` ni el campo de contraseña por script (cubiertos por `AssistantConfigurationFormTests`)._
 
 ---
 
@@ -208,7 +208,7 @@ La previsión de carga de revisión está al final («Review Workload Forecast»
 - [x] 8.2 RED/GREEN `AR`: confirmar todas las guardas (`DependencyRuleTests`, `Src_DoesNotHardcodeModelNames`, `OpenApiContractTests`, `DeliveryArtifactsTests`, auditoría de solo inserción, `new Uri(`); cerrar huecos de los PR anteriores.
 - [x] 8.3 Cerrar V-1 a V-8 en `design.md` («Resultados de V-n en apply») y actualizar la lista de ADR vigentes/estado en `openspec/config.yaml` solo si el usuario lo aprueba (`config.yaml` NO se ha editado: pendiente de aprobación).
 - [x] 8.4 `README.md` y ADR 0019 (nuevo, complementa al 0018 ya fusionado; el 0018 no se modifica): despliegue en Railway (definir `Ai__MasterKeys__1` y `Ai__ActiveMasterKeyVersion=1` **antes** de que un Manager guarde una clave; riesgo de Responses API; datos personales). Resolver con el product owner la pregunta abierta de custodia de la clave maestra (§13).
-- [x] 8.5 Puerta final completa pasada (véase apply-progress). **PARADA para `sdd-verify` PENDIENTE: no se ha ejecutado ni se da por hecha.**
+- [x] 8.5 Puerta final completa pasada (véase apply-progress). Parada de `sdd-verify` resuelta: veredicto **PASS WITH WARNINGS** el 2026-10-20 (`verify-report.md`).
 
 ---
 

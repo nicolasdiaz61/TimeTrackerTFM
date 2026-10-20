@@ -26,6 +26,8 @@ public sealed class AssistantSettingsPoller(
     /// Se levanta al terminar cada vuelta de sondeo (también la primera carga y las vueltas fallidas), cuando la instantánea
     /// ya está publicada. Es la señal que usan las pruebas para esperar sin depender del tiempo real.
     /// </summary>
+    // Público y no internal porque lo consume Api.IntegrationTests, otro ensamblado. Se invoca suscriptor a suscriptor y sin
+    // propagar: uno que lance no debe romper el bucle de sondeo (con StopHost detendría el host) ni a los demás suscriptores.
     public event Action? PollCompleted;
 
     public override async Task StartAsync(CancellationToken cancellationToken)
@@ -98,7 +100,22 @@ public sealed class AssistantSettingsPoller(
         }
         finally
         {
-            PollCompleted?.Invoke();
+            RaisePollCompleted();
+        }
+    }
+
+    private void RaisePollCompleted()
+    {
+        foreach (var subscriber in PollCompleted?.GetInvocationList() ?? [])
+        {
+            try
+            {
+                ((Action)subscriber)();
+            }
+            catch (Exception exception)
+            {
+                AssistantSettingsLog.PollCompletedSubscriberFailed(logger, exception.GetType().Name);
+            }
         }
     }
 }

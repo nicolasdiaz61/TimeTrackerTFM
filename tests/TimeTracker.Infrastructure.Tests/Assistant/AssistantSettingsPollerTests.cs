@@ -73,6 +73,23 @@ public sealed class AssistantSettingsPollerTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Poll_WhenAPollCompletedSubscriberThrows_KeepsPollingAndLogsOnlyTheExceptionType()
+    {
+        await _poller.StartAsync(CancellationToken.None);
+        _poller.PollCompleted += () => throw new InvalidOperationException($"fallo del suscriptor con {Secret}");
+
+        await TickAsync();
+        _loader.StoredVersion = "9";
+        await TickAsync();
+
+        Assert.Equal(1, _loader.Loads);
+        Assert.Equal(2, _logger.Entries.Count);
+        var warning = _logger.Entries[0];
+        Assert.Equal(LogLevel.Warning, warning.Level);
+        Assert.DoesNotContain(Secret, warning.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task Poll_DoesNotReloadAVersionThatWasRejected()
     {
         await _poller.StartAsync(CancellationToken.None);

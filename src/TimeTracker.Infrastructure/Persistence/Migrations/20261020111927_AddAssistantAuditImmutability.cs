@@ -6,7 +6,9 @@ namespace TimeTracker.Infrastructure.Persistence.Migrations
 {
     /// <summary>
     /// Auditoría de solo inserción también en la base de datos (DD-9). Se eligió un trigger y no un REVOKE porque este último
-    /// no frena al propietario de la tabla, que es el rol con el que migra y opera la aplicación; el trigger sí.
+    /// no frena al propietario de la tabla, que es el rol con el que migra y opera la aplicación. El trigger es una barrera contra
+    /// errores de código y SQL accidental, no contra quien tenga privilegios de propietario (puede deshabilitarlo con
+    /// DISABLE TRIGGER o borrarlo con DROP TRIGGER); endurecer más pediría un rol de aplicación distinto del propietario o un event trigger.
     /// Solo toca assistant_settings_audit.
     /// </summary>
     public partial class AddAssistantAuditImmutability : Migration

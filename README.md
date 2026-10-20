@@ -258,6 +258,12 @@ railway variables set Ai__ActiveMasterKeyVersion=1 -s api
 
 `Cors__AllowedOrigins__0` es obligatoria (sin ella la API no arranca) y debe ser el origen de la Web. Si quiere que el responsable pueda elegir otro proveedor, defina `Ai__AllowedProviders`; por defecto solo puede usar el del entorno. La rotación de la clave maestra está en «Configuración del asistente por el responsable».
 
+```powershell
+railway variables set "Ai__AllowedProviders=Anthropic,OpenAI,Ollama" -s api
+```
+
+La lista va separada por comas, no distingue mayúsculas y admite espacios tras las comas. `None`, `GitHubModels` o un nombre desconocido impiden el arranque. Si incluye `Ollama`, la API exige `Ai__Endpoint` en el entorno. No lleva secretos.
+
 Riesgos y decisiones pendientes de este despliegue (detalle en el [ADR 0019](docs/adr/0019-auditoria-inmutable-y-despliegue-de-la-configuracion-del-asistente.md)):
 
 - **Datos personales a un tercero.** Con un proveedor en la nube, los nombres y las horas de los fichajes consultados salen hacia ese tercero bajo la clave que aporta el responsable. Revise el contrato de tratamiento antes de usar datos reales.

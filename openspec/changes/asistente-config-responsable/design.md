@@ -78,7 +78,7 @@ El juego de caracteres del modelo es seguro porque el modelo viaja en el cuerpo 
 
 | Proveedor | Adaptador | Base | Clave | Esfuerzo (DD-12) |
 |---|---|---|---|---|
-| Anthropic | `AnthropicClient{ApiKey, MaxRetries=1, Timeout}.AsIChatClient(model)` (existente) | Valor por defecto del SDK (no se fija nada) | Sí | Sí |
+| Anthropic | `AnthropicClient{ApiKey, MaxRetries=1, Timeout}.AsIChatClient(model)` (existente) | URL fija `ProviderEndpoints.Anthropic` (PR 4.1; se fija para que `ANTHROPIC_BASE_URL` no cambie el destino) | Sí | Sí |
 | OpenAI | `new OpenAIClient(new ApiKeyCredential(key), options).GetChatClient(model).AsIChatClient()` | Valor por defecto del SDK (`Endpoint` sin asignar) | Sí | Sí (pendiente de spike) |
 | Gemini | Igual que OpenAI con `OpenAIClientOptions.Endpoint` | `https://generativelanguage.googleapis.com/v1beta/openai/` constante en `ProviderEndpoints` | Sí | Sí (pendiente de spike) |
 | Ollama | `OllamaApiClient(new Uri(Ai:Endpoint), model)` (existente) | Solo entorno | No | Sí (pendiente de spike) |

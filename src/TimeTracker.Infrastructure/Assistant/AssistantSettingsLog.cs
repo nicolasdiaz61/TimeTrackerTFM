@@ -35,4 +35,8 @@ internal static partial class AssistantSettingsLog
     [LoggerMessage(EventId = 16, Level = LogLevel.Warning,
         Message = "La primera carga de la configuración del asistente superó {Seconds} s; se usa el entorno hasta el siguiente sondeo.")]
     public static partial void FirstLoadTimedOut(ILogger logger, int seconds);
+
+    [LoggerMessage(EventId = 17, Level = LogLevel.Warning,
+        Message = "Un suscriptor de PollCompleted lanzó una excepción ({ExceptionType}); el sondeo continúa.")]
+    public static partial void PollCompletedSubscriberFailed(ILogger logger, string exceptionType);
 }

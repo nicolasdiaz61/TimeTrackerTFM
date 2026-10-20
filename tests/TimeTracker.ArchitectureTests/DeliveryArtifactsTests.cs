@@ -418,6 +418,32 @@ public partial class DeliveryArtifactsTests
     }
 
     [Fact]
+    public void EnvExample_DescribesTheAllowedProvidersDefaultAndFormatWithoutClaimingAllAreAllowed()
+    {
+        var comments = string.Join('\n', ReadRepositoryFile(".env.example").Split('\n').Where(line => line.TrimStart().StartsWith('#')));
+
+        Assert.DoesNotContain("Vacío = todos", comments, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("solo está permitido el proveedor del entorno", comments, StringComparison.Ordinal);
+        Assert.Contains("No distingue mayúsculas", comments, StringComparison.Ordinal);
+        Assert.Contains("espacios", comments, StringComparison.Ordinal);
+        Assert.Contains("GitHubModels", comments, StringComparison.Ordinal);
+        Assert.Contains("None", comments, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Adr0019_AndTheMigration_DoNotClaimTheTriggerStopsTheTableOwner()
+    {
+        var adr = ReadRepositoryFile("docs/adr/0019-auditoria-inmutable-y-despliegue-de-la-configuracion-del-asistente.md");
+        var migration = ReadRepositoryFile("src/TimeTracker.Infrastructure/Persistence/Migrations/20261020111927_AddAssistantAuditImmutability.cs");
+
+        Assert.Contains("DISABLE TRIGGER", adr, StringComparison.Ordinal);
+        Assert.Contains("DROP TRIGGER", adr, StringComparison.Ordinal);
+        Assert.Contains("DISABLE TRIGGER", migration, StringComparison.Ordinal);
+        Assert.DoesNotContain("pero el trigger sí.", adr, StringComparison.Ordinal);
+        Assert.DoesNotContain("el trigger sí.", migration, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void Adr0019_ComplementsAdr0018WithTheDatabaseGuardTheRailwayDeploymentAndTheOpenKeyCustodyQuestion()
     {
         var adr = ReadRepositoryFile("docs/adr/0019-auditoria-inmutable-y-despliegue-de-la-configuracion-del-asistente.md");
