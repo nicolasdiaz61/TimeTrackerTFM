@@ -16,6 +16,9 @@ internal sealed class FakeSettingsLoader : IAssistantSettingsLoader
     /// <summary>Si se asigna, la carga espera a que se complete (o se cancele) antes de terminar.</summary>
     public TaskCompletionSource? LoadGate { get; set; }
 
+    /// <summary>Efecto de una carga correcta (por ejemplo, publicar la versión en el cliente).</summary>
+    public Action? OnLoad { get; set; }
+
     public int Loads { get; private set; }
 
     public int Reads { get; private set; }
@@ -34,6 +37,12 @@ internal sealed class FakeSettingsLoader : IAssistantSettingsLoader
             await gate.Task.WaitAsync(cancellationToken);
         }
 
-        return LoadFailure is { } failure ? throw failure : SettingsLoadOutcome.Applied;
+        if (LoadFailure is { } failure)
+        {
+            throw failure;
+        }
+
+        OnLoad?.Invoke();
+        return SettingsLoadOutcome.Applied;
     }
 }
