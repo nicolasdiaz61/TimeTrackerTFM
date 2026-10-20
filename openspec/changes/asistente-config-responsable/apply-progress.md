@@ -329,3 +329,77 @@ BUILD Release `-warnaserror` 0 advertencias 0 errores; `dotnet format --verify-n
 - La guarda de `Uri` admite una forma exacta en `AiOptionsValidator.cs` (`Uri.TryCreate(value, UriKind.Absolute, out var uri)`), descubierta por la propia guarda endurecida: el validador solo comprueba el esquema y no conserva la dirección.
 - Límite del escáner: no detecta `new(...)` con tipo inferido; `ProviderEndpoints` usa `new Uri(...)` explícito y la PR 4 ya lo exigía.
 - La prueba de la variable de entorno modifica estado del proceso: se restaura en `finally`; las demás pruebas que construyen clientes de Anthropic usan manejadores y no dependen de la URL base.
+
+## PR 4.2 — Correcciones de la revisión de la PR 4.1 (rama `feat/asistente-config-pr5-recarga`, primeros commits)
+
+| Tarea | Estado | Commit |
+|---|---|---|
+| (a) Ollama no sigue redirecciones | Hecha | `fdac75e` |
+| (b) Validar el `Endpoint` antes de crear el `HttpClient` y exigir http/https absoluto | Hecha | `e899804` |
+| (c) Guarda de `Uri`: `new(...)` inferido y `global::System`, nombre y límites documentados | Hecha | `f84ce95` |
+| (d) `ANTHROPIC_BASE_URL` en colección sin paralelismo y (e) plazo de Ollama con tipo de excepción y cota | Hechas | `042d3ac` |
+
+### TDD Cycle Evidence (PR 4.2)
+
+| Tarea | Archivo de prueba | Capa | RED | GREEN | TRIANGULAR | REFACTOR |
+|---|---|---|---|---|---|---|
+| (a) | `ChatClientFactoryTests` | Infrastructure | `El destino de la redirección recibió una conexión.`: con el manejador por defecto el 307 se seguía hacia `127.0.0.2` (dos escuchas TCP locales, sin red externa) | 27/27 | El origen sirve un solo 307; el destino no recibe conexión y la llamada falla acotada por `WaitAsync` | Comentario del porqué |
+| (b) | `ChatClientFactoryTests` | Infrastructure | No compila (`Func<HttpMessageHandler>` inexistente) | 36/36 | 4 `Endpoint` inválidos (texto, ruta relativa, `ftp://`, `file://`) × (`CreateOllamaHttpClient`: 0 manejadores creados; `Create`: mensaje con `Ai:Endpoint` y sin el valor) + uno válido que crea el manejador una vez | La guarda de arquitectura admite ahora la forma `TryCreate` exacta de la fábrica |
+| (c) | `RepositoryConventionsTests` | Architecture | 7 casos fallaron (`Uri u = new(...)`, `Uri? u = new(...)`, campo `static readonly`, propiedad `{ get; } = new(...)`, `BaseAddress = new(...)`, `global::System.Uri`/`UriBuilder`/`TryCreate`) | 137/137 | 3 negativos (`List<string> items = new()`, `Uri? uri = null`, `new HttpRequestMessage()`) | Prueba renombrada a `InfrastructureAssistant_BuildsNoUriOutsideTheApprovedSyntacticForms`; el comentario de `UriCreation` enumera lo que cubre y lo que no |
+| (d) | (infraestructura de prueba) | Infrastructure | N/A: el aislamiento no tiene un fallo observable determinista | 290/290 | `ProcessEnvironmentCollection` con `DisableParallelization = true`; la prueba restaura la variable en `finally` | Nada |
+| (e) | `ChatClientFactoryTests` | Infrastructure | Mutación temporal: con `Timeout` de 30 s la prueba falla a los 5 s (`WaitAsync`) en vez de aceptar cualquier excepción | 290/290 | Exige `TaskCanceledException`/`TimeoutException` y `800 ms <= t <= 4 s` (la `TimeoutException` de `WaitAsync` llegaría a los 5 s) | Nada |
+
+### Decisiones fuera de spec (PR 4.2)
+
+- `CreateOllamaClient` y `CreateOllamaHttpClient` reciben `Func<HttpMessageHandler>?` en vez de la instancia: es la única forma de comprobar que no se crea ningún manejador cuando el `Endpoint` es inválido.
+- La fábrica ya no usa `new Uri(options.Endpoint!)` sino `Uri.TryCreate(options.Endpoint, UriKind.Absolute, out var endpoint)` con comprobación de esquema; el mensaje es fijo («Ai:Endpoint debe ser una URL absoluta con esquema http o https.»).
+- La prueba de redirección escucha en `127.0.0.1` y `127.0.0.2`: en Linux y Windows ambas son de bucle local; no funcionaría en macOS.
+
+## PR 5 — Recarga en caliente (rama `feat/asistente-config-pr5-recarga`, apilada sobre `fix/asistente-config-pr4-1-revision`)
+
+| Tarea | Estado | Commit |
+|---|---|---|
+| 5.1 Copia previa (`..\TimeTracker.rollback\pr-5\`) | Hecha | fuera del repositorio |
+| 5.2 `AssistantSnapshot`, `Current`, `Swap` | Hecha | `e7c2cb2` |
+| 5.3 Motor sobre la instantánea | Hecha | `5bd2a3d` |
+| 5.4 Cargador, entorno y recargador | Hecha | `a308f7c`, `bc0d60a` |
+| 5.5 Sondeo | Hecha | `41d6ec2` |
+| 5.6 [V-6] Registro en `Program.cs` y orden de arranque | Hecha | `c7ca640` |
+| 5.7 Guardado externo con PostgreSQL | Hecha | `4ef895f` |
+| 5.8 REFACTOR y puerta | Hecha | (sin commit propio) |
+
+### TDD Cycle Evidence (PR 5)
+
+| Tarea | Archivo de prueba | Capa | RED | GREEN | TRIANGULAR | REFACTOR |
+|---|---|---|---|---|---|---|
+| 5.2 | `AssistantChatClientSwapTests` | Infrastructure | No compila: `Current`, `Swap` y el constructor con `TimeProvider` inexistentes | 10/10 | Versión `"0"` del constructor compatible; Swap a `null` y vuelta; copia defensiva sin `ApiKey` ni `MasterKeys`; anterior viva a 119,999 s y liberada a 120 s; 3 cambios seguidos con plazos propios; `Dispose` una sola vez; `Swap` tras `Dispose` lanza y libera el cliente nuevo | `AiOptions.Copy()` |
+| 5.3 | `ChatAssistantEngineSnapshotTests` | Infrastructure | No compila: el constructor del motor aún pedía `IOptions<AiOptions>` | 305/305 | Swap a mitad de una petición con bucle de herramientas (2 llamadas al pipeline inicial, 0 al nuevo; modelo, tokens y esfuerzo iniciales); el plazo inicial de 10 s corta aunque el nuevo sea 40 s; la siguiente petición usa lo nuevo; Swap a `null` a mitad no rompe la petición en curso y la siguiente da `null`; la cuota diaria sigue del entorno | Se quitó `Pipeline` de `AssistantChatClient` |
+| 5.4 | `ConfigurationAssistantEnvironmentTests`, `AssistantSettingsLoaderTests`, `AssistantRuntimeReloaderTests` | Infrastructure | No compila: `AssistantSettingsLoader`, `IAssistantSettingsLoader`, `SettingsLoadOutcome`, `ConfigurationAssistantEnvironment` y `AssistantRuntimeReloader` inexistentes | 333/333 | Fila válida (versión, valores, clave descifrada, sin avisos); valores omitidos del entorno; `None`; sin fila tras fila; sin fila inicial y versión repetida sin reconstruir; fila inválida con una sola advertencia por versión y otra por versión nueva; texto cifrado alterado, versión retirada y sin clave maestra (`undecryptable`, la fábrica no se llama); proveedor ya no permitido (`not-allowed`); fábrica que falla (solo el tipo en el registro); rechazo limpiado tras un éxito; base de datos caída propaga; cargas serializadas. Mutación: sin el `SemaphoreSlim` la prueba de serialización falla (`MaxConcurrentReads` 2). Recargador: éxito sin registro, fallo con aviso solo del tipo y relanzado, cancelación sin aviso | Dos commits (cargador / recargador y registro) |
+| 5.5 | `AssistantSettingsPollerTests` | Infrastructure | No compila: `AssistantSettingsPoller` inexistente. Después, 2 pruebas fallaron de forma determinista: el primer intervalo se perdía porque el host ejecuta `ExecuteAsync` más tarde que `StartAsync` | 344/344 (3 ejecuciones seguidas verdes) | Carga solo si cambia la versión (4 ticks); versión rechazada no se recarga y una nueva sí; sin leer antes del intervalo; caída: un aviso por racha, una línea al recuperar y otro aviso en la racha siguiente; fallo de carga como misma racha; primera carga antes de devolver, con error capturado y acotada a 10 s (9 s no, 10 s sí); cancelación del host se propaga; `StopAsync` detiene; `SettingsPollSeconds` = 7 | El `PeriodicTimer` se crea en `StartAsync` |
+| 5.6 | `AssistantSettingsStartupOrderTests` | Integration (PostgreSQL) | 3 de 4 pruebas fallaron: `La primera carga no se hizo durante el arranque.` y `Assert.Single() Failure: The collection was empty` (poller sin registrar); la de «sin fila» pasó por ser el entorno | 7/7 con 5.7; suite completa 471/471 | Orden: la tabla existe en la primera lectura con una base vacía y migraciones al arrancar; el primer chat usa la fila sembrada; con y sin fábrica que conserva el sondeo | `Program.cs` no lo registra al exportar OpenAPI (verificado: el build dejó de contactar `db.invalid`) |
+| 5.7 | `AssistantSettingsExternalSaveTests` | Integration (PostgreSQL) | `El sondeo no leyó la versión a tiempo.` (3 pruebas, sin poller) | 7/7 | INSERT y UPDATE externos cambian el modelo; fila `None` → 503 y borrar la fila restaura el entorno; fila inválida (Anthropic sin clave) conserva el entorno y la fábrica no crea su cliente | Nada |
+
+### Work Unit Evidence (PR 5)
+
+| Evidencia | Valor |
+|---|---|
+| Prueba focal | `dotnet test tests/TimeTracker.Infrastructure.Tests` = 344/344 (Swap, motor sobre instantánea, cargador, recargador, sondeo); `dotnet test tests/TimeTracker.Api.IntegrationTests --filter "FullyQualifiedName~AssistantSettingsStartupOrder\|FullyQualifiedName~AssistantSettingsExternalSave"` = 7/7 |
+| Arnés de ejecución | API real (`WebApplicationFactory`) con PostgreSQL de Testcontainers, `IChatClientFactory` falso (`RecordingChatClientFactory`), SQL externo y el reloj ficticio avanzado un segundo por vuelta; sin red ni proveedor real |
+| Límite de rollback | Revertir `c7ca640` y `4ef895f` quita el sondeo (el sistema vuelve al entorno); revertir `5bd2a3d` y `e7c2cb2` devuelve el motor y el cliente al estado de la PR 4; la copia previa está en `..\TimeTracker.rollback\pr-5\` |
+
+### Puerta del PR 5 (ejecutada)
+
+BUILD de la solución con `-warnaserror` 0 advertencias 0 errores; `dotnet format --verify-no-changes` sin cambios; TEST: Domain 67, Application 323, Infrastructure 344, Web 223, Architecture 137, Api.IntegrationTests 471 (Docker disponible; no se tocaron contenedores, volúmenes, redes ni imágenes existentes; sin prune); VULN (`--vulnerable --include-transitive`) limpio en los 11 proyectos. `docs/api/openapi.json` restaurado con `git checkout` y sin commitear (el contrato no cambia en esta PR).
+
+### Decisiones fuera de spec (PR 5)
+
+- `IChatClientFactory` pasa a ser **pública** (la implementación por defecto sigue interna): Api la sustituye en las pruebas de integración y el cargador la recibe por constructor. Alternativa descartada: `InternalsVisibleTo` hacia el proyecto de pruebas de Api.
+- `IAssistantSettingsLoader` es una interfaz **pública** (`ReadVersionAsync`, `LoadAsync`, `LastRejectedVersion`) porque `AssistantSettingsPoller` es público (Api lo registra y `ApiFactory` lo elimina por tipo) y su constructor no puede exponer tipos internos. La implementación es interna. El cargador abre su propio ámbito para el `DbContext`, también para la lectura de versión.
+- La instantánea **no conserva la clave del proveedor ni las claves maestras** (`ApiKey` y `MasterKeys` se anulan en la copia): el motor solo usa modelo, plazo, tokens y esfuerzo. El diseño decía «copia defensiva con los valores efectivos».
+- Una fila con clave guardada que no se puede descifrar se rechaza (`undecryptable`) **aunque el entorno tuviera una clave utilizable del mismo proveedor**: sigue AS «Fila inválida» («no se puede descifrar: conserva la última válida») y DD-11, en lugar del respaldo al entorno que haría el resolver.
+- Una versión ya aplicada (`Version` de la fila igual a `Current.Version`) devuelve `Unchanged` sin reconstruir el cliente; sin fila y con la instantánea inicial (`"0"`) tampoco se reconstruye.
+- El **aviso de la recarga fallida tras guardar** lo deja `AssistantRuntimeReloader` (registra solo el tipo y relanza); `ReloadAfterCommitAsync` sigue tragando la excepción tras el guardado confirmado, como decidió la PR 2.
+- El `PeriodicTimer` del sondeo se crea en `StartAsync`, no en `ExecuteAsync` (hallazgo de 5.5). El sondeo no se registra al exportar OpenAPI (`DocumentGeneration.IsRunningUnderTool`).
+- En las pruebas de integración el sondeo avanza con el `FakeTimeProvider` de la aplicación (que también emite los tokens): `ReloadApiFactory.PollOnceAsync` avanza un segundo y espera a la lectura. Los dobles `DisposalTrackingChatClient` y `RecordingChatClientFactory` se comparten por enlace de compilación con Api.IntegrationTests, igual que `FakeChatClient`.
+- V-6 se cumple tal como está el orden de arranque, así que **no** se implementó la marca de instantánea inicial «no cargada» (era solo la contingencia).
+- Tamaño: 11 commits de código, 495 líneas de producción y 1573 de pruebas (≈ 2068 en total con las correcciones 4.2), por encima de la previsión de ≈ 380 líneas del PR 5 (sobre todo pruebas).

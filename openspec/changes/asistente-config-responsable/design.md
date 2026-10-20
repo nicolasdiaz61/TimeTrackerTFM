@@ -407,6 +407,7 @@ Si la estrategia de entrega no admite excepción, se mantienen los cortes 3a/3b 
 
   Consecuencia para el clasificador: Ollama con 400 no se puede clasificar por estado HTTP; la PR 6a debe tratar `OllamaException`/`InvalidOperationException` de Ollama como `rejected` solo si lo decide explícitamente, o dejarlo en `unreachable` (la contingencia de V-3). Un cuerpo de error no modifica el tipo para OpenAI ni Anthropic.
 - **V-5 (PR 4, verificado)**: `Src_DoesNotHardcodeModelNames` sigue verde con `ProviderEndpoints` (URL de Gemini `.../v1beta/openai/`) y los nombres `Gemini`/`OpenAI`; el patrón `gemini-` exige guion. Nada que reformular.
+- **V-6 (PR 5, verificado)**: el orden de arranque se cumple sin marcar la instantánea inicial como «no cargada». `DatabaseMigrationHostedService` migra en `StartingAsync`; `AssistantSettingsPoller` hace la primera carga en `StartAsync` (acotada a 10 s) y Kestrel es el último servicio alojado. Pruebas de integración con PostgreSQL: la tabla existe en la primera lectura (base vacía con migraciones al arrancar) y el primer chat usa la fila ya cargada. Dos hallazgos: (1) `BackgroundService.StartAsync` no ejecuta `ExecuteAsync` de forma síncrona en este entorno, así que el `PeriodicTimer` se crea en `StartAsync` y no en `ExecuteAsync`; (2) el sondeo no se registra al exportar OpenAPI (`DocumentGeneration.IsRunningUnderTool`), que no debe tocar la base de datos.
 
 ## 13. Preguntas abiertas
 
