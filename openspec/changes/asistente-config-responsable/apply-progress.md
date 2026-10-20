@@ -1,6 +1,6 @@
 # Progreso de apply: asistente-config-responsable
 
-Fecha: 2026-10-19 · Modo: Strict TDD · Lotes: PR 1 (`feat/asistente-config-pr1-adr`, fusionado) y PR 2 (`feat/asistente-config-pr2-application`, base a82fd4b)
+Fecha: 2026-10-19 (cierre 2026-10-20) · Modo: Strict TDD · Lotes: PR 1 a PR 8, PR 2.1, 3a.1, 4.1, 4.2, 6a y 6b, todos fusionados en `main`; verificación `PASS WITH WARNINGS` el 2026-10-20 (`verify-report.md`)
 
 ## Estado de tareas del PR 1
 
@@ -557,7 +557,7 @@ Incluye los puntos de seguimiento (a-h) acordados en las revisiones anteriores, 
 | 8.1 dos instancias y señal de fin de sondeo | Hecha | `3f8186b` |
 | 8.2 guardas de arquitectura | Hecha | `83a97c8` |
 | 8.3 V-1..V-8 cerradas en `design.md` | Hecha (`openspec/config.yaml` NO editado: pendiente de aprobación del usuario) | `a1705d1` |
-| 8.4 README y ADR 0019 (nuevo; el 0018 queda como en main) | Hecha (custodia de la clave maestra sigue como pregunta abierta para el product owner) | `2ba6b73` |
+| 8.4 README y ADR 0019 (nuevo; el 0018 queda como en main) | Hecha (custodia de la clave maestra sigue como pregunta abierta para el product owner) | `2ba6b73` (editó el ADR 0018; superado por `99b159b`, que lo restauró, y `195138d`, que añadió el ADR 0019) |
 | 8.5 puerta final | Pasada; **parada de `sdd-verify` pendiente** | `5f76da4` y este registro |
 
 ### TDD Cycle Evidence (PR 8)
@@ -599,8 +599,6 @@ BUILD de la solución con `-warnaserror` 0 advertencias 0 errores; `dotnet forma
 
 ### No cerrado
 
-- **7.6** (verificación manual en Chrome) y su `verify-report.md`: pendientes del orquestador.
-- **Parada de `sdd-verify`: pendiente** (no ejecutada).
-- **`openspec/config.yaml`** sin editar (requiere aprobación del usuario).
+- Resueltos el 2026-10-20: 7.6 (verificación manual en Chrome, sección 7 de `verify-report.md`), la parada de `sdd-verify` (veredicto `PASS WITH WARNINGS`) y `openspec/config.yaml` (aprobado y actualizado en la PR de cierre).
 - **Custodia de la clave maestra en Railway** (§13): pregunta abierta para el product owner, documentada en README y ADR 0019.
-- **Archivo de `asistente-config-responsable`**: tras la verificación.
+- **Archivo de `asistente-config-responsable`**: lo hace el orquestador tras la PR de cierre.
