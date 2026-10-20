@@ -1,20 +1,16 @@
 using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.AspNetCore.Mvc;
 
+using TimeTracker.Api.Security;
 using TimeTracker.Api.TimeEntries;
 using TimeTracker.Application.Team;
-using TimeTracker.Domain.Users;
 
 namespace TimeTracker.Api.Team;
 
 public static class TeamEndpoints
 {
-    public const string ManagerPolicy = "Manager";
-
     public static IServiceCollection AddTeam(this IServiceCollection services)
     {
-        services.AddAuthorizationBuilder()
-            .AddPolicy(ManagerPolicy, policy => policy.RequireRole(nameof(UserRole.Manager)));
         services.AddScoped<GetTeamMembersUseCase>();
         services.AddScoped<GetTeamMemberTimeEntriesUseCase>();
 
@@ -24,7 +20,7 @@ public static class TeamEndpoints
     public static IEndpointRouteBuilder MapTeamEndpoints(this IEndpointRouteBuilder endpoints)
     {
         // El rol se exige en el grupo: un empleado recibe 403 antes de que se mire a qué miembro se refiere la ruta.
-        var group = endpoints.MapGroup("/api/team").WithTags("Team").RequireAuthorization(ManagerPolicy)
+        var group = endpoints.MapGroup("/api/team").WithTags("Team").RequireAuthorization(AuthorizationPolicies.Manager)
             .ProducesProblem(StatusCodes.Status401Unauthorized)
             .ProducesProblem(StatusCodes.Status403Forbidden);
 

@@ -21,9 +21,11 @@ builder.Services.AddDatabaseConfiguration();
 builder.Services.AddJwtAuthentication();
 builder.Services.AddDomainProblemDetails();
 builder.Services.AddTimeEntries();
+builder.Services.AddAuthorizationPolicies();
 builder.Services.AddTeam();
 builder.Services.AddDemoSeeding();
 builder.Services.AddAssistant();
+builder.Services.AddAssistantConfiguration();
 // Va después de la migración (DatabaseMigrationHostedService corre en StartingAsync) y antes de que Kestrel acepte peticiones:
 // Kestrel arranca como último servicio alojado, así que la primera carga acotada queda completa antes del primer chat (V-6).
 // La exportación del contrato OpenAPI nunca debe tocar la base de datos: allí no se registra el sondeo.
@@ -63,5 +65,6 @@ app.MapAuthEndpoints();
 app.MapTimeEntryEndpoints();
 app.MapTeamEndpoints();
 app.MapAssistantEndpoints();
+app.MapAssistantConfigurationEndpoints();
 
 app.Run();
