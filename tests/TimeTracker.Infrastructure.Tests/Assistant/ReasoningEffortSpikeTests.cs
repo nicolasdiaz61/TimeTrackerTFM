@@ -19,7 +19,34 @@ namespace TimeTracker.Infrastructure.Tests.Assistant;
 public sealed class ReasoningEffortSpikeTests
 {
     private const string FakeKey = "clave-prueba-no-real";
-    private const string GeminiBase = "https://generativelanguage.googleapis.com/v1beta/openai/";
+
+    // Tabla proveedor → ruta del campo donde cada SDK serializa el esfuerzo.
+    private static readonly Dictionary<string, string[]> EffortFields = new()
+    {
+        ["OpenAI"] = ["reasoning_effort"],
+        ["Gemini"] = ["reasoning_effort"],
+        ["Anthropic"] = ["output_config", "effort"],
+        ["Ollama"] = ["think"],
+    };
+
+    public static TheoryData<string, string> EffortCases
+    {
+        get
+        {
+            var cases = new TheoryData<string, string>();
+            foreach (var provider in EffortFields.Keys)
+            {
+                foreach (var effort in new[] { "low", "medium", "high" })
+                {
+                    cases.Add(provider, effort);
+                }
+            }
+
+            return cases;
+        }
+    }
+
+    public static TheoryData<string> Providers => [.. EffortFields.Keys];
 
     private sealed class RecordingHandler : HttpMessageHandler
     {
@@ -35,9 +62,10 @@ public sealed class ReasoningEffortSpikeTests
         }
     }
 
-    private static async Task SendAsync(IChatClient client, string? effort)
+    private static async Task<JsonNode?> SendAsync(string provider, string? effort, RecordingHandler handler)
     {
-        var options = new AiOptions { Provider = "Ollama", Model = "modelo-ficticio", Effort = effort };
+        var options = new AiOptions { Provider = provider, Model = "modelo-ficticio", Effort = effort };
+        using var client = BuildClient(options, handler);
         try
         {
             await client.GetResponseAsync("hola", AssistantChatPipeline.CreateChatOptions(options, []));
@@ -47,97 +75,61 @@ public sealed class ReasoningEffortSpikeTests
         {
             // Esperado: el manejador responde 400. Solo importa el cuerpo enviado.
         }
+
+        return JsonNode.Parse(Assert.IsType<string>(handler.Body));
     }
 
-    private static IChatClient OpenAiChat(RecordingHandler handler, Uri? endpoint)
+    private static IChatClient BuildClient(AiOptions options, RecordingHandler handler)
     {
-        var options = new OpenAIClientOptions { Transport = new HttpClientPipelineTransport(new HttpClient(handler)), RetryPolicy = new ClientRetryPolicy(1) };
-        if (endpoint is not null)
+        var http = new HttpClient(handler);
+        switch (options.ResolvedProvider)
         {
-            options.Endpoint = endpoint;
+            case AiProvider.Anthropic:
+                return new AnthropicClient { ApiKey = FakeKey, MaxRetries = 0, HttpClient = http }.AsIChatClient(options.Model);
+            case AiProvider.Ollama:
+                return new OllamaApiClient(new HttpClient(handler) { BaseAddress = new Uri("http://localhost:11434/") }, options.Model!);
+            default:
+                // Las opciones reales de la fábrica: así la URL de Gemini y el resto salen del código de producción.
+                var clientOptions = ChatClientFactory.CreateOpenAIClientOptions(options);
+                clientOptions.Transport = new HttpClientPipelineTransport(http);
+                return new OpenAIClient(new ApiKeyCredential(FakeKey), clientOptions).GetChatClient(options.Model).AsIChatClient();
         }
-
-        return new OpenAIClient(new ApiKeyCredential(FakeKey), options).GetChatClient("modelo-ficticio").AsIChatClient();
     }
 
-    private static IChatClient AnthropicChat(RecordingHandler handler)
-        => new AnthropicClient { ApiKey = FakeKey, MaxRetries = 0, HttpClient = new HttpClient(handler) }.AsIChatClient("modelo-ficticio");
-
-    private static IChatClient OllamaChat(RecordingHandler handler)
-        => new OllamaApiClient(new HttpClient(handler) { BaseAddress = new Uri("http://localhost:11434/") }, "modelo-ficticio");
-
-    private static JsonNode? Body(RecordingHandler handler) => JsonNode.Parse(Assert.IsType<string>(handler.Body));
+    private static JsonNode? Field(JsonNode? body, string[] path)
+        => path.Aggregate(body, (node, name) => node?[name]);
 
     [Theory]
-    [InlineData("low")]
-    [InlineData("medium")]
-    [InlineData("high")]
-    public async Task OpenAI_SendsReasoningEffortInTheBody(string effort)
+    [MemberData(nameof(EffortCases))]
+    public async Task EachProvider_SendsTheEffortInItsOwnField(string provider, string effort)
     {
         var handler = new RecordingHandler();
 
-        await SendAsync(OpenAiChat(handler, null), effort);
+        var body = await SendAsync(provider, effort, handler);
 
-        Assert.Equal(effort, Body(handler)?["reasoning_effort"]?.GetValue<string>());
-    }
-
-    [Theory]
-    [InlineData("low")]
-    [InlineData("medium")]
-    [InlineData("high")]
-    public async Task Gemini_SendsReasoningEffortToTheFixedGeminiUrl(string effort)
-    {
-        var handler = new RecordingHandler();
-
-        await SendAsync(OpenAiChat(handler, new Uri(GeminiBase)), effort);
-
-        Assert.StartsWith(GeminiBase, handler.RequestUri?.ToString(), StringComparison.Ordinal);
-        Assert.Equal(effort, Body(handler)?["reasoning_effort"]?.GetValue<string>());
-    }
-
-    [Theory]
-    [InlineData("low")]
-    [InlineData("medium")]
-    [InlineData("high")]
-    public async Task Anthropic_SendsOutputConfigEffort(string effort)
-    {
-        var handler = new RecordingHandler();
-
-        await SendAsync(AnthropicChat(handler), effort);
-
-        Assert.Equal(effort, Body(handler)?["output_config"]?["effort"]?.GetValue<string>());
-    }
-
-    [Theory]
-    [InlineData("low")]
-    [InlineData("medium")]
-    [InlineData("high")]
-    public async Task Ollama_SendsThink(string effort)
-    {
-        var handler = new RecordingHandler();
-
-        await SendAsync(OllamaChat(handler), effort);
-
-        Assert.Equal(effort, Body(handler)?["think"]?.GetValue<string>());
+        Assert.Equal(effort, Field(body, EffortFields[provider])?.GetValue<string>());
     }
 
     [Fact]
-    public async Task WithoutEffort_NoProviderSendsAnyEffortField()
+    public async Task Gemini_SendsTheRequestToTheFixedGeminiUrl()
     {
-        var openAi = new RecordingHandler();
-        var gemini = new RecordingHandler();
-        var anthropic = new RecordingHandler();
-        var ollama = new RecordingHandler();
+        var handler = new RecordingHandler();
 
-        await SendAsync(OpenAiChat(openAi, null), null);
-        await SendAsync(OpenAiChat(gemini, new Uri(GeminiBase)), null);
-        await SendAsync(AnthropicChat(anthropic), null);
-        await SendAsync(OllamaChat(ollama), null);
+        await SendAsync("Gemini", "low", handler);
 
-        Assert.Null(Body(openAi)?["reasoning_effort"]);
-        Assert.Null(Body(gemini)?["reasoning_effort"]);
-        Assert.Null(Body(anthropic)?["output_config"]?["effort"]);
-        Assert.Null(Body(anthropic)?["thinking"]);
-        Assert.Null(Body(ollama)?["think"]);
+        Assert.StartsWith(ProviderEndpoints.GeminiOpenAi.ToString(), handler.RequestUri?.ToString(), StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [MemberData(nameof(Providers))]
+    public async Task WithoutEffort_NoProviderSendsAnyEffortField(string provider)
+    {
+        var body = await SendAsync(provider, null, new RecordingHandler());
+
+        Assert.Null(Field(body, EffortFields[provider]));
+        if (provider == "Anthropic")
+        {
+            Assert.Null(body?["thinking"]);
+        }
     }
 }
