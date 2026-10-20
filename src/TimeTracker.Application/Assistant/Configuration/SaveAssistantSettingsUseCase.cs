@@ -54,7 +54,7 @@ public sealed class SaveAssistantSettingsUseCase(
         }
 
         var (credential, credentialChanged) = ResolveCredential(value, stored);
-        var now = timeProvider.GetUtcNow();
+        var now = TruncateToMicroseconds(timeProvider.GetUtcNow());
         var next = new AssistantSettings(
             value.Provider, value.Model, value.TimeoutSeconds, value.MaxOutputTokens, value.Effort, credential, currentUser.EmployeeId, now, command.ConcurrencyToken!);
         var audit = new AuditEntry(currentUser.EmployeeId, now, AuditAction.Saved, credentialChanged, AuditSnapshot.From(stored), AuditSnapshot.From(next));
@@ -67,6 +67,10 @@ public sealed class SaveAssistantSettingsUseCase(
         await reloader.ReloadAfterCommitAsync(cancellationToken);
         return new SaveAssistantSettingsResult.Saved(AssistantSettingsView.Build(env, protector, next with { Version = saved.Token }));
     }
+
+    // PostgreSQL guarda microsegundos: sin truncar, el PUT mostraría un instante que el GET siguiente no repite.
+    private static DateTimeOffset TruncateToMicroseconds(DateTimeOffset instant)
+        => instant.AddTicks(-(instant.Ticks % (TimeSpan.TicksPerMillisecond / 1000)));
 
     /// <summary>Clave nueva: se cifra. Omitida con el mismo proveedor: se conserva (y se recifra si se puede). Otro proveedor: se descarta.</summary>
     private (EncryptedCredential? Credential, bool Changed) ResolveCredential(ValidatedSettingsInput value, AssistantSettings? stored)

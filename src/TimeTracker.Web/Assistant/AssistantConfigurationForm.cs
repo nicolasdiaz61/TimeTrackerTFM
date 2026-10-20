@@ -12,6 +12,7 @@ public enum ConfigurationOperation
     Save,
     Reset,
     Test,
+    ReloadAfterReset,
 }
 
 public sealed record ProviderOption(string Value, string Label, bool SupportsEffort);
@@ -70,6 +71,9 @@ public sealed class AssistantConfigurationForm
 
     public bool ResetConfirmationPending { get; private set; }
 
+    /// <summary>La confirmación solo se puede aceptar si sigue pendiente y no hay otra operación en curso.</summary>
+    public bool CanConfirmReset => ResetConfirmationPending && !IsBusy;
+
     public string? TestMessage { get; private set; }
 
     public bool TestSucceeded { get; private set; }
@@ -109,6 +113,7 @@ public sealed class AssistantConfigurationForm
         }
 
         IsBusy = true;
+        ResetConfirmationPending = false;
         ErrorMessage = null;
         SuccessMessage = null;
         TestMessage = null;
@@ -130,13 +135,7 @@ public sealed class AssistantConfigurationForm
     /// <summary>Consume la confirmación pendiente e inicia el restablecimiento; sin confirmación previa no hace nada.</summary>
     public bool TryConfirmReset()
     {
-        if (!ResetConfirmationPending)
-        {
-            return false;
-        }
-
-        ResetConfirmationPending = false;
-        return TryBegin();
+        return CanConfirmReset && TryBegin();
     }
 
     public void CompleteLoad(AssistantConfigurationDto configuration) => Apply(configuration, null);
@@ -161,9 +160,13 @@ public sealed class AssistantConfigurationForm
 
         IsBusy = false;
         ResetConfirmationPending = false;
-        if (operation is ConfigurationOperation.Save or ConfigurationOperation.Reset)
+
+        // La clave tecleada se conserva: un fallo transitorio (red, 429, 5xx, 413) no debe obligar a escribirla de nuevo.
+        // Solo se vacía tras un éxito o al reconstruir el formulario desde el servidor (Apply).
+        if (operation == ConfigurationOperation.ReloadAfterReset)
         {
-            Credential = null;
+            FailReloadAfterReset(error);
+            return;
         }
 
         var message = error.Exception.Message;
@@ -184,6 +187,17 @@ public sealed class AssistantConfigurationForm
                 ErrorMessage = message;
                 break;
         }
+    }
+
+    // El DELETE ya se confirmó: lo que se ve en pantalla es previo al restablecimiento y su token ya no vale. Se descarta la
+    // carga (nada que guardar con un token caducado) y se ofrece recargar, diciendo claramente que el restablecimiento sí se aplicó.
+    private void FailReloadAfterReset(AssistantConfigurationError error)
+    {
+        Loaded = null;
+        ProviderOptions = [];
+        Credential = null;
+        ErrorMessage = $"El restablecimiento sí se aplicó, pero no se pudo recargar la configuración: {error.Exception.Message} Recargue para ver el estado actual.";
+        ReloadOffered = true;
     }
 
     public AssistantConfigurationRequestDto BuildSaveRequest()

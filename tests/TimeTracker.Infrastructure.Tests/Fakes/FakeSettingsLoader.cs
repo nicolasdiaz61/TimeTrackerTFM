@@ -19,6 +19,11 @@ internal sealed class FakeSettingsLoader : IAssistantSettingsLoader
     /// <summary>Efecto de una carga correcta (por ejemplo, publicar la versión en el cliente).</summary>
     public Action? OnLoad { get; set; }
 
+    private readonly TaskCompletionSource _loadStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+    /// <summary>Se completa cuando empieza la primera carga: señal explícita en lugar de sondear el contador.</summary>
+    public Task LoadStarted => _loadStarted.Task;
+
     public int Loads { get; private set; }
 
     public int Reads { get; private set; }
@@ -32,6 +37,7 @@ internal sealed class FakeSettingsLoader : IAssistantSettingsLoader
     public async Task<SettingsLoadOutcome> LoadAsync(CancellationToken cancellationToken)
     {
         Loads++;
+        _loadStarted.TrySetResult();
         if (LoadGate is { } gate)
         {
             await gate.Task.WaitAsync(cancellationToken);

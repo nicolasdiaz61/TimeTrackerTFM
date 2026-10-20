@@ -144,6 +144,33 @@ public sealed class AssistantConfigurationEndpointsTests(PostgresFixture postgre
     }
 
     [Fact]
+    public async Task Get_WhenTheDisplayNameLookupFails_Returns200WithUpdatedByNull()
+    {
+        using var factory = new AssistantConfigurationApiFactory(store: new RacingDeleteStore(), users: new DisplayNameFailingUserRepository());
+
+        var response = await factory.CreateClient().GetAsync(Route, CancellationToken.None);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        using var body = await ReadJsonAsync(response);
+        Assert.Equal(JsonValueKind.Null, body.RootElement.GetProperty("updatedBy").ValueKind);
+        Assert.Equal("7", body.RootElement.GetProperty("concurrencyToken").GetString());
+    }
+
+    [Fact]
+    public async Task Put_WhenTheDisplayNameLookupFailsAfterTheCommit_Returns200WithUpdatedByNull()
+    {
+        var store = new CountingSettingsStore();
+        using var factory = new AssistantConfigurationApiFactory(store: store, users: new DisplayNameFailingUserRepository());
+
+        var response = await factory.CreateClient().PutJsonAsync(ValidPut);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        using var body = await ReadJsonAsync(response);
+        Assert.Equal(JsonValueKind.Null, body.RootElement.GetProperty("updatedBy").ValueKind);
+        Assert.Equal(1, store.WriteCalls);
+    }
+
+    [Fact]
     public async Task Put_WithInvalidFields_Returns400PerFieldAndSavesNothing()
     {
         var store = new CountingSettingsStore();
@@ -157,6 +184,22 @@ public sealed class AssistantConfigurationEndpointsTests(PostgresFixture postgre
         Assert.Equal(["effort", "model", "timeoutSeconds"], errors.Keys.Order(StringComparer.Ordinal));
         Assert.All(errors, pair => Assert.Contains(pair.Key, Assert.Single(pair.Value), StringComparison.Ordinal));
         Assert.Equal(0, store.WriteCalls);
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("null")]
+    public async Task Put_WithAnEmptyOrNullBody_Returns400BodyRequired_AndSavesNothing(string body)
+    {
+        var store = new CountingSettingsStore();
+        using var factory = new AssistantConfigurationApiFactory(store: store);
+
+        var response = await factory.CreateClient().PutJsonAsync(body);
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        using var problem = await ReadJsonAsync(response);
+        Assert.Equal("El cuerpo de la solicitud es obligatorio.", problem.RootElement.GetProperty("detail").GetString());
+        Assert.Equal((0, 0), (store.GetCalls, store.WriteCalls));
     }
 
     [Fact]

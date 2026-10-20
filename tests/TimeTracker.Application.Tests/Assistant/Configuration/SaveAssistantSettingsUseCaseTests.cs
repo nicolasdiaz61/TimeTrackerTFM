@@ -50,6 +50,20 @@ public class SaveAssistantSettingsUseCaseTests
     }
 
     [Fact]
+    public async Task TheSaveInstant_IsTruncatedToMicrosecondsLikePostgres_SoThePutAndTheNextGetShowTheSameTime()
+    {
+        var instant = new DateTimeOffset(2026, 10, 19, 9, 0, 0, TimeSpan.Zero);
+        _time.SetUtcNow(instant.AddTicks(1234567));
+
+        var view = Saved(await Save(Input(provider: "OpenAI", model: "m-1", credential: SecretKey)));
+
+        var truncated = instant.AddTicks(1234560);
+        Assert.Equal(truncated, view.UpdatedAt);
+        Assert.Equal(truncated, _store.Row!.UpdatedAt);
+        Assert.Equal(truncated, _store.Audits.Single().OccurredAt);
+    }
+
+    [Fact]
     public async Task ANewKeyWithProviderNone_IsRejectedWithoutWritingOrAuditing()
     {
         var result = await Save(Input(provider: "None", model: null, timeoutSeconds: null, maxOutputTokens: null, credential: SecretKey));

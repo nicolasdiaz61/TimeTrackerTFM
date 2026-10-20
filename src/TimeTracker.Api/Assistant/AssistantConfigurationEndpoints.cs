@@ -3,7 +3,6 @@ using Microsoft.AspNetCore.Mvc;
 
 using TimeTracker.Api.Security;
 using TimeTracker.Application.Assistant.Configuration;
-using TimeTracker.Application.Users;
 
 namespace TimeTracker.Api.Assistant;
 
@@ -22,6 +21,7 @@ public static class AssistantConfigurationEndpoints
         services.AddScoped<SaveAssistantSettingsUseCase>();
         services.AddScoped<ResetAssistantSettingsUseCase>();
         services.AddScoped<TestAssistantConnectionUseCase>();
+        services.AddScoped<UpdatedByNameResolver>();
 
         return services;
     }
@@ -52,13 +52,13 @@ public static class AssistantConfigurationEndpoints
     }
 
     private static async Task<Ok<AssistantConfigurationResponse>> GetAsync(
-        GetAssistantSettingsUseCase useCase, IUserRepository users, CancellationToken cancellationToken)
-        => TypedResults.Ok(await ToResponseAsync(await useCase.ExecuteAsync(cancellationToken), users, cancellationToken));
+        GetAssistantSettingsUseCase useCase, UpdatedByNameResolver names, CancellationToken cancellationToken)
+        => TypedResults.Ok(await ToResponseAsync(await useCase.ExecuteAsync(cancellationToken), names, cancellationToken));
 
     private static async Task<Results<Ok<AssistantConfigurationResponse>, ValidationProblem, ProblemHttpResult>> SaveAsync(
         AssistantConfigurationRequest? request,
         SaveAssistantSettingsUseCase useCase,
-        IUserRepository users,
+        UpdatedByNameResolver names,
         CancellationToken cancellationToken)
     {
         if (request is null)
@@ -70,11 +70,13 @@ public static class AssistantConfigurationEndpoints
         switch (await useCase.ExecuteAsync(new SaveAssistantSettingsCommand(input, request.ConcurrencyToken), cancellationToken))
         {
             case SaveAssistantSettingsResult.Saved saved:
-                return TypedResults.Ok(await ToResponseAsync(saved.View, users, cancellationToken));
+                return TypedResults.Ok(await ToResponseAsync(saved.View, names, cancellationToken));
             case SaveAssistantSettingsResult.Invalid invalid:
                 return Invalid(invalid.Errors);
-            default:
+            case SaveAssistantSettingsResult.Conflict:
                 return Conflict();
+            default:
+                throw new InvalidOperationException("Resultado del guardado de la configuración no contemplado.");
         }
     }
 
@@ -96,8 +98,8 @@ public static class AssistantConfigurationEndpoints
         };
     }
 
-    private static async Task<AssistantConfigurationResponse> ToResponseAsync(AssistantSettingsView view, IUserRepository users, CancellationToken cancellationToken)
-        => AssistantConfigurationResponse.From(view, view.UpdatedBy is { } id ? await users.FindDisplayNameAsync(id, cancellationToken) : null);
+    private static async Task<AssistantConfigurationResponse> ToResponseAsync(AssistantSettingsView view, UpdatedByNameResolver names, CancellationToken cancellationToken)
+        => AssistantConfigurationResponse.From(view, await names.ResolveAsync(view.UpdatedBy, cancellationToken));
 
     private static ValidationProblem Invalid(IReadOnlyList<FieldError> errors) => TypedResults.ValidationProblem(
         errors.GroupBy(error => error.Field).ToDictionary(group => group.Key, group => group.Select(error => error.Message).ToArray()),

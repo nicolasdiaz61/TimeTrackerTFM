@@ -44,11 +44,12 @@ public class MigrationTests(PostgresFixture postgres)
         var migrations = await QueryAsync(connectionString, "SELECT \"MigrationId\" FROM \"__EFMigrationsHistory\" ORDER BY \"MigrationId\"");
         var tables = await QueryAsync(connectionString, "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public'");
 
-        Assert.Equal(4, migrations.Count);
+        Assert.Equal(5, migrations.Count);
         Assert.Contains(migrations, migration => migration.EndsWith("_InitialTimeEntries", StringComparison.Ordinal));
         Assert.EndsWith("_AddUsers", migrations[1], StringComparison.Ordinal);
         Assert.EndsWith("_AddTimeEntryType", migrations[2], StringComparison.Ordinal);
         Assert.EndsWith("_AddAssistantSettings", migrations[3], StringComparison.Ordinal);
+        Assert.EndsWith("_AddAssistantAuditImmutability", migrations[4], StringComparison.Ordinal);
         Assert.Contains("time_entries", tables);
         Assert.Contains("users", tables);
     }
@@ -169,6 +170,26 @@ public class MigrationTests(PostgresFixture postgres)
         Assert.Equal(before, await TableShapeAsync(connectionString));
         Assert.DoesNotContain("assistant_settings", await QueryAsync(connectionString, "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public'"));
         Assert.DoesNotContain("assistant_settings_audit", await QueryAsync(connectionString, "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public'"));
+    }
+
+    [Fact]
+    public async Task AddAssistantAuditImmutability_OnDatabaseWithData_ChangesNoTableAndKeepsTheRows()
+    {
+        var connectionString = await postgres.CreateEmptyDatabaseAsync();
+        var entryId = Guid.NewGuid();
+        await using var context = postgres.CreateContext(connectionString);
+        await MigrateToAsync(context, "_AddAssistantSettings");
+        await ExecuteAsync(
+            connectionString,
+            $"INSERT INTO time_entries (id, employee_id, clock_in_at, clock_out_at, type) VALUES ('{entryId}', '{Guid.NewGuid()}', '2026-10-12T08:00:00Z', '2026-10-12T09:00:00Z', 'Break')");
+        await ExecuteAsync(connectionString, "INSERT INTO assistant_settings_audit (occurred_at, actor_id, action, credential_changed) VALUES (now(), gen_random_uuid(), 'Saved', false)");
+        var before = await TableShapeAsync(connectionString);
+
+        await context.Database.MigrateAsync(CancellationToken.None);
+
+        Assert.Equal(before, await TableShapeAsync(connectionString));
+        Assert.Equal([entryId.ToString()], await QueryAsync(connectionString, "SELECT id::text FROM time_entries"));
+        Assert.Equal(["1"], await QueryAsync(connectionString, "SELECT count(*)::text FROM assistant_settings_audit"));
     }
 
     [Fact]

@@ -309,14 +309,14 @@ public partial class DeliveryArtifactsTests
     // --- ADR (SA-20, SA-21, SA-22) ---
 
     [Fact]
-    public void Adr_Directory_HasEighteenAdrsWithFourSections()
+    public void Adr_Directory_HasNineteenAdrsWithFourSections()
     {
         string[] sections = ["## Contexto", "## Decisión", "## Consecuencias", "## Alternativas"];
         var adrs = Directory.GetFiles(Path.Combine(RepositoryRoot.Path, "docs", "adr"), "0*.md")
             .Order(StringComparer.Ordinal)
             .ToList();
 
-        Assert.Equal(18, adrs.Count);
+        Assert.Equal(19, adrs.Count);
         for (var index = 0; index < adrs.Count; index++)
         {
             var name = Path.GetFileName(adrs[index]);
@@ -384,6 +384,63 @@ public partial class DeliveryArtifactsTests
         var missing = required.Where(text => !readme.Contains(text, StringComparison.OrdinalIgnoreCase)).ToList();
 
         Assert.True(missing.Count == 0, $"README.md no menciona: {string.Join(", ", missing)}");
+    }
+
+    [Fact]
+    public void Readme_RailwaySection_ExplainsTheMasterKeyOrderTheCorsOriginAndTheConfigurationRisks()
+    {
+        var readme = ReadRepositoryFile("README.md");
+        var start = readme.IndexOf("## Despliegue en Railway", StringComparison.Ordinal);
+        var end = readme.IndexOf("\n## ", start + 1, StringComparison.Ordinal);
+        Assert.True(start >= 0 && end > start, "Falta la sección «Despliegue en Railway».");
+        var railway = readme[start..end];
+
+        string[] required =
+        [
+            "Ai__MasterKeys__1", "Ai__ActiveMasterKeyVersion=1", "antes de que un responsable guarde", "Cors__AllowedOrigins__0",
+            "obligatoria", "Responses", "datos personales", "tercero", "custodia", "product owner", "Ai__AllowedProviders",
+        ];
+        var missing = required.Where(text => !railway.Contains(text, StringComparison.OrdinalIgnoreCase)).ToList();
+        Assert.True(missing.Count == 0, $"La sección de Railway no menciona: {string.Join(", ", missing)}");
+
+        // La clave maestra es un secreto: se define por stdin y el documento nunca le asigna un valor.
+        Assert.Contains("railway variables set Ai__MasterKeys__1 --stdin -s api", railway, StringComparison.Ordinal);
+        Assert.DoesNotMatch(@"Ai__MasterKeys__\d+\s*=\s*[^\s`|]", railway);
+    }
+
+    [Fact]
+    public void Readme_DoesNotAnnounceAsFutureThePagesThatAlreadyExist()
+    {
+        var readme = ReadRepositoryFile("README.md");
+
+        Assert.DoesNotContain("llegará en un cambio posterior", readme, StringComparison.Ordinal);
+        Assert.DoesNotContain("podrá elegir", readme, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Adr0019_ComplementsAdr0018WithTheDatabaseGuardTheRailwayDeploymentAndTheOpenKeyCustodyQuestion()
+    {
+        var adr = ReadRepositoryFile("docs/adr/0019-auditoria-inmutable-y-despliegue-de-la-configuracion-del-asistente.md");
+
+        string[] required =
+        [
+            "ADR 0018", "matiza", "Railway", "Ai__MasterKeys__1", "--stdin", "Ai__ActiveMasterKeyVersion=1", "Cors__AllowedOrigins__0",
+            "Responses", "datos personales", "tercero", "custodia", "pregunta abierta", "product owner", "trigger", "UPDATE", "DELETE",
+            "TRUNCATE", "REVOKE", "configuración única", "cualquier Manager",
+        ];
+        var missing = required.Where(text => !adr.Contains(text, StringComparison.OrdinalIgnoreCase)).ToList();
+        Assert.True(missing.Count == 0, $"El ADR 0019 no menciona: {string.Join(", ", missing)}");
+        Assert.DoesNotMatch(@"Ai__MasterKeys__\d+\s*=\s*[^\s`|]", adr);
+    }
+
+    [Fact]
+    public void Adr0018_IsKeptAsMergedBecauseAdrsAreNotRewritten()
+    {
+        var adr = ReadRepositoryFile("docs/adr/0018-configuracion-del-asistente-por-el-responsable.md");
+
+        Assert.DoesNotContain("AddAssistantAuditImmutability", adr, StringComparison.Ordinal);
+        Assert.DoesNotContain("ADR 0019", adr, StringComparison.Ordinal);
+        Assert.Contains("Disparador de inmutabilidad en la base de datos para la auditoría:", adr, StringComparison.Ordinal);
     }
 
     [Fact]

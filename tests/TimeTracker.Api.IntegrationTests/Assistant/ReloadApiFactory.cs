@@ -2,8 +2,12 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 
 using Npgsql;
+
+using TimeTracker.Api.IntegrationTests.Support;
 
 using TimeTracker.Application.Assistant.Configuration;
 using TimeTracker.Infrastructure.Assistant;
@@ -17,13 +21,16 @@ namespace TimeTracker.Api.IntegrationTests.Assistant;
 /// fábrica falsa que responde «respuesta de {modelo}», así que el modelo usado se lee de la respuesta del chat. El reloj de la
 /// aplicación es ficticio (FakeTimeProvider): el sondeo avanza con PollOnceAsync, no con el tiempo real.
 /// </summary>
-internal sealed class ReloadApiFactory(string connectionString, bool applyMigrations = false) : ApiFactory
+internal sealed class ReloadApiFactory(string connectionString, bool applyMigrations = false, string? masterKey = null) : ApiFactory
 {
     public const string EnvironmentModel = "modelo-env";
 
     public RecordingChatClientFactory ChatFactory { get; } = new();
 
     public StoreObserver Observer { get; } = new(connectionString);
+
+    /// <summary>Todo lo que registra esta instancia, para comprobar avisos y que ningún secreto llega al registro.</summary>
+    public CapturingLoggerProvider Logs { get; } = new();
 
     protected override bool KeepsAssistantSettingsPoller => true;
 
@@ -36,6 +43,14 @@ internal sealed class ReloadApiFactory(string connectionString, bool applyMigrat
         builder.UseSetting("Ai:Model", EnvironmentModel);
         builder.UseSetting("Ai:Endpoint", "http://localhost:11434/");
         builder.UseSetting("Ai:SettingsPollSeconds", "1");
+        builder.UseSetting("Ai:AllowedProviders", "Anthropic,OpenAI,Ollama");
+        if (masterKey is not null)
+        {
+            builder.UseSetting("Ai:MasterKeys:1", masterKey);
+            builder.UseSetting("Ai:ActiveMasterKeyVersion", "1");
+        }
+
+        builder.ConfigureLogging(logging => logging.AddProvider(Logs));
         builder.ConfigureTestServices(services =>
         {
             services.Replace(ServiceDescriptor.Singleton<IChatClientFactory>(ChatFactory));
@@ -44,20 +59,22 @@ internal sealed class ReloadApiFactory(string connectionString, bool applyMigrat
         });
     }
 
-    /// <summary>Avanza el reloj un intervalo de sondeo y deja que el sondeo termine su vuelta.</summary>
+    /// <summary>Avanza el reloj un intervalo de sondeo y espera la señal explícita de «vuelta terminada» (la instantánea ya está publicada).</summary>
     public async Task PollOnceAsync()
     {
-        var reads = Observer.Reads;
-        Clock.Advance(TimeSpan.FromSeconds(1));
-        var deadline = DateTime.UtcNow.AddSeconds(10);
-        while (Observer.Reads == reads)
+        var poller = Services.GetServices<IHostedService>().OfType<AssistantSettingsPoller>().Single();
+        var completed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        void OnCompleted() => completed.TrySetResult();
+        poller.PollCompleted += OnCompleted;
+        try
         {
-            Assert.True(DateTime.UtcNow < deadline, "El sondeo no leyó la versión a tiempo.");
-            await Task.Delay(10);
+            Clock.Advance(TimeSpan.FromSeconds(1));
+            await completed.Task.WaitAsync(TimeSpan.FromSeconds(30));
         }
-
-        // La carga que sigue a la lectura de la versión es asíncrona: se deja un margen corto para que publique la instantánea.
-        await Task.Delay(100);
+        finally
+        {
+            poller.PollCompleted -= OnCompleted;
+        }
     }
 
     public static async Task ExecuteAsync(string connectionString, string sql)

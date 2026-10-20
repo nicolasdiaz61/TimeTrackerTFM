@@ -144,7 +144,7 @@ La migración `AddTimeEntryType` deja los fichajes existentes como `Work` (colum
 
 ## Asistente de IA
 
-El asistente responde en español, en lenguaje natural, a preguntas sobre los fichajes de quien pregunta («¿cuántas horas trabajé la semana pasada?») y, si es responsable (`Manager`), sobre los de sus reportes directos, uno a uno. Es **de solo lectura**: no ficha ni modifica nada, y cada herramienta aplica la autorización de la persona autenticada (la identidad sale siempre del token). Se consulta con `POST /api/asistente` (`{ "message": "…", "history": [...] }`); la página `/asistente` de la Web llegará en un cambio posterior (PR 4). Está **deshabilitado por defecto**: sin `Ai__Provider` la API arranca igual y el endpoint responde `503` «El asistente no está disponible en este entorno.». Las decisiones están en el [ADR 0017](docs/adr/0017-asistente-ia-con-herramientas-de-solo-lectura.md).
+El asistente responde en español, en lenguaje natural, a preguntas sobre los fichajes de quien pregunta («¿cuántas horas trabajé la semana pasada?») y, si es responsable (`Manager`), sobre los de sus reportes directos, uno a uno. Es **de solo lectura**: no ficha ni modifica nada, y cada herramienta aplica la autorización de la persona autenticada (la identidad sale siempre del token). Se consulta con `POST /api/asistente` (`{ "message": "…", "history": [...] }`); la página `/asistente` de la Web lo consulta. Está **deshabilitado por defecto**: sin `Ai__Provider` la API arranca igual y el endpoint responde `503` «El asistente no está disponible en este entorno.». Las decisiones están en el [ADR 0017](docs/adr/0017-asistente-ia-con-herramientas-de-solo-lectura.md).
 
 **Habilitarlo** (solo configuración, sin cambiar código; el modelo también es configuración):
 
@@ -161,7 +161,7 @@ Las pruebas del asistente **no llaman a ningún modelo real**: usan un `IChatCli
 
 ### Configuración del asistente por el responsable
 
-Además de las variables de entorno, un responsable (`Manager`) podrá elegir el proveedor, el modelo, el tiempo máximo, los tokens de salida y el esfuerzo de razonamiento, aportar su propia clave de API, probar la conexión y deshabilitar el asistente desde la página `/asistente/configuracion` (llegará en un cambio posterior de la misma serie). Lo guardado se fusiona sobre el entorno, vale para toda la empresa y se restablece al entorno borrando la configuración. Las decisiones están en el [ADR 0018](docs/adr/0018-configuracion-del-asistente-por-el-responsable.md).
+Además de las variables de entorno, un responsable (`Manager`) puede elegir el proveedor, el modelo, el tiempo máximo, los tokens de salida y el esfuerzo de razonamiento, aportar su propia clave de API, probar la conexión y deshabilitar el asistente desde la página `/asistente/configuracion` (enlace «Config. asistente» del menú, solo para responsables). Lo guardado se fusiona sobre el entorno, vale para toda la empresa y se restablece al entorno borrando la configuración. Las decisiones están en el [ADR 0018](docs/adr/0018-configuracion-del-asistente-por-el-responsable.md).
 
 Claves de entorno nuevas (todas opcionales; se documentan en `.env.example`):
 
@@ -227,12 +227,14 @@ Variables del servicio `api` (`railway variables set -s api --skip-deploys "CLAV
 | `ASPNETCORE_ENVIRONMENT` | `Production` (OpenAPI no se sirve; sin páginas de desarrollo). |
 | `ConnectionStrings__Default` | Referencia a las variables del servicio de base de datos: `Host=${{Postgres.PGHOST}};Port=${{Postgres.PGPORT}};Database=${{Postgres.PGDATABASE}};Username=${{Postgres.PGUSER}};Password=${{Postgres.PGPASSWORD}}`. Railway las resuelve en cada servicio; no se copia ningún valor. Escríbala entre comillas simples en PowerShell/Bash. |
 | `Jwt__SigningKey` | Clave aleatoria de al menos 32 bytes (véase «Regenerar la clave JWT»). |
-| `Cors__AllowedOrigins__0` | `https://<dominio de la Web>`, sin barra final. |
+| `Cors__AllowedOrigins__0` | **Obligatoria.** `https://<dominio de la Web>`, sin barra final; sin ella la API no arranca. |
 | `Database__ApplyMigrationsOnStartup` | `true`: la API aplica las migraciones al arrancar. |
 | `ForwardedHeaders__Enabled` | `true`: la API está tras el proxy de Railway (véase «Riesgos y decisiones»). |
 | `Seed__DemoUsers` y `Seed__DemoPassword` | `true` y la contraseña de «Usuarios de prueba» (solo para la demostración; véase «Apagar la siembra demo»). |
 | `Seed__DemoData` | `true` para sembrar el historial de un mes (véase «Datos de demostración»); opcional. |
 | `Ai__Provider`, `Ai__Model` y `Ai__ApiKey` | Opcionales: habilitan el asistente (véase «Asistente de IA»). `Ai__ApiKey` es un secreto y se define con `railway variables set Ai__ApiKey --stdin -s api`; nunca en este repositorio. Para deshabilitarlo, quite `Ai__Provider`. |
+| `Ai__MasterKeys__1` y `Ai__ActiveMasterKeyVersion` | Opcionales, pero **imprescindibles antes de que un responsable guarde una clave de API** desde la Web (véase «Configuración del asistente por el responsable en Railway»). `Ai__MasterKeys__1` es un secreto y se define por `stdin`; `Ai__ActiveMasterKeyVersion=1`. |
+| `Ai__AllowedProviders` | Opcional: proveedores que el responsable puede elegir (`Anthropic`, `OpenAI`, `Gemini`, `Ollama`). Sin ella, solo el del entorno. |
 
 Variable del servicio `web`: `API_BASE_URL=https://<dominio de la API>` (sin barra final). Al arrancar, el contenedor genera `appsettings.json` con ella y abre la CSP (`connect-src`) solo a ese origen; si falta o no es una URL `http`/`https`, el contenedor no arranca. La URL de la API no se versiona.
 
@@ -244,6 +246,24 @@ railway up --service web --ci
 ```
 
 Comprobación: `GET <API>/health` responde `200`; inicie sesión en la Web con un usuario de «Usuarios de prueba».
+
+### Configuración del asistente por el responsable en Railway
+
+Para que un responsable (`Manager`) guarde su propia clave de API desde `/asistente/configuracion`, la API necesita una clave maestra con la que cifrarla. Hágalo **antes de que un responsable guarde una clave**; sin ella la Web desactiva el campo de clave y el asistente sigue con las variables de entorno. Sin escribir ningún valor en archivos ni en el historial:
+
+```powershell
+pwsh -NoProfile -Command "[Convert]::ToBase64String([Security.Cryptography.RandomNumberGenerator]::GetBytes(32))" | railway variables set Ai__MasterKeys__1 --stdin -s api
+railway variables set Ai__ActiveMasterKeyVersion=1 -s api
+```
+
+`Cors__AllowedOrigins__0` es obligatoria (sin ella la API no arranca) y debe ser el origen de la Web. Si quiere que el responsable pueda elegir otro proveedor, defina `Ai__AllowedProviders`; por defecto solo puede usar el del entorno. La rotación de la clave maestra está en «Configuración del asistente por el responsable».
+
+Riesgos y decisiones pendientes de este despliegue (detalle en el [ADR 0019](docs/adr/0019-auditoria-inmutable-y-despliegue-de-la-configuracion-del-asistente.md)):
+
+- **Datos personales a un tercero.** Con un proveedor en la nube, los nombres y las horas de los fichajes consultados salen hacia ese tercero bajo la clave que aporta el responsable. Revise el contrato de tratamiento antes de usar datos reales.
+- **Riesgo de la API Responses de OpenAI.** La v1 usa solo la API de chat; algunos modelos de OpenAI exigen Responses para usar herramientas. La prueba de conexión no usa herramientas y puede dar `ok` aunque el chat falle con ese modelo.
+- **Configuración única.** Es una sola para toda la empresa y cualquier responsable de cualquier equipo puede leerla, cambiarla, restablecerla y probar conexiones.
+- **Pregunta abierta para el product owner: custodia de la clave maestra.** Quién la genera, dónde se guarda su copia de seguridad y quién puede leerla en Railway sigue sin decidirse. Si se pierde, las claves guardadas quedan ilegibles (el responsable las vuelve a introducir); el asistente sigue funcionando con el entorno.
 
 ### Regenerar la clave JWT
 
@@ -344,6 +364,7 @@ openspec/                     Especificaciones y cambios (Spec Driven Developmen
 16. [Vista mensual de fichajes y hora local en la Web](docs/adr/0016-vista-mensual-y-hora-local.md)
 17. [Asistente de IA con herramientas de solo lectura](docs/adr/0017-asistente-ia-con-herramientas-de-solo-lectura.md)
 18. [Configuración del asistente por el responsable](docs/adr/0018-configuracion-del-asistente-por-el-responsable.md)
+19. [Auditoría inmutable y despliegue de la configuración del asistente](docs/adr/0019-auditoria-inmutable-y-despliegue-de-la-configuracion-del-asistente.md)
 
 ## Integración continua
 

@@ -203,6 +203,31 @@ public sealed class AssistantSettingsStoreTests(PostgresFixture postgres) : IAsy
     }
 
     [Fact]
+    public async Task Delete_WhenTheRowWasAlreadyDeletedAfterTheRead_IsNotFoundAndAuditsNothing()
+    {
+        var token = Assert.IsType<SaveOutcome.Saved>(await SaveAsync(Settings("m"), NoRow)).Token;
+        var store = RacingStore("DELETE FROM assistant_settings");
+
+        var outcome = await store.DeleteAsync(token, Audit(AuditAction.Reset), CancellationToken.None);
+
+        Assert.Equal(DeleteOutcome.NotFound, outcome);
+        Assert.Equal(["Saved"], await ColumnAsync("SELECT action FROM assistant_settings_audit ORDER BY id"));
+    }
+
+    [Fact]
+    public async Task Delete_WhenAnotherManagerSavedAfterTheRead_IsConflictAndKeepsTheirRow()
+    {
+        var token = Assert.IsType<SaveOutcome.Saved>(await SaveAsync(Settings("m"), NoRow)).Token;
+        var store = RacingStore("UPDATE assistant_settings SET model = 'otro'");
+
+        var outcome = await store.DeleteAsync(token, Audit(AuditAction.Reset), CancellationToken.None);
+
+        Assert.Equal(DeleteOutcome.Conflict, outcome);
+        Assert.Equal("otro", (await GetAsync())!.Model);
+        Assert.Equal(1, await CountAsync("assistant_settings_audit"));
+    }
+
+    [Fact]
     public async Task GetVersion_IsZeroWithoutARowAndTheTokenAfterSaving()
     {
         Assert.Equal(NoRow, await NewStore().GetVersionAsync(CancellationToken.None));
@@ -254,6 +279,12 @@ public sealed class AssistantSettingsStoreTests(PostgresFixture postgres) : IAsy
         options.MasterKeys["1"] = Convert.ToBase64String(new byte[32]);
         return new AesGcmCredentialProtector(Options.Create(options));
     }
+
+    private AssistantSettingsStore RacingStore(string sql)
+        => new(new TimeTrackerDbContext(new DbContextOptionsBuilder<TimeTrackerDbContext>()
+            .UseNpgsql(_connectionString)
+            .AddInterceptors(new RacingSqlInterceptor(_connectionString, sql))
+            .Options));
 
     private AssistantSettingsStore NewStore() => new(postgres.CreateContext(_connectionString));
 

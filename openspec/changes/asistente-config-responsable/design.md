@@ -152,7 +152,7 @@ Token de API: `xmin` en decimal; `"0"` significa «sin fila» (un `xmin` real nu
 
 ### DD-9. Auditoría de solo inserción
 
-`assistant_settings_audit`: `id` bigint identidad (PK), `occurred_at` timestamptz, `actor_id` uuid, `action` varchar(16) (`Saved`/`Reset`, con CHECK), `credential_changed` boolean, `previous` jsonb NULL, `current` jsonb NULL (índice por `occurred_at` descendente). Los JSON contienen solo valores no secretos: `provider`, `model`, `timeoutSeconds`, `maxOutputTokens`, `effort`, `credentialConfigured`. «Cambio de clave» = `credential_changed = true` (puesta, sustituida o descartada por cambio de proveedor), sin su valor ni su forma cifrada. Garantía de solo inserción: el puerto expone únicamente `Add` (ninguna operación de actualización o borrado), una prueba de arquitectura busca `Remove`/`Update`/`ExecuteDelete`/`ExecuteUpdate` sobre la entidad, y `UpdatedBy` sale de `ICurrentUser` (token). Alternativa descartada por ahora: trigger de PostgreSQL que impida `UPDATE`/`DELETE` (defensa útil pero complica la limpieza de las pruebas de integración y la operación; se puede añadir después sin cambiar el modelo). La v1 no ofrece lectura de auditoría por API (YAGNI); se consulta por SQL.
+`assistant_settings_audit`: `id` bigint identidad (PK), `occurred_at` timestamptz, `actor_id` uuid, `action` varchar(16) (`Saved`/`Reset`, con CHECK), `credential_changed` boolean, `previous` jsonb NULL, `current` jsonb NULL (índice por `occurred_at` descendente). Los JSON contienen solo valores no secretos: `provider`, `model`, `timeoutSeconds`, `maxOutputTokens`, `effort`, `credentialConfigured`. «Cambio de clave» = `credential_changed = true` (puesta, sustituida o descartada por cambio de proveedor), sin su valor ni su forma cifrada. Garantía de solo inserción: el puerto expone únicamente `Add` (ninguna operación de actualización o borrado), una prueba de arquitectura busca `Remove`/`Update`/`ExecuteDelete`/`ExecuteUpdate` sobre la entidad, y `UpdatedBy` sale de `ICurrentUser` (token). Actualización de PR 8 (ADR 0019, que matiza al 0018 sin reescribirlo): se añadió además un trigger de PostgreSQL (migración `AddAssistantAuditImmutability`) que rechaza `UPDATE`, `DELETE` y `TRUNCATE` sobre la tabla, incluso para su propietario; no complicó las pruebas porque cada una usa una base propia. La v1 no ofrece lectura de auditoría por API (YAGNI); se consulta por SQL.
 
 ### DD-10. Instantánea inmutable y recarga en caliente
 
@@ -409,8 +409,46 @@ Si la estrategia de entrega no admite excepción, se mantienen los cortes 3a/3b 
 - **V-5 (PR 4, verificado)**: `Src_DoesNotHardcodeModelNames` sigue verde con `ProviderEndpoints` (URL de Gemini `.../v1beta/openai/`) y los nombres `Gemini`/`OpenAI`; el patrón `gemini-` exige guion. Nada que reformular.
 - **V-6 (PR 5, verificado)**: el orden de arranque se cumple sin marcar la instantánea inicial como «no cargada». `DatabaseMigrationHostedService` migra en `StartingAsync`; `AssistantSettingsPoller` hace la primera carga en `StartAsync` (acotada a 10 s) y Kestrel es el último servicio alojado. Pruebas de integración con PostgreSQL: la tabla existe en la primera lectura (base vacía con migraciones al arrancar) y el primer chat usa la fila ya cargada. Dos hallazgos: (1) `BackgroundService.StartAsync` no ejecuta `ExecuteAsync` de forma síncrona en este entorno, así que el `PeriodicTimer` se crea en `StartAsync` y no en `ExecuteAsync`; (2) el sondeo no se registra al exportar OpenAPI (`DocumentGeneration.IsRunningUnderTool`), que no debe tocar la base de datos.
 
+- **V-7 (PR 6b, verificado)**: `JsonUnmappedMemberHandling.Disallow` en un `record` posicional con valores por defecto da `400` `problem+json` (no `500`) con `ThrowOnBadRequest` activo; no hizo falta validar la lista de propiedades a mano. Quitando el atributo, `url`/`endpoint` darían `500` en el `PUT` y `200` en la prueba (mutación). `.ProducesValidationProblem()` documenta el `400` con `errors` en `openapi.json` (`OpenApiContractTests`). Matiz de PR 8: un valor numérico que no es entero JSON también da `400`, pero general y sin mapa por campo (véase la sección 14).
+- **V-8 (PR 6b, verificado en PR 8)**: la constante y el registro de la política `Manager` viven en `Api/Security/AuthorizationPolicies` (`AddAuthorizationPolicies()`); `AddTeam()` ya no registra políticas y no queda ninguna referencia a `TeamEndpoints.ManagerPolicy` en `src/` ni en `tests/`. `AuthorizationCoverageTests` fija que la política se registra una vez, exige el rol `Manager` y que `/equipo` y la configuración la usan.
+
+| V | Estado | Dónde |
+|---|---|---|
+| V-1 | Cerrada | PR 4 |
+| V-2 | Cerrada, sin contingencia | PR 4 (spike con manejador de grabación) |
+| V-3 | Cerrada; Ollama 400 = `unreachable` aceptado | PR 4 y sección 14 |
+| V-4 | Cerrada | PR 3a (Alpine) |
+| V-5 | Cerrada | PR 4; guarda vigente en `RepositoryConventionsTests` |
+| V-6 | Cerrada; el orden de arranque lo vigilan `AssistantSettingsStartupOrderTests` y, con dos instancias, `AssistantSettingsMultiInstanceTests` | PR 5 y PR 8 |
+| V-7 | Cerrada | PR 6b |
+| V-8 | Cerrada | PR 6b |
+
+`openspec/config.yaml` no se edita en esta fase (la actualización de la lista de ADR vigentes queda a decisión del usuario, tarea 8.3).
+
 ## 13. Preguntas abiertas
 
 - [ ] Confirmar con el product owner la política de provisión de la clave maestra en Railway (quién la genera y cómo se custodia la copia de seguridad).
 - [x] Resultado del spike (V-2): anotado en «Resultados de V-n en apply» (PR 4).
 - [ ] Si se quiere lectura de la auditoría por API/UI en una versión posterior (no incluida en esta).
+
+## 14. Desviaciones y riesgos aceptados (apply)
+
+### Desviación aceptada de DD-14: campos numéricos del PUT
+
+DD-14 pedía tipos de cadena en el DTO para devolver `400` por campo en español ante un valor no numérico. El DTO conserva `int?` en `timeoutSeconds` y `maxOutputTokens`, de modo que un valor que no es un entero JSON (`"abc"`, `1.5`, `true`, un número fuera de rango) recibe el `400` general de formato (`problem+json`, sin mapa `errors` y sin repetir el valor). Motivos:
+
+- Pasar a cadenas cambia el contrato publicado (`integer` → `string` en `openapi.json`) y obliga a que el cliente envíe `"20"` en lugar de `20`; la Web ya envía enteros y sus pruebas de nombres JSON exactos dependen de ello.
+- `AssistantSettingsInput` (Application) también es `int?` y lo usan todas las pruebas de reglas, de casos de uso y de la prueba de conexión; migrarlo a texto exige reescribirlas sin que ninguna regla de negocio cambie.
+- Los límites 5-55 y 64-4096 sí se validan por campo en español; el caso afectado solo lo produce un cliente que no es la Web (el campo del formulario es numérico), y el `400` no revela ningún valor ni toca la fila.
+
+`AssistantConfigurationStrictBodyTests.Put_WithANonIntegerNumericField_...` fija el comportamiento. Si más adelante se publica la API a terceros, el cambio correcto es pasar ambos DTO y `AssistantSettingsInput` a cadenas, con cambio de contrato explícito.
+
+### Riesgos aceptados
+
+- **Configuración única para toda la instancia, con acceso de cualquier Manager.** Hay una sola fila y la API no distingue equipos: cualquier Manager de cualquier equipo puede leerla, cambiarla, restablecerla y lanzar pruebas de conexión (con el límite de 3 por minuto y persona). Es coherente con el alcance del cambio (una empresa, un proveedor) y se mitiga con el aviso de alcance en la página, la auditoría de solo inserción (quién y cuándo) y el restablecimiento al entorno. Si la instancia pasara a servir a varias empresas o equipos aislados, habría que partir la fila por ámbito y añadir una política por equipo: no está en esta versión.
+- **`DELETE` sin token del cliente.** El caso de uso lee la fila y borra con su `xmin` (`Deleted`/`NotFound`/`Conflict`), así que no hay pérdida entre la lectura y el borrado en el servidor, pero el cliente no envía el token que vio. Un Manager con una vista obsoleta puede restablecer sin querer una configuración que otro guardó después de que él abriera la página. La Web lo advierte en el panel de confirmación («aunque otro responsable la haya cambiado»). Añadir un token del cliente es un cambio de contrato (parámetro nuevo y caso de uso) y se deja fuera.
+- **Un 400 de Ollama queda como `unreachable`.** Ollama no expone el estado HTTP del 400 en una propiedad (V-3: `OllamaException` o `InvalidOperationException` sin estado), así que la prueba de conexión no puede distinguir «parámetros rechazados» de otros fallos y lo clasifica como `unreachable`. Es el comportamiento de la contingencia de V-3: no se interpreta el texto del mensaje (podría contener datos del proveedor) para decidir la categoría.
+
+### Registro de estas decisiones: ADR 0019
+
+Los ADR no se reescriben (AGENTS §8) y el 0018 ya está fusionado en main. Las decisiones de PR 8 (trigger de auditoría en lugar de `REVOKE`, orden de despliegue en Railway, riesgos aceptados y custodia de la clave maestra como pregunta abierta) se recogen en `docs/adr/0019-auditoria-inmutable-y-despliegue-de-la-configuracion-del-asistente.md`, que complementa y matiza al 0018 sin sustituirlo.

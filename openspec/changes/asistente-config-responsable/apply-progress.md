@@ -540,3 +540,67 @@ BUILD de la solución con `-warnaserror` 0 advertencias 0 errores; `dotnet forma
 ### Pendiente de verificación manual (7.6, orquestador)
 
 Chrome contra API y Web locales: Manager ve ambos avisos y guarda; Employee sin enlace y «acceso denegado» por URL directa; clave vaciada tras guardar; el DOM no contiene la clave (inspeccionar); `<b>x</b>` como modelo se ve literal; 409 con dos pestañas muestra «Recargar»; «Probar conexión» muestra resultado y, tras 3 pruebas en un minuto, el mensaje de espera; sin `Ai__MasterKeys` el campo de clave sale desactivado con aviso. Registrar en `verify-report.md`.
+
+## PR 8 — Endurecimiento y documentación (rama `feat/asistente-config-pr8-endurecimiento`, apilada sobre `feat/asistente-config-pr7-web`)
+
+Incluye los puntos de seguimiento (a-h) acordados en las revisiones anteriores, en commits propios y antes de 8.1.
+
+| Unidad | Estado | Commit |
+|---|---|---|
+| a) `updatedAt` truncado a microsegundos | Hecha | `1f556e0` |
+| b) y c) nombre visible degradado, `switch` sin `default → Conflict`, PUT con cuerpo vacío/`null` | Hechas (un solo commit: tocan los mismos archivos) | `7adadec` |
+| d) DTO numéricos: se mantiene `int?` y se documenta la desviación | Hecha | `1690bcd` |
+| e) almacén: constante `xmin`, comentarios, `SaveAsync` dividido, `DELETE` de fila ya borrada = `NotFound` | Hecha | `2031635` |
+| f) auditoría de solo inserción en PostgreSQL (trigger) | Hecha | `24cf8f7` |
+| g) Web: clave conservada ante fallos, relectura fallida tras `DELETE`, confirmación desactivada, `NavLink` exacto | Hecha | `0776208` |
+| h) riesgos aceptados en `design.md` | Hecha | `936b631` |
+| 8.1 dos instancias y señal de fin de sondeo | Hecha | `3f8186b` |
+| 8.2 guardas de arquitectura | Hecha | `83a97c8` |
+| 8.3 V-1..V-8 cerradas en `design.md` | Hecha (`openspec/config.yaml` NO editado: pendiente de aprobación del usuario) | `a1705d1` |
+| 8.4 README y ADR 0019 (nuevo; el 0018 queda como en main) | Hecha (custodia de la clave maestra sigue como pregunta abierta para el product owner) | `2ba6b73` |
+| 8.5 puerta final | Pasada; **parada de `sdd-verify` pendiente** | `5f76da4` y este registro |
+
+### TDD Cycle Evidence (PR 8)
+
+| Unidad | Archivo de prueba | RED | GREEN | TRIANGULAR | REFACTOR |
+|---|---|---|---|---|---|
+| a | `SaveAssistantSettingsUseCaseTests` | `Expected: ...1234560+00:00 Actual: ...1234567+00:00` | 22/22 | Vista, fila guardada y auditoría con el mismo instante | Nada necesario |
+| b | `AssistantConfigurationEndpointsTests` (GET y PUT con repositorio que lanza) | `Expected: OK Actual: InternalServerError` (2 pruebas) | 23/23 | GET con fila ajena y PUT tras confirmar el guardado | `UpdatedByNameResolver` (registra solo el tipo de excepción) |
+| c | mismas pruebas | Caracterización: el PUT con cuerpo vacío y `null` ya daba `400` (verde a la primera, 2 casos). El `default → throw` no es alcanzable (la jerarquía de resultados está sellada): cambio mecánico | 23/23 | `""` y `null` | Nada |
+| d | `AssistantConfigurationStrictBodyTests` | Caracterización del `400` general con `"abc"`, `1.5`, `99999999999`, `true` (4 casos, verde a la primera) | 10/10 | 4 formas de valor no entero | Nada |
+| e | `AssistantSettingsStoreTests` | `Expected: NotFound Actual: Conflict` (fila borrada por otra conexión tras la lectura, con un interceptor de `SaveChanges`) | 22/22 | Fila borrada = `NotFound`; fila cambiada = `Conflict` | `SaveAsync` en `TrackRowForSaveAsync` + `CommitSaveAsync`; constante `XminColumn`; `IsMissingTable` |
+| f | `AssistantSettingsAuditImmutabilityTests` | 4 de 6 fallan: `No exception was thrown` para `UPDATE`, `DELETE`, `TRUNCATE` y `Actual: []` sin triggers | 6/6 | `INSERT` sigue funcionando; solo la tabla de auditoría tiene triggers; `Down` los elimina y devuelve `UPDATE`/`DELETE`; `MigrationTests` (5 migraciones, sin alterar otras tablas) | Guarda de arquitectura que exige los triggers y que la migración solo toca su tabla |
+| g | `AssistantConfigurationFormTests`, `RepositoryConventionsTests` | No compila (`ReloadAfterReset`, `CanConfirmReset`); tras añadir solo las firmas, 9 pruebas fallan (clave vaciada en 6 estados, carga no marcada como no vigente, confirmación aceptable en curso) y 2 guardas de página/menú | 288/288 y 84/84 | 6 estados de error con clave conservada; recarga tras `409` la vacía; relectura fallida y recarga posterior; confirmación descartada al empezar otra operación | Página: «Reintentar» no se duplica con «Recargar» |
+| 8.1 | `AssistantSettingsPollerTests`, `AssistantSettingsMultiInstanceTests` | No compila (`PollCompleted`); las 4 pruebas de dos instancias son caracterización del comportamiento de PR 5 (verdes a la primera). Mutación: sin la guarda del sondeo **y** sin la del cargador fallan 2 de 4 (`Expected: 1 Actual: 2` avisos) | 11/11 y 4/4 (6 ejecuciones seguidas del sondeo sin fallos) | Otra instancia, tabla ausente, fila no descifrable (otra clave maestra), fila manipulada (byte cambiado) y recuperación al borrarla | Se eliminan `WaitUntilAsync` y los `Task.Delay` de las pruebas del sondeo y de `PollOnceAsync` |
+| 8.2 | `DependencyRuleTests`, `AssistantAuditAppendOnlyTests` | Guardas nuevas verdes a la primera (reflejan el estado actual) | 153/153 | SDK de proveedores solo en Infrastructure (3 ensamblados); migración acotada a su tabla | Nada |
+| 8.4 | `DeliveryArtifactsTests` | 3 pruebas fallan: README sin la sección de Railway del asistente, textos «llegará en un cambio posterior» y ADR sin trigger ni custodia | 153/153 | `Ai__MasterKeys__1` solo por `stdin` y sin valor asignado en el documento | Nada |
+
+### Work Unit Evidence (PR 8)
+
+| Evidencia | Valor |
+|---|---|
+| Prueba focal | `dotnet test tests/TimeTracker.Api.IntegrationTests --filter "FullyQualifiedName~MultiInstance"` = 4/4; `--filter "FullyQualifiedName~AuditImmutability"` = 6/6; `dotnet test tests/TimeTracker.ArchitectureTests` = 153/153 |
+| Arnés de ejecución | Dos `WebApplicationFactory` sobre la misma base PostgreSQL 18 (Testcontainers), cada una con su `FakeTimeProvider` y el sondeo real a 1 s; fábrica de clientes falsa (nunca red) |
+| Límite de rollback | Revertir los commits de la rama (migración `AddAssistantAuditImmutability` incluida: su `Down` elimina los triggers) |
+
+### Puerta del PR 8 (ejecutada)
+
+BUILD de la solución con `-warnaserror` 0 advertencias 0 errores; `dotnet format --verify-no-changes` sin cambios; TEST: Domain 67, Application 324, Infrastructure 398, Web 288, Architecture 153, Api.IntegrationTests 538 (Docker disponible; no se tocaron contenedores, volúmenes, redes ni imágenes existentes; sin prune); COV-A Application 99,8 % líneas / 96,6 % ramas (mínimo 80 %), COV-D Domain 100 %; VULN (`--vulnerable --include-transitive`) limpio en los once proyectos. `docs/api/openapi.json` restaurado con `git checkout` y sin commitear (el contrato no cambia: el punto d se resolvió sin tocarlo).
+
+### Decisiones fuera de spec (PR 8)
+
+- **d) Se mantiene `int?`** en los DTO numéricos y se documenta como desviación aceptada de DD-14 (sección 14 de `design.md`): cambiar a cadenas altera el contrato publicado, la Web y todas las pruebas de Application.
+- **Trigger y no `REVOKE`** para la auditoría: el propietario de la tabla (el rol de la aplicación) no queda frenado por un `REVOKE`. Cubre también `TRUNCATE`. El ADR 0018 ya estaba fusionado en main y no se reescribe (AGENTS §8): el matiz sobre la alternativa descartada del trigger va en el ADR 0019 nuevo, que lo complementa.
+- **`Fail` nunca vacía la clave** (ni con 400 ni con 409): solo la vacía un éxito o recargar desde el servidor.
+- **Señal de pruebas en producción:** `AssistantSettingsPoller.PollCompleted` (evento público) para esperar sin tiempo real; sin coste en ejecución normal.
+- `UpdatedByNameResolver` (nuevo, Api) centraliza la degradación de `updatedBy` y registra solo el tipo de la excepción.
+- `ReloadApiFactory` fija `Ai__AllowedProviders=Anthropic,OpenAI,Ollama` y acepta clave maestra opcional.
+- Los puntos b y c comparten commit (mismos archivos).
+
+### No cerrado
+
+- **7.6** (verificación manual en Chrome) y su `verify-report.md`: pendientes del orquestador.
+- **Parada de `sdd-verify`: pendiente** (no ejecutada).
+- **`openspec/config.yaml`** sin editar (requiere aprobación del usuario).
+- **Custodia de la clave maestra en Railway** (§13): pregunta abierta para el product owner, documentada en README y ADR 0019.
+- **Archivo de `asistente-config-responsable`**: tras la verificación.

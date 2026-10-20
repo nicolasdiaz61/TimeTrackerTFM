@@ -204,11 +204,11 @@ La previsión de carga de revisión está al final («Review Workload Forecast»
 
 **Objetivo:** pruebas de integración entre instancias, guardas finales y documentación. **Rollback:** revertir pruebas y documentación. **Comando:** `T-I` + `T-AR`.
 
-- [ ] 8.1 RED/GREEN `IT`: dos instancias sobre la misma base de datos con `Ai__SettingsPollSeconds=1`; guardar en la primera → la segunda usa el modelo nuevo; la tabla ausente usa el entorno; fila no descifrable conserva la última válida y deja un aviso sin secretos. Cubre AS «Otra instancia», «Tabla ausente», «Fila inválida»; CP «Manipulación detectada».
-- [ ] 8.2 RED/GREEN `AR`: confirmar todas las guardas (`DependencyRuleTests`, `Src_DoesNotHardcodeModelNames`, `OpenApiContractTests`, `DeliveryArtifactsTests`, auditoría de solo inserción, `new Uri(`); cerrar huecos de los PR anteriores.
-- [ ] 8.3 Cerrar V-1 a V-8 en `design.md` («Resultados de V-n en apply») y actualizar la lista de ADR vigentes/estado en `openspec/config.yaml` solo si el usuario lo aprueba.
-- [ ] 8.4 `README.md` y ADR 0018: despliegue en Railway (definir `Ai__MasterKeys__1` y `Ai__ActiveMasterKeyVersion=1` **antes** de que un Manager guarde una clave; riesgo de Responses API; datos personales). Resolver con el product owner la pregunta abierta de custodia de la clave maestra (§13).
-- [ ] 8.5 Puerta final completa; PARADA para `sdd-verify`.
+- [x] 8.1 RED/GREEN `IT`: dos instancias sobre la misma base de datos con `Ai__SettingsPollSeconds=1`; guardar en la primera → la segunda usa el modelo nuevo; la tabla ausente usa el entorno; fila no descifrable conserva la última válida y deja un aviso sin secretos. Cubre AS «Otra instancia», «Tabla ausente», «Fila inválida»; CP «Manipulación detectada».
+- [x] 8.2 RED/GREEN `AR`: confirmar todas las guardas (`DependencyRuleTests`, `Src_DoesNotHardcodeModelNames`, `OpenApiContractTests`, `DeliveryArtifactsTests`, auditoría de solo inserción, `new Uri(`); cerrar huecos de los PR anteriores.
+- [x] 8.3 Cerrar V-1 a V-8 en `design.md` («Resultados de V-n en apply») y actualizar la lista de ADR vigentes/estado en `openspec/config.yaml` solo si el usuario lo aprueba (`config.yaml` NO se ha editado: pendiente de aprobación).
+- [x] 8.4 `README.md` y ADR 0019 (nuevo, complementa al 0018 ya fusionado; el 0018 no se modifica): despliegue en Railway (definir `Ai__MasterKeys__1` y `Ai__ActiveMasterKeyVersion=1` **antes** de que un Manager guarde una clave; riesgo de Responses API; datos personales). Resolver con el product owner la pregunta abierta de custodia de la clave maestra (§13).
+- [x] 8.5 Puerta final completa pasada (véase apply-progress). **PARADA para `sdd-verify` PENDIENTE: no se ha ejecutado ni se da por hecha.**
 
 ---
 

@@ -54,6 +54,23 @@ public class DependencyRuleTests
         Assert.True(illegal.Count == 0, $"TimeTracker.Application referencia ensamblados ajenos al marco base y a Domain: {string.Join(", ", illegal)}");
     }
 
+    // DD-1 y DD-16: los paquetes de proveedores de IA (y su contrato) solo se usan en Infrastructure; Api compone, no los toca.
+    [Theory]
+    [InlineData("TimeTracker.Domain")]
+    [InlineData("TimeTracker.Application")]
+    [InlineData("TimeTracker.Api")]
+    public void ProviderSdks_AreOnlyReferencedByInfrastructure(string assemblyName)
+    {
+        string[] providerSdks = ["OpenAI", "Anthropic", "OllamaSharp", "Microsoft.Extensions.AI.OpenAI", "System.ClientModel"];
+
+        var illegal = Assembly.Load(assemblyName).GetReferencedAssemblies()
+            .Select(reference => reference.Name!)
+            .Where(name => providerSdks.Contains(name, StringComparer.Ordinal))
+            .ToList();
+
+        Assert.True(illegal.Count == 0, $"{assemblyName} referencia SDK de proveedores de IA: {string.Join(", ", illegal)}");
+    }
+
     // Coverlet instrumenta el ensamblado e inyecta una referencia a `netstandard`; también es marco base.
     private static bool IsBaseFramework(string name)
         => name.StartsWith("System", StringComparison.Ordinal) || name == "netstandard";
