@@ -164,11 +164,11 @@ La previsión de carga de revisión está al final («Review Workload Forecast»
 
 **Objetivo:** tester, clasificador y política `assistant-config-test`. **Rollback:** borrar tester/clasificador y la política. **Comando:** `T-IF`. Depende de 2 y 4.
 
-- [ ] 6a.1 **Copia previa** de `API/RateLimitingServiceCollectionExtensions.cs` y sus pruebas.
-- [ ] 6a.2 RED `IFT/Assistant/ConnectionFailureClassifierTests`: 401/403 → `authentication`; 404 → `model-not-found`; 400/422 → `rejected`; plazo propio → `timeout`; 429, 5xx, red y desconocido → `unreachable`; clasifica por estado HTTP, no por mensaje. Cubre AS «Prueba de conexión» (Categorías de error, Parámetros rechazados, Otros fallos) · DD-13, V-3. GREEN.
-- [ ] 6a.3 RED `AssistantConnectionTesterTests` (`FakeChatClient`): mensaje fijo sin datos del usuario, sin herramientas, `MaxOutputTokens` 64, mismo `CreateChatOptions` con el esfuerzo del candidato, plazo `min(timeout, 15)`, cliente temporal desechado, no toca la instantánea; la respuesta no contiene `https://api.ejemplo.test/v1` ni `clave-prueba-123456` ni en el registro (solo tipo de excepción y categoría). Cubre AS «Conexión correcta», «Sin eco del proveedor», «No guarda»; CP «Registros y errores» · DD-13. GREEN `AssistantConnectionTester`.
-- [ ] 6a.4 RED prueba de política: 3 permisos por minuto por claim `sub`, `QueueLimit = 0`, la 4.ª rechaza con detalle propio «Ha realizado demasiadas pruebas de conexión…» y `Retry-After`; no consume permisos un anónimo ni un Employee (la política va tras autorizar). Cubre AS «Límite de tasa» · DD-15. GREEN política `assistant-config-test` y `OnRejected` por política sin cambiar la del chat.
-- [ ] 6a.5 REFACTOR y puerta de PR.
+- [x] 6a.1 **Copia previa** de `API/RateLimitingServiceCollectionExtensions.cs` y sus pruebas.
+- [x] 6a.2 RED `IFT/Assistant/ConnectionFailureClassifierTests`: 401/403 → `authentication`; 404 → `model-not-found`; 400/422 → `rejected`; plazo propio → `timeout`; 429, 5xx, red y desconocido → `unreachable`; clasifica por estado HTTP, no por mensaje. Cubre AS «Prueba de conexión» (Categorías de error, Parámetros rechazados, Otros fallos) · DD-13, V-3. GREEN.
+- [x] 6a.3 RED `AssistantConnectionTesterTests` (`FakeChatClient`): mensaje fijo sin datos del usuario, sin herramientas, `MaxOutputTokens` 64, mismo `CreateChatOptions` con el esfuerzo del candidato, plazo `min(timeout, 15)`, cliente temporal desechado, no toca la instantánea; la respuesta no contiene `https://api.ejemplo.test/v1` ni `clave-prueba-123456` ni en el registro (solo tipo de excepción y categoría). Cubre AS «Conexión correcta», «Sin eco del proveedor», «No guarda»; CP «Registros y errores» · DD-13. GREEN `AssistantConnectionTester`.
+- [x] 6a.4 RED prueba de política: 3 permisos por minuto por claim `sub`, `QueueLimit = 0`, la 4.ª rechaza con detalle propio «Ha realizado demasiadas pruebas de conexión…» y `Retry-After`; no consume permisos un anónimo ni un Employee (la política va tras autorizar). Cubre AS «Límite de tasa» · DD-15. GREEN política `assistant-config-test` y `OnRejected` por política sin cambiar la del chat.
+- [x] 6a.5 REFACTOR y puerta de PR.
 
 ---
 
