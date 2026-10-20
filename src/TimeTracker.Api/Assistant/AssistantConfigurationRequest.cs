@@ -9,13 +9,13 @@ namespace TimeTracker.Api.Assistant;
 /// </summary>
 [JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
 public sealed record AssistantConfigurationRequest(
-    string? Provider,
-    string? Model,
-    int? TimeoutSeconds,
-    int? MaxOutputTokens,
-    string? Effort,
-    string? Credential,
-    string? ConcurrencyToken)
+    string? Provider = null,
+    string? Model = null,
+    int? TimeoutSeconds = null,
+    int? MaxOutputTokens = null,
+    string? Effort = null,
+    string? Credential = null,
+    string? ConcurrencyToken = null)
 {
     /// <summary>La clave no sale en registros ni en el texto de excepciones.</summary>
     private bool PrintMembers(StringBuilder builder)
@@ -29,12 +29,12 @@ public sealed record AssistantConfigurationRequest(
 /// <summary>Cuerpo de la prueba de conexión: los mismos campos que el guardado salvo el token; lo que falte se completa con la configuración efectiva.</summary>
 [JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
 public sealed record AssistantConnectionTestRequest(
-    string? Provider,
-    string? Model,
-    int? TimeoutSeconds,
-    int? MaxOutputTokens,
-    string? Effort,
-    string? Credential)
+    string? Provider = null,
+    string? Model = null,
+    int? TimeoutSeconds = null,
+    int? MaxOutputTokens = null,
+    string? Effort = null,
+    string? Credential = null)
 {
     private bool PrintMembers(StringBuilder builder)
     {

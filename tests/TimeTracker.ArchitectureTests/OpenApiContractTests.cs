@@ -5,6 +5,7 @@ namespace TimeTracker.ArchitectureTests;
 public class OpenApiContractTests
 {
     private const string TimeEntriesPath = "/api/time-entries";
+    private const string ConfigurationPath = "/api/asistente/configuracion";
 
     [Fact]
     public void ExportedDocument_ContainsHealthGet200()
@@ -170,6 +171,85 @@ public class OpenApiContractTests
     }
 
     [Fact]
+    public void ExportedDocument_AssistantConfigurationRoutesHaveExactlyTheOperationsAndResponsesOfDd14()
+    {
+        using var document = LoadDocument();
+        var paths = document.RootElement.GetProperty("paths");
+
+        Assert.True(paths.TryGetProperty(ConfigurationPath, out var configuration), $"Falta la ruta {ConfigurationPath} en el contrato.");
+        Assert.Equal(["delete", "get", "put"], configuration.EnumerateObject().Select(operation => operation.Name).Order(StringComparer.Ordinal));
+        Assert.Equal(["post"], paths.GetProperty($"{ConfigurationPath}/prueba").EnumerateObject().Select(operation => operation.Name));
+        Assert.Equal(["200", "401", "403"], ResponseCodes(paths, ConfigurationPath, "get"));
+        Assert.Equal(["200", "400", "401", "403", "409"], ResponseCodes(paths, ConfigurationPath, "put"));
+        Assert.Equal(["204", "401", "403", "409"], ResponseCodes(paths, ConfigurationPath, "delete"));
+        Assert.Equal(["200", "400", "401", "403", "429"], ResponseCodes(paths, $"{ConfigurationPath}/prueba", "post"));
+        Assert.True(RequiresBearer(document.RootElement, ConfigurationPath, "get"));
+        Assert.True(RequiresBearer(document.RootElement, ConfigurationPath, "put"));
+        Assert.True(RequiresBearer(document.RootElement, ConfigurationPath, "delete"));
+        Assert.True(RequiresBearer(document.RootElement, $"{ConfigurationPath}/prueba", "post"));
+        // El 413 por cuerpo grande lo rechaza el servidor antes de enlazarlo y no se declara.
+        Assert.DoesNotContain("413", ResponseCodes(paths, ConfigurationPath, "put"));
+        // El borrado no lleva token ni cuerpo: el servidor captura la versión que lee (DD-8, DD-14).
+        Assert.False(configuration.GetProperty("delete").TryGetProperty("requestBody", out _));
+        Assert.False(configuration.GetProperty("delete").TryGetProperty("parameters", out _));
+    }
+
+    [Fact]
+    public void ExportedDocument_ConfigurationSchemasDeclareExactlyTheDd14Fields()
+    {
+        using var document = LoadDocument();
+        var schemas = document.RootElement.GetProperty("components").GetProperty("schemas");
+
+        Assert.Equal(
+            ["concurrencyToken", "credential", "effort", "maxOutputTokens", "model", "provider", "timeoutSeconds"],
+            PropertyNames(schemas, "AssistantConfigurationRequest").Order(StringComparer.Ordinal));
+        Assert.Equal(
+            ["credential", "effort", "maxOutputTokens", "model", "provider", "timeoutSeconds"],
+            PropertyNames(schemas, "AssistantConnectionTestRequest").Order(StringComparer.Ordinal));
+        Assert.Equal(
+            ["allowedProviders", "applied", "concurrencyToken", "credentialConfigured", "credentialStorageAvailable", "effort", "maxOutputTokens", "model", "provider", "sources", "timeoutSeconds", "updatedAt", "updatedBy"],
+            PropertyNames(schemas, "AssistantConfigurationResponse").Order(StringComparer.Ordinal));
+        Assert.Equal(["message", "result"], PropertyNames(schemas, "AssistantConnectionTestResponse").Order(StringComparer.Ordinal));
+        // Las peticiones rechazan propiedades desconocidas (E-7) y el contrato lo declara.
+        Assert.False(schemas.GetProperty("AssistantConfigurationRequest").GetProperty("additionalProperties").GetBoolean());
+        Assert.False(schemas.GetProperty("AssistantConnectionTestRequest").GetProperty("additionalProperties").GetBoolean());
+    }
+
+    [Fact]
+    public void ExportedDocument_ConfigurationSchemasHaveNoUrlOrEndpointProperty()
+    {
+        using var document = LoadDocument();
+        var schemas = document.RootElement.GetProperty("components").GetProperty("schemas");
+        var configurationSchemas = schemas.EnumerateObject().Where(schema => schema.Name.StartsWith("Assistant", StringComparison.Ordinal) || schema.Name == "AllowedProviderResponse").ToList();
+
+        // Sin campo de URL no hay forma de dirigir la clave a otro destino (SSRF, DD-3).
+        Assert.Contains(configurationSchemas, schema => schema.Name == "AssistantConfigurationRequest");
+        var names = configurationSchemas.SelectMany(schema => PropertyNames(schemas, schema.Name)).ToList();
+        Assert.NotEmpty(names);
+        Assert.DoesNotContain(names, name => name.Contains("url", StringComparison.OrdinalIgnoreCase) || name.Contains("endpoint", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void ExportedDocument_TheKeyIsInRequestsAndOnlyItsIndicatorInResponses()
+    {
+        using var document = LoadDocument();
+        var schemas = document.RootElement.GetProperty("components").GetProperty("schemas");
+
+        Assert.Contains("credential", PropertyNames(schemas, "AssistantConfigurationRequest"));
+        Assert.Contains("credential", PropertyNames(schemas, "AssistantConnectionTestRequest"));
+        Assert.Contains("credentialConfigured", PropertyNames(schemas, "AssistantConfigurationResponse"));
+        foreach (var response in new[] { "AssistantConfigurationResponse", "AssistantConnectionTestResponse", "AllowedProviderResponse" })
+        {
+            Assert.DoesNotContain("credential", PropertyNames(schemas, response));
+        }
+
+        // Ningún otro esquema de respuesta declara la clave. «credential» dentro de «sources» es solo el origen del valor (env, stored, none).
+        var withKey = schemas.EnumerateObject().Where(schema => PropertyNames(schemas, schema.Name).Contains("credential")).Select(schema => schema.Name).Order(StringComparer.Ordinal);
+        Assert.Equal(["AssistantConfigurationRequest", "AssistantConfigurationSources", "AssistantConnectionTestRequest"], withKey);
+        Assert.Equal("string", schemas.GetProperty("AssistantConfigurationSources").GetProperty("properties").GetProperty("credential").GetProperty("type").GetString());
+    }
+
+    [Fact]
     public void ExportedDocument_NeverMentionsTheProviderApiKey()
     {
         var text = File.ReadAllText(Path.Combine(RepositoryRoot.Path, "docs", "api", "openapi.json"));
@@ -177,6 +257,14 @@ public class OpenApiContractTests
         Assert.DoesNotContain("apikey", text, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("Ai__", text, StringComparison.Ordinal);
     }
+
+    private static IEnumerable<string> ResponseCodes(JsonElement paths, string path, string method)
+        => paths.GetProperty(path).GetProperty(method).GetProperty("responses").EnumerateObject().Select(response => response.Name).Order(StringComparer.Ordinal);
+
+    private static List<string> PropertyNames(JsonElement schemas, string schema)
+        => schemas.GetProperty(schema).TryGetProperty("properties", out var properties)
+            ? [.. properties.EnumerateObject().Select(property => property.Name)]
+            : [];
 
     // Un requisito de la operación sustituye al global; «security: []» en la operación lo deja sin requisitos.
     private static bool RequiresBearer(JsonElement root, string path, string method)

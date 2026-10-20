@@ -37,7 +37,7 @@ public static class AssistantConfigurationEndpoints
         group.MapGet(string.Empty, GetAsync);
 
         group.MapPut(string.Empty, SaveAsync)
-            .ProducesProblem(StatusCodes.Status400BadRequest)
+            .ProducesValidationProblem()
             .ProducesProblem(StatusCodes.Status409Conflict);
 
         group.MapDelete(string.Empty, ResetAsync)
@@ -45,7 +45,7 @@ public static class AssistantConfigurationEndpoints
 
         group.MapPost("prueba", TestAsync)
             .RequireRateLimiting(RateLimitingServiceCollectionExtensions.AssistantConfigTestPolicy)
-            .ProducesProblem(StatusCodes.Status400BadRequest)
+            .ProducesValidationProblem()
             .ProducesProblem(StatusCodes.Status429TooManyRequests);
 
         return endpoints;
