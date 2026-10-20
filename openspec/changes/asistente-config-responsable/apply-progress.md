@@ -403,3 +403,45 @@ BUILD de la solución con `-warnaserror` 0 advertencias 0 errores; `dotnet forma
 - En las pruebas de integración el sondeo avanza con el `FakeTimeProvider` de la aplicación (que también emite los tokens): `ReloadApiFactory.PollOnceAsync` avanza un segundo y espera a la lectura. Los dobles `DisposalTrackingChatClient` y `RecordingChatClientFactory` se comparten por enlace de compilación con Api.IntegrationTests, igual que `FakeChatClient`.
 - V-6 se cumple tal como está el orden de arranque, así que **no** se implementó la marca de instantánea inicial «no cargada» (era solo la contingencia).
 - Tamaño: 11 commits de código, 495 líneas de producción y 1573 de pruebas (≈ 2068 en total con las correcciones 4.2), por encima de la previsión de ≈ 380 líneas del PR 5 (sobre todo pruebas).
+
+## PR 6a — Prueba de conexión y límite de tasa (rama `feat/asistente-config-pr6a-prueba-conexion`, apilada sobre `feat/asistente-config-pr5-recarga`)
+
+| Tarea | Estado | Commit |
+|---|---|---|
+| 6a.1 Copia previa (`..\TimeTracker.rollback\pr-6a\`: `RateLimitingServiceCollectionExtensions.cs` y `AssistantRateLimitTests.cs`) | Hecha | fuera del repositorio |
+| 6a.2 `ConnectionFailureClassifier` y `ConnectionTestResults` | Hecha | `b5e44f9` |
+| 6a.3 `AssistantConnectionTester`, registro y registro de eventos | Hecha | `95896ac` |
+| 6a.4 Política `assistant-config-test` y `OnRejected` por política | Hecha | `19a9f51` |
+| 6a.5 REFACTOR y puerta | Hecha | (el REFACTOR de 6a.4 va en su commit) |
+
+### TDD Cycle Evidence (PR 6a)
+
+| Tarea | Archivo de prueba | Capa | RED | GREEN | TRIANGULAR | REFACTOR |
+|---|---|---|---|---|---|---|
+| 6a.2 | `ConnectionFailureClassifierTests` | Infrastructure | No compila: `ConnectionFailureClassifier` y `ConnectionTestResults` inexistentes (solo esos errores CS0103) | 36/36 a la primera | Excepciones reales de los tres SDK (OpenAI, Anthropic, Ollama) con un manejador que solo devuelve el estado y un cuerpo que miente (`401… 404… 400…`): 401/403, 404, 422, 429, 500, 502 en cada SDK y 400 en OpenAI/Anthropic; Ollama 400 = `unreachable`; estado en una excepción interna; el mensaje nunca decide; plazo propio y `TimeoutException` interna = `timeout`; textos fijos de las seis categorías | Nada necesario |
+| 6a.3 | `AssistantConnectionTesterTests`, `AssistantRegistrationTests` | Infrastructure | No compila: `AssistantConnectionTester` inexistente; después, la prueba de registro falló con `No service for type 'IAssistantConnectionTester' has been registered` | 17/17 y suite 398/398 | Mensaje fijo único sin herramientas, 64 tokens, modelo y esfuerzo del candidato (Low/High/nulo); la fábrica recibe valores del candidato y solo el endpoint del entorno; la clave candidata gana a la del entorno; plazo `min(40, 15)` = 15 s y `min(10, 15)` = 10 s con `FakeTimeProvider` (a 14,999 s sigue pendiente); cliente desechado en éxito, fallo, plazo y cancelación; fallo de creación = `unreachable`; cancelación del llamante se propaga; instantánea y cliente del chat intactos; 3 fallos con URL y clave en el mensaje: ni respuesta ni registro los contienen y el registro lleva solo tipo y categoría. Mutación: con el plazo sin `min` la prueba de 40 s falla | Nada necesario |
+| 6a.4 | `AssistantConfigTestRateLimitTests` | Api.IntegrationTests | No compila: `RateLimitingServiceCollectionExtensions.AssistantConfigTestPolicy` inexistente | 5/5 nuevas + 20 del chat/login = 25/25 | 3 permisos y 4.ª = 429 con detalle propio y `Retry-After` 1–60; partición por `sub` (otro `sub` tiene sus 3); 6 anónimos (401) y 6 Employee (403) no consumen permisos del mismo `sub` que luego hace 3 pruebas como Manager; chat intacto (6.ª = 429 con su texto) y contadores independientes | `PerUser(...)` compartido por las políticas del chat y de la prueba; `DetailFor(policy)` en lugar del ternario |
+
+### Work Unit Evidence (PR 6a)
+
+| Evidencia | Valor |
+|---|---|
+| Prueba focal | `dotnet test tests/TimeTracker.Infrastructure.Tests` = 398/398 (+54: clasificador 36, probador 17, registro 1); `dotnet test tests/TimeTracker.Api.IntegrationTests --filter "FullyQualifiedName~AssistantConfigTestRateLimit\|FullyQualifiedName~AssistantRateLimitTests\|FullyQualifiedName~LoginRateLimit"` = 25/25 |
+| Arnés de ejecución | Clasificador: SDK reales con un `HttpMessageHandler` de estado fijo, sin red. Política: servidor en memoria (`TestServer`) con el `AddRateLimiting()` real y el orden de `Program` (autenticación, autorización, limitador) sobre dos rutas mínimas; el endpoint real llega en la PR 6b (6b.6 repite el 429 sobre él) |
+| Límite de rollback | Revertir `19a9f51` quita la política; revertir `95896ac` y `b5e44f9` quita probador, clasificador y su registro. Copia previa en `..\TimeTracker.rollback\pr-6a\` |
+
+### Puerta del PR 6a (ejecutada)
+
+BUILD de la solución con `-warnaserror` 0 advertencias 0 errores; `dotnet format --verify-no-changes` sin cambios; TEST: Domain 67, Application 323, Infrastructure 398, Web 223, Architecture 137, Api.IntegrationTests 476 (Docker disponible; no se tocaron contenedores, volúmenes, redes ni imágenes existentes; sin prune); VULN (`--vulnerable --include-transitive`) limpio en los 11 proyectos. `docs/api/openapi.json` restaurado con `git checkout` y sin commitear (el contrato no cambia: aún no hay endpoints).
+
+### Decisiones fuera de spec (PR 6a)
+
+- **Ollama con 400 = `unreachable`** (V-3): `OllamaException` / `InvalidOperationException` no traen estado HTTP y la segunda es genérica; clasificarlas como `rejected` también etiquetaría fallos locales. Consecuencia aceptada: un modelo de Ollama que rechaza `think` aparece como «No se pudo contactar con el proveedor». Una prueba lo fija; reabrir solo si OllamaSharp expone el estado.
+- Un `TimeoutException` en la cadena de excepciones (plazo propio de `HttpClient` en Ollama o de red de los SDK) también es `timeout`, además del plazo propio del probador; así una carrera entre ambos plazos no cambia la categoría.
+- La excepción se examina recorriendo `InnerException`; el estado se toma de la primera que lo tenga.
+- Cualquier respuesta completada es `ok`, aunque el texto venga vacío (la spec dice «respuesta correcta»).
+- El probador no usa el pipeline de herramientas (`AssistantChatPipeline.Build`): reutiliza solo `CreateChatOptions(options, [])` con `MaxOutputTokens = 64` en las opciones copiadas. Del entorno solo toma el endpoint de Ollama; la clave es siempre la del candidato.
+- Registro: dos eventos nuevos (20 y 21) con proveedor, categoría y tipo de la excepción; ni el modelo ni el mensaje.
+- `IAssistantConnectionTester` se registra como singleton (sin estado); el caso de uso `TestAssistantConnectionUseCase` se registra en 6b.4 con el resto.
+- La prueba de la política usa un servidor mínimo en lugar del API completo: el endpoint real no existe hasta la 6b.
+- Tamaño: 177 líneas de producción y 567 de pruebas (≈ 744) frente a las ≈ 220 previstas; la desviación son las pruebas triangulares (SDK reales, plazo, no-eco).
