@@ -15,7 +15,7 @@ internal sealed class RecordingChatClientFactory : IChatClientFactory
 
     public IChatClient? Create(AiOptions options)
     {
-        Created.Add(options.Copy());
+        Created.Add(options);
         if (Failure is { } failure)
         {
             throw failure;

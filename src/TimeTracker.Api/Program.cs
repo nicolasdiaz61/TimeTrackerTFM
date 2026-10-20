@@ -24,6 +24,13 @@ builder.Services.AddTimeEntries();
 builder.Services.AddTeam();
 builder.Services.AddDemoSeeding();
 builder.Services.AddAssistant();
+// Va después de la migración (DatabaseMigrationHostedService corre en StartingAsync) y antes de que Kestrel acepte peticiones:
+// Kestrel arranca como último servicio alojado, así que la primera carga acotada queda completa antes del primer chat (V-6).
+// La exportación del contrato OpenAPI nunca debe tocar la base de datos: allí no se registra el sondeo.
+if (!DocumentGeneration.IsRunningUnderTool)
+{
+    builder.Services.AddHostedService<AssistantSettingsPoller>();
+}
 builder.Services.AddHostedService<ProtectionStatusLogger>();
 builder.Services.AddRateLimiting();
 builder.Services.AddOpenApi(options => options.AddBearerSecurity());
