@@ -289,27 +289,82 @@ public class RepositoryConventionsTests
     }
 
     [Fact]
-    public void InfrastructureAssistant_CreatesUrisOnlyInProviderEndpointsAndTheFactory()
+    public void InfrastructureAssistant_CreatesUrisOnlyInProviderEndpointsAndTheOllamaEndpoint()
     {
         // Sin URL elegida por el Manager (SSRF, DD-3): las únicas direcciones salen de una constante fija o del entorno (Ollama).
-        string[] allowed = ["ProviderEndpoints.cs", "ChatClientFactory.cs"];
-
         var offenders = SourceFiles("src/TimeTracker.Infrastructure/Assistant")
-            .Where(file => !allowed.Contains(Path.GetFileName(file)))
-            .Where(file => System.Text.RegularExpressions.Regex.IsMatch(File.ReadAllText(file), @"new\s+(System\.)?Uri\("))
+            .Where(file => CreatesUnapprovedUri(Path.GetFileName(file), File.ReadAllText(file)))
             .Select(file => Path.GetRelativePath(RepositoryRoot.Path, file))
             .ToList();
-        Assert.True(offenders.Count == 0, $"Crean un Uri fuera de ProviderEndpoints y la fábrica: {string.Join(", ", offenders)}");
+        Assert.True(offenders.Count == 0, $"Crean un Uri fuera de ProviderEndpoints y del endpoint de Ollama: {string.Join(", ", offenders)}");
 
         Assert.Contains("new Uri(", File.ReadAllText(Path.Combine(RepositoryRoot.Path, "src/TimeTracker.Infrastructure/Assistant/ProviderEndpoints.cs")), StringComparison.Ordinal);
     }
 
-    private static IEnumerable<string> SourceFiles(string directory)
+    [Theory]
+    [InlineData("var u = new Uri(\"https://a\");")]
+    [InlineData("var u = new System.Uri(\"https://a\");")]
+    [InlineData("var u = new   Uri  (value);")]
+    [InlineData("var u = new\tSystem.Uri\n(value);")]
+    [InlineData("Uri.TryCreate(value, UriKind.Absolute, out var u);")]
+    [InlineData("System.Uri.TryCreate (value, UriKind.Absolute, out var u);")]
+    [InlineData("var b = new UriBuilder(value);")]
+    [InlineData("var b = new System.UriBuilder { Host = value };")]
+    public void UriScanner_DetectsEveryWayOfBuildingAnAddress(string source)
     {
-        var separators = new[] { $"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}", $"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}" };
-        return Directory.EnumerateFiles(Path.Combine(RepositoryRoot.Path, directory), "*.cs", SearchOption.AllDirectories)
-            .Where(file => !separators.Any(file.Contains));
+        Assert.True(CreatesUnapprovedUri("OtroArchivo.cs", source));
     }
+
+    [Theory]
+    [InlineData("var id = Guid.NewGuid();")]
+    [InlineData("Uri? uri = null;")]
+    [InlineData("var text = uri.ToString();")]
+    public void UriScanner_IgnoresCodeThatBuildsNoAddress(string source)
+    {
+        Assert.False(CreatesUnapprovedUri("OtroArchivo.cs", source));
+    }
+
+    [Theory]
+    [InlineData("ChatClientFactory.cs", "BaseAddress = new Uri(options.Endpoint!),", false)]
+    [InlineData("ChatClientFactory.cs", "BaseAddress = new Uri(\"https://evil.example/\"),", true)]
+    [InlineData("ChatClientFactory.cs", "BaseAddress = new Uri(options.ApiKey!),", true)]
+    [InlineData("ChatClientFactory.cs", "Uri.TryCreate(options.Endpoint, UriKind.Absolute, out var u);", true)]
+    [InlineData("ChatClientFactory.cs", "var b = new UriBuilder(options.Endpoint!);", true)]
+    [InlineData("AiOptionsValidator.cs", "Uri.TryCreate(value, UriKind.Absolute, out var uri) && uri.Scheme is \"http\"", false)]
+    [InlineData("AiOptionsValidator.cs", "Uri.TryCreate(other, UriKind.Absolute, out var uri)", true)]
+    [InlineData("AiOptionsValidator.cs", "new Uri(value)", true)]
+    public void UriScanner_AllowsOnlyTheExactFormsOfTheFactoryAndTheValidator(string fileName, string source, bool expected)
+    {
+        Assert.Equal(expected, CreatesUnapprovedUri(fileName, source));
+    }
+
+    [Fact]
+    public void UriScanner_AllowsAnythingInProviderEndpoints()
+    {
+        Assert.False(CreatesUnapprovedUri("ProviderEndpoints.cs", "public static readonly Uri A = new Uri(\"https://a/\");"));
+    }
+
+    private static readonly System.Text.RegularExpressions.Regex UriCreation = new(
+        @"new\s*(System\.)?Uri\s*\(|(System\.)?Uri\.TryCreate\s*\(|new\s*(System\.)?UriBuilder\b",
+        System.Text.RegularExpressions.RegexOptions.CultureInvariant);
+
+    // Formas exactas permitidas por archivo: la fábrica solo construye la dirección de Ollama a partir de Ai:Endpoint, y el
+    // validador solo comprueba que ese valor sea http/https sin conservar la dirección. Cualquier otra forma es un desvío posible.
+    private static readonly Dictionary<string, string> AllowedUriForms = new()
+    {
+        ["ChatClientFactory.cs"] = "new Uri(options.Endpoint!)",
+        ["AiOptionsValidator.cs"] = "Uri.TryCreate(value, UriKind.Absolute, out var uri)",
+    };
+
+    private static bool CreatesUnapprovedUri(string fileName, string source)
+        => fileName != "ProviderEndpoints.cs"
+            && UriCreation.IsMatch(AllowedUriForms.TryGetValue(fileName, out var form)
+                ? source.Replace(form, string.Empty, StringComparison.Ordinal)
+                : source);
+
+    private static IEnumerable<string> SourceFiles(string directory)
+        => Directory.EnumerateFiles(Path.Combine(RepositoryRoot.Path, directory), "*.cs", SearchOption.AllDirectories)
+            .Where(file => !IsBuildOutput(file));
 
     [Fact]
     public void Src_DoesNotHardcodeModelNames()

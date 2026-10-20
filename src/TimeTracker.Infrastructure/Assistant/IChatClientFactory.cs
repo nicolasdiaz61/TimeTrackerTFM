@@ -7,8 +7,3 @@ internal interface IChatClientFactory
 {
     IChatClient? Create(AiOptions options);
 }
-
-internal sealed class DefaultChatClientFactory : IChatClientFactory
-{
-    public IChatClient? Create(AiOptions options) => ChatClientFactory.Create(options);
-}

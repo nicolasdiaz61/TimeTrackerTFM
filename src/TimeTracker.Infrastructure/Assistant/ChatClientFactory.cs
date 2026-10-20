@@ -18,21 +18,65 @@ namespace TimeTracker.Infrastructure.Assistant;
 /// </summary>
 public static class ChatClientFactory
 {
-    // El SDK reintenta por su cuenta ante errores transitorios; un solo reintento mantiene el peor caso dentro del tiempo máximo.
+    // Los plazos son por intento, no totales: con un reintento el peor caso de Anthropic/OpenAI/Gemini es ≈ 2 × TimeoutSeconds
+    // más la espera entre intentos. El tope global lo impone ChatAssistantEngine con un CancellationTokenSource de
+    // TimeoutSeconds (25 s por defecto) enlazado al token de la petición, que corta también los reintentos en curso.
+    // Ollama no recibe reintento: OllamaSharp no lo ofrece y un servidor local caído no se arregla reintentando.
     private const int MaxRetries = 1;
 
-    public static IChatClient? Create(AiOptions options) => options.ResolvedProvider switch
+    public static IChatClient? Create(AiOptions options)
     {
-        AiProvider.Anthropic => CreateAnthropicClient(options).AsIChatClient(options.Model),
-        AiProvider.OpenAI or AiProvider.Gemini => CreateOpenAIClient(options).GetChatClient(options.Model).AsIChatClient(),
-        AiProvider.Ollama => new OllamaApiClient(new Uri(options.Endpoint!), options.Model!),
-        _ => null,
-    };
+        // Se revalida aquí y no solo al arrancar: la PR 5 crea clientes con valores resueltos en caliente, que pueden venir incompletos.
+        EnsureRequiredValues(options);
+        return options.ResolvedProvider switch
+        {
+            AiProvider.Anthropic => CreateAnthropicClient(options).AsIChatClient(options.Model),
+            AiProvider.OpenAI or AiProvider.Gemini => CreateOpenAIClient(options).GetChatClient(options.Model).AsIChatClient(),
+            AiProvider.Ollama => CreateOllamaClient(options),
+            _ => null,
+        };
+    }
+
+    // El mensaje nombra el valor que falta y nunca su contenido: la clave no debe llegar a un registro.
+    private static void EnsureRequiredValues(AiOptions options)
+    {
+        if (options.ResolvedProvider is not ({ } provider and not AiProvider.None))
+        {
+            return;
+        }
+
+        var required = provider == AiProvider.Ollama
+            ? new (string Name, string? Value)[] { (nameof(AiOptions.Model), options.Model), (nameof(AiOptions.Endpoint), options.Endpoint) }
+            : [(nameof(AiOptions.Model), options.Model), (nameof(AiOptions.ApiKey), options.ApiKey)];
+
+        foreach (var (name, value) in required)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                throw new InvalidOperationException($"Falta Ai:{name}, requerido por el proveedor {provider}.");
+            }
+        }
+    }
+
+    internal static IChatClient CreateOllamaClient(AiOptions options, HttpMessageHandler? handler = null)
+    {
+        var http = CreateOllamaHttpClient(options, handler);
+        return new OwnedHttpClientChatClient(new OllamaApiClient(http, options.Model!), http);
+    }
+
+    // OllamaSharp no expone el plazo si crea él el HttpClient, y no libera uno ajeno: este se libera con el cliente de chat.
+    internal static HttpClient CreateOllamaHttpClient(AiOptions options, HttpMessageHandler? handler = null)
+        => new(handler ?? new HttpClientHandler())
+        {
+            BaseAddress = new Uri(options.Endpoint!),
+            Timeout = TimeSpan.FromSeconds(options.TimeoutSeconds),
+        };
 
     internal static AnthropicClient CreateAnthropicClient(AiOptions options)
         => new()
         {
             ApiKey = options.ApiKey,
+            BaseUrl = ProviderEndpoints.Anthropic.ToString(),
             MaxRetries = MaxRetries,
             Timeout = TimeSpan.FromSeconds(options.TimeoutSeconds),
         };
