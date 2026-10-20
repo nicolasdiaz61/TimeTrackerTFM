@@ -1,0 +1,10 @@
+@* Mensajes de validación del servidor de un campo, siempre como texto. *@
+@foreach (var message in Messages)
+{
+    <div class="invalid-feedback d-block" role="alert">@message</div>
+}
+
+@code {
+    [Parameter, EditorRequired]
+    public IReadOnlyList<string> Messages { get; set; } = [];
+}
