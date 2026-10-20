@@ -492,3 +492,51 @@ BUILD de la solución con `-warnaserror` 0 advertencias 0 errores; `dotnet forma
 - Pruebas con base de datos: base vacía por prueba (`CreateEmptyDatabaseAsync`) y migraciones al arrancar la fábrica; las pruebas sin base usan un almacén que cuenta operaciones.
 - La política `Manager` se registra con `AddAuthorizationPolicies()` (nueva extensión) antes de `AddTeam()`; `AddTeam()` ya no registra políticas.
 - Tamaño: ≈ 245 líneas de producción, ≈ 850 de pruebas y 529 de `openapi.json` generado (≈ 1.620 en total, ≈ 1.090 sin el contrato) frente a las ≈ 380 previstas; la desviación es de pruebas (HTTP real con PostgreSQL) y del contrato generado.
+
+## PR 7 — Web: `/asistente/configuracion` (rama `feat/asistente-config-pr7-web`, apilada sobre `feat/asistente-config-pr6b-api`)
+
+| Tarea | Estado | Commit |
+|---|---|---|
+| 7.1 Copia previa (`..\TimeTracker.rollback\pr-7\`: `NavMenu.razor`, `Program.cs`, `app.css`, `RepositoryConventionsTests.cs`, `ApiRequest.cs`, `AssistantConversation.cs`) | Hecha | fuera del repositorio |
+| 7.2 `AssistantConfigurationForm` y DTO | Hecha | `9313002`, `8784354` |
+| 7.3 `AssistantConfigurationApiClient` y sobrecarga sin cuerpo de `ApiRequest` | Hecha | `8d2d9fe` |
+| 7.4 Página y guardas de convenciones | Hecha | `ee311d2` |
+| 7.5 `NavMenu`, `Program.cs`, estilos y chat sin cambios | Hecha | `ee311d2` |
+| 7.6 Verificación manual en Chrome | **Pendiente (orquestador)** | — |
+
+### TDD Cycle Evidence (PR 7)
+
+| Tarea | Archivo de prueba | RED | GREEN | TRIANGULAR | REFACTOR |
+|---|---|---|---|---|---|
+| 7.2 | `AssistantConfigurationFormTests` (Web.Tests) | No compila: `CS0246` por `AssistantConfigurationForm`, `AssistantConfigurationDto`, `AllowedProviderDto`, `AssistantConfigurationError` (solo ese error) | 39/39 tras corregir una prueba mía (`<b>x</b>` con origen `env` se omite por diseño; se usó origen `stored`) | Campos del entorno sin tocar = `null`; guardados se envían; vaciados = `null`; cambio de proveedor envía todo; esfuerzo omitido si no se admite; clave solo si se escribió y con almacenamiento; la clave se vacía tras éxito y tras 400/409/429/red; la prueba conserva la clave; `ToString` redacta la clave; 409 ofrece recargar; 400 por campo y resto agrupado; 429 con espera; `<b>x</b>` literal en modelo, errores, conflicto y prueba; confirmación de restablecer | La frase de espera del 429 se extrae a `Http/WaitHint` y la reutiliza `AssistantConversation` (223 pruebas previas en verde) |
+| 7.2b | `UpdatedText` (misma clase) | No compila: `CS1061` y `CS0117` (`UpdatedText`, `NothingStoredMessage`) | 282/282 | Hora local con desfase, autor omitido, sin fila guardada, autor como texto | Nada necesario |
+| 7.3 | `AssistantConfigurationApiClientTests` y 3 en `ApiRequestTests` | No compila: `CS0246 AssistantConfigurationApiClient` | 280/280 | GET/PUT/POST/DELETE con ruta y método; nombres JSON exactos con `null`; 400 con errores por campo, solo con `detail`, y cuerpos ilegibles; 409; 429 con `Retry-After`; 204; 403 genérico; red caída; la clave no vuelve en errores | `ApiRequest.SendAsync` comparte `SendCoreAsync` entre la sobrecarga con cuerpo y la de 204 |
+| 7.4 | `RepositoryConventionsTests.Web_HasTheAssistantConfigurationPage...` | `Falta src/TimeTracker.Web/Pages/AssistantConfiguration.razor.` | Verde con la página | Sin `MarkupString`, `localStorage`, `sessionStorage`, `IJSRuntime`, `innerHTML`, `type="url"` ni «endpoint»; `[Authorize(Roles = "Manager")]`; campo `password` con `autocomplete="new-password"` y `disabled="@(!form.CredentialEnabled)"`; la clave se enlaza en un único sitio; avisos, botones y texto «clave configurada» | Componente `Shared/FieldErrors` para los mensajes por campo |
+| 7.5 | `RepositoryConventionsTests.Web_LinksTheAssistantConfiguration...` | `Assert.Single() Failure: The collection was empty` (enlace ausente) | 143/143 en Architecture | Enlace solo dentro del bloque `Roles="Manager"` junto a «Equipo»; registro en `Program.cs`; `/asistente` sin referencias a la configuración y con `[Authorize]` | Nada necesario |
+
+### Work Unit Evidence (PR 7)
+
+| Evidencia | Valor |
+|---|---|
+| Prueba focal | `dotnet test tests/TimeTracker.Web.Tests --filter "FullyQualifiedName~AssistantConfiguration"` y `dotnet test tests/TimeTracker.ArchitectureTests --filter "FullyQualifiedName~RepositoryConventionsTests.Web_"` en verde |
+| Arnés de ejecución | N/A en automático: la Web no tiene bUnit ni E2E; el recorrido real es la verificación manual 7.6 |
+| Límite de rollback | Borrar `Pages/AssistantConfiguration.razor`, `Shared/FieldErrors.razor`, `Assistant/AssistantConfiguration*`, `Http/WaitHint.cs` (y devolver su frase a `AssistantConversation`), el enlace de `NavMenu`, el registro de `Program.cs`, los estilos y las dos guardas; copia previa en `..\TimeTracker.rollback\pr-7\` |
+
+### Puerta del PR 7 (ejecutada)
+
+BUILD de la solución con `-warnaserror` 0 advertencias 0 errores; `dotnet format --verify-no-changes` sin cambios; TEST: Domain 67, Application 323, Infrastructure 398, Web 282, Architecture 143, Api.IntegrationTests 517 (Docker disponible; no se tocaron contenedores, volúmenes, redes ni imágenes existentes; sin prune); VULN (`--vulnerable --include-transitive`) limpio. `docs/api/openapi.json` restaurado con `git checkout` y sin commitear (el contrato no cambia).
+
+### Decisiones fuera de spec (PR 7)
+
+- `[Authorize(Roles = "Manager")]` en lugar de `nameof(UserRole.Manager)`: la Web no referencia Domain (prueba existente); es el mismo literal que usa `/equipo`.
+- La confirmación de «Restablecer al entorno» es un panel en la propia página (sin `confirm()` de JavaScript, para no usar `IJSRuntime`). Advierte que borra la configuración vigente aunque otro responsable la haya cambiado.
+- Tras el `DELETE` (204 sin cuerpo) la página vuelve a hacer `GET` para mostrar la configuración efectiva.
+- Valores del entorno sin tocar se envían como `null` para no congelarlos como guardados; si cambia el proveedor se envía todo explícito.
+- Etiquetas de origen: `env` = «Entorno», `stored` = «Guardado por un responsable», `none` = «Sin clave».
+- Texto del menú «Config. asistente» (corto para el menú lateral).
+- `ApiRequest` gana una sobrecarga sin cuerpo (necesaria para el 204); la frase de espera del 429 se comparte con el chat.
+- Tamaño aprox.: ≈ 800 líneas de producción y pruebas frente a las ≈ 350 previstas; la desviación es de pruebas del formulario y del cliente.
+
+### Pendiente de verificación manual (7.6, orquestador)
+
+Chrome contra API y Web locales: Manager ve ambos avisos y guarda; Employee sin enlace y «acceso denegado» por URL directa; clave vaciada tras guardar; el DOM no contiene la clave (inspeccionar); `<b>x</b>` como modelo se ve literal; 409 con dos pestañas muestra «Recargar»; «Probar conexión» muestra resultado y, tras 3 pruebas en un minuto, el mensaje de espera; sin `Ai__MasterKeys` el campo de clave sale desactivado con aviso. Registrar en `verify-report.md`.
