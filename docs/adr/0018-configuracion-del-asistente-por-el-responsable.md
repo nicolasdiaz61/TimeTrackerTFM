@@ -28,7 +28,7 @@ Este ADR **modifica AGENTS §1 y §7** (el proveedor y el modelo pasan a elegirs
 - **`Ai__AllowedProviders`.** Lista del product owner con los proveedores que el responsable puede elegir. Sin la lista, solo el proveedor del entorno; el entorno por defecto es seguro. Un nombre desconocido impide arrancar con un mensaje que nombra la clave sin imprimir su valor.
 - **Cifrado de la clave: AES-256-GCM con clave maestra versionada.** La clave maestra (32 bytes en Base64) vive en el entorno (`Ai__MasterKeys__{versión}` y `Ai__ActiveMasterKeyVersion`), nunca en la base de datos. Cada cifrado usa un nonce aleatorio y datos autenticados asociados con el proveedor y la versión, de modo que el texto cifrado no puede redirigirse a otro proveedor. La rotación añade una versión nueva y la activa; las anteriores siguen descifrando mientras existan. Fallo cerrado: sin clave maestra válida no se puede guardar una clave nueva, pero el arranque no falla.
 - **Clave de solo escritura.** Se envía al guardar y nunca se devuelve: las respuestas solo informan de si hay clave configurada. Cambiar de proveedor descarta la clave guardada anterior.
-- **Auditoría de solo inserción.** Cada cambio (guardar, restablecer) registra quién, cuándo y los valores anterior y nuevo sin secretos, con un indicador de si cambió la clave. La inmutabilidad la garantiza una prueba de arquitectura.
+- **Auditoría de solo inserción, en dos barreras.** Cada cambio (guardar, restablecer) registra quién, cuándo y los valores anterior y nuevo sin secretos, con un indicador de si cambió la clave. Primera barrera: el puerto solo expone inserción y una prueba de arquitectura busca cualquier modificación. Segunda barrera, en la base de datos: un trigger (migración `AddAssistantAuditImmutability`) rechaza `UPDATE`, `DELETE` y `TRUNCATE` sobre `assistant_settings_audit`, también para el propietario de la tabla, que un `REVOKE` no frena; solo afecta a esa tabla y su `Down` lo elimina.
 - **Concurrencia optimista** con `xmin`, como en los fichajes: un token obsoleto responde `409`.
 - **Recarga en caliente.** El asistente trabaja sobre una instantánea inmutable que se sustituye de forma atómica; cada instancia sondea la base de datos (por defecto cada 30 s) y conserva la última configuración válida si la base de datos cae o la fila no es válida.
 - **Prueba de conexión** con un candidato sin guardar, con límite de tasa por usuario y sin devolver texto del proveedor ni la clave.
@@ -43,13 +43,18 @@ Este ADR **modifica AGENTS §1 y §7** (el proveedor y el modelo pasan a elegirs
 - **Rol obsoleto en el JWT.** El token dura 30 minutos; un responsable degradado conserva el acceso a la configuración hasta que caduque. Se acepta.
 - **Consistencia eventual entre instancias:** un cambio se aplica en la instancia local al instante y en las demás tras el siguiente sondeo.
 - **Un guardado erróneo afecta a toda la empresa.** Se mitiga con la prueba de conexión, el restablecimiento al entorno y la auditoría.
+- **Despliegue en Railway.** Antes de que un responsable guarde una clave hay que definir `Ai__MasterKeys__1` (secreto, por `stdin`) y `Ai__ActiveMasterKeyVersion=1` en el servicio `api`; `Cors__AllowedOrigins__0` es obligatoria (sin ella la API no arranca) y `Ai__AllowedProviders` abre más proveedores al responsable. Los pasos están en el README, sin ningún valor.
+- **Configuración única y acceso amplio.** Hay una sola configuración para toda la instancia y cualquier Manager de cualquier equipo puede leerla, cambiarla, restablecerla y probar conexiones (riesgo aceptado; si hubiera varias empresas o equipos aislados habría que partirla por ámbito). El restablecimiento no usa un token del cliente: con una vista obsoleta puede borrar un cambio ajeno, y la Web lo advierte.
+- **Riesgo de la API Responses de OpenAI.** La versión 1 usa solo la API de chat; algunos modelos de OpenAI exigen Responses para usar herramientas, y la prueba de conexión (sin herramientas) puede dar `ok` aunque el chat falle con ese modelo.
+- **Un 400 de Ollama queda como `unreachable`** en la prueba de conexión: su SDK no expone el estado HTTP en ese caso y no se interpreta el texto del mensaje.
+- **Pregunta abierta para el product owner: custodia de la clave maestra.** Quién la genera, dónde se guarda su copia de seguridad y quién puede leerla en Railway no está decidido. Perderla deja ilegibles las claves guardadas, no el asistente del entorno.
 - Las pruebas nunca llaman a un proveedor real: usan dobles de `IChatClient` y manejadores HTTP de grabación.
 
 ## Alternativas
 
 - **Solo por entorno (estado actual):** obliga a redesplegar y a que el product owner custodie la clave del responsable. Descartada.
 - **URL escrita por el responsable:** permite exfiltrar la clave y los datos a un servidor ajeno (SSRF). Descartada.
+- **Solo la prueba de arquitectura para la inmutabilidad de la auditoría:** no frena a quien tenga acceso directo a la base de datos; se completó con el trigger. Descartada como única barrera.
 - **ASP.NET Data Protection para la clave:** exige persistir el anillo de claves en una plataforma con disco efímero, junto al secreto que protege; el formato es opaco y la rotación no es auditable. Descartada.
-- **Disparador de inmutabilidad en la base de datos para la auditoría:** más complejidad en la migración que una prueba de arquitectura sobre el único punto de escritura. Descartada.
 - **Responses API de OpenAI:** superficie mayor y menos compatible con el resto de proveedores; se usa la API de chat. Descartada.
 - **GitHub Models y OpenCode Zen:** el primero está retirado y el segundo expone varias APIs según el modelo. Descartados.
