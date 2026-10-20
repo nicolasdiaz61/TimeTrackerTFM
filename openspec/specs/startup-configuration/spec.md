@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Define cómo `TimeTracker.Api` obtiene y valida su configuración: variables de entorno, opciones tipadas con validación al arrancar (fail fast) y CORS restrictivo. Capacidad NUEVA; todos los requisitos son `ADDED`.
+Define cómo `TimeTracker.Api` obtiene y valida su configuración: variables de entorno, opciones tipadas con validación al arrancar (fail fast) y CORS restrictivo. Especificación vigente; origen en los cambios archivados de la API y actualizada por `asistente-config-responsable` (archivado el 2026-10-20).
 
 Convención (a confirmar en diseño): la clave `Cors:AllowedOrigins` se suministra por entorno como `Cors__AllowedOrigins__0`, `Cors__AllowedOrigins__1`, etc.
 

@@ -1,6 +1,6 @@
 # Especificación: assistant-credential-protection
 
-Cambio: `asistente-config-responsable`. Capacidad NUEVA; todos los requisitos son `ADDED`. Protege la clave del proveedor que el Manager guarda desde la Web: cifrado en reposo, exposición solo de escritura, fallo cerrado, rotación de clave maestra y ausencia de filtraciones. Complementa `assistant-settings`.
+Especificación vigente. Origen: `asistente-config-responsable` (archivado el 2026-10-20). Protege la clave del proveedor que el Manager guarda desde la Web: cifrado en reposo, exposición solo de escritura, fallo cerrado, rotación de clave maestra y ausencia de filtraciones. Complementa `assistant-settings`.
 
 Notas de verificación:
 - Los tests usan claves y valores reconocibles inventados (por ejemplo `clave-prueba-123456`).
@@ -82,7 +82,7 @@ El sistema DEBE admitir varias versiones de clave maestra (`Ai__MasterKeys__{v}`
 
 ### Requirement: Clave de solo escritura
 
-La clave NUNCA DEBE devolverse por la API, ni en claro ni cifrada. Solo DEBE exponerse `credentialConfigured` (y, como máximo, los últimos 4 caracteres). Las peticiones `PUT` y de prueba PUEDEN recibirla; ninguna respuesta la repite.
+La clave NUNCA DEBE devolverse por la API, ni en claro ni cifrada. Solo DEBE exponerse `credentialConfigured` (y su origen en `sources.credential`); NO DEBE devolverse ningún fragmento de la clave, ni siquiera los últimos caracteres. Las peticiones `PUT` y de prueba PUEDEN recibirla; ninguna respuesta la repite.
 
 #### Scenario: Respuestas sin clave
 - DADO una clave `clave-prueba-123456` enviada en `PUT` y en la prueba

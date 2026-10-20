@@ -1,15 +1,15 @@
 # Especificación: assistant-configuration
 
-Cambio: `asistente-ia`. Capacidad NUEVA; todos los requisitos son `ADDED`. Define las claves `Ai:*`, la selección de proveedor solo por configuración, las reglas de validación y la desactivación sin `Ai:Provider`. El efecto sobre el arranque de la API (fallo rápido, mensajes sin valores) se complementa en `startup-configuration`. Los valores por defecto y los rangos válidos de las claves numéricas son los fijados por el diseño (DD-2, DD-10, DD-11).
+Especificación vigente. Origen: `asistente-ia`; actualizada por `asistente-config-responsable` (ambos archivados; el último el 2026-10-20). Define las claves `Ai:*`, la selección de proveedor solo por configuración, las reglas de validación y la desactivación sin `Ai:Provider`. El efecto sobre el arranque de la API (fallo rápido, mensajes sin valores) se complementa en `startup-configuration`. Los valores por defecto y los rangos válidos de las claves numéricas son los fijados por el diseño (DD-2, DD-10, DD-11).
 
-Decisiones aceptadas: proveedores `Anthropic` (nube) y `Ollama` (local); el modelo y el endpoint son solo configuración, sin cambiar código; sin `Ai:Provider` la API arranca y el asistente queda deshabilitado; patrón de validación y mensajes igual que `Jwt:SigningKey` y `ConnectionStrings:Default`.
+Decisiones aceptadas: proveedores `Anthropic`, `OpenAI`, `Gemini` y `Ollama`; el modelo y el endpoint son solo configuración, sin cambiar código; sin `Ai:Provider` la API arranca y el asistente queda deshabilitado; patrón de validación y mensajes igual que `Jwt:SigningKey` y `ConnectionStrings:Default`.
 
 Notas de verificación:
 - Las pruebas de validación son unitarias sobre las opciones y no abren conexión con ningún proveedor.
 - Los fallos de arranque se evalúan sobre la excepción de validación y sus internas (puede ser un `AggregateException`).
 - La elección de proveedor se comprueba por el tipo de cliente construido, sin llamadas de red.
 
-Fuera de alcance: más de un proveedor activo a la vez, cambio de proveedor en caliente, selección de modelo por usuario.
+Fuera de alcance: más de un proveedor activo a la vez, selección de modelo por usuario.
 
 Actualizada por `asistente-config-responsable`: 4 requisitos MODIFIED (proveedores `OpenAI` y `Gemini`, claves nuevas, configuración guardada por el Manager); ver `assistant-settings`.
 

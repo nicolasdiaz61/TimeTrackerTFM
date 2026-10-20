@@ -1,6 +1,6 @@
 # Especificación: assistant-settings
 
-Cambio: `asistente-config-responsable`. Capacidad NUEVA; todos los requisitos son `ADDED`. Define la configuración efectiva del asistente (fila guardada sobre entorno), el catálogo de proveedores, la API y la página Web del Manager, la prueba de conexión, la auditoría, la concurrencia y la recarga en caliente. La protección de la clave se especifica en `assistant-credential-protection`. Las claves `Ai:*` del entorno definidas por el cambio `asistente-ia` (capacidad `assistant-configuration`, modificada por este cambio) conservan su significado como valores por defecto.
+Especificación vigente. Origen: `asistente-config-responsable` (archivado el 2026-10-20). Define la configuración efectiva del asistente (fila guardada sobre entorno), el catálogo de proveedores, la API y la página Web del Manager, la prueba de conexión, la auditoría, la concurrencia y la recarga en caliente. La protección de la clave se especifica en `assistant-credential-protection`. Las claves `Ai:*` del entorno definidas por el cambio `asistente-ia` (capacidad `assistant-configuration`, modificada por este cambio) conservan su significado como valores por defecto.
 
 Nota de nombre: la capacidad se llama `assistant-settings` para no colisionar con `assistant-configuration` (claves `Ai:*` del entorno, de `asistente-ia`). Orden de archivo: archivar `asistente-ia` primero.
 
@@ -78,7 +78,7 @@ El servidor DEBE mantener un catálogo fijo de proveedores `Anthropic`, `OpenAI`
 
 ### Requirement: Consulta de la configuración efectiva
 
-`GET /api/asistente/configuracion` DEBE devolver la configuración efectiva en un objeto JSON (camelCase) con los campos `provider`, `model`, `timeoutSeconds`, `maxOutputTokens` y `effort` (este último PUEDE ser nulo), `sources` (origen `env` o `stored` de cada valor; el de la clave PUEDE ser también `none`), `credentialConfigured` (booleano), `credentialStorageAvailable` (booleano: hay clave maestra utilizable), `allowedProviders`, `concurrencyToken`, `updatedAt`, `updatedBy` y `applied` (si la configuración guardada es la que usa esta instancia). NUNCA DEBE devolver la clave, ni cifrada ni en claro; PUEDE devolver como máximo los últimos 4 caracteres. `PUT` DEBE responder `200` con el mismo cuerpo que `GET` (con el token de concurrencia nuevo).
+`GET /api/asistente/configuracion` DEBE devolver la configuración efectiva en un objeto JSON (camelCase) con los campos `provider`, `model`, `timeoutSeconds`, `maxOutputTokens` y `effort` (este último PUEDE ser nulo), `sources` (origen `env` o `stored` de cada valor; el de la clave PUEDE ser también `none`), `credentialConfigured` (booleano), `credentialStorageAvailable` (booleano: hay clave maestra utilizable), `allowedProviders`, `concurrencyToken`, `updatedAt`, `updatedBy` y `applied` (si la configuración guardada es la que usa esta instancia). NUNCA DEBE devolver la clave, ni cifrada ni en claro, ni ningún fragmento de ella (ni siquiera los últimos caracteres); solo informa de su existencia con `credentialConfigured` y `sources.credential`. `PUT` DEBE responder `200` con el mismo cuerpo que `GET` (con el token de concurrencia nuevo).
 
 #### Scenario: Solo entorno
 - DADO que no existe fila guardada y `Ai__Provider=Ollama`
@@ -214,7 +214,7 @@ La configuración efectiva DEBE resolverse como fila guardada sobre entorno. Un 
 
 ### Requirement: Prueba de conexión
 
-`POST /api/asistente/configuracion/prueba` DEBE probar los valores candidatos enviados en el cuerpo sin guardarlos; los campos ausentes DEBEN tomarse de la configuración efectiva y un cuerpo vacío prueba la efectiva. El candidato DEBE cumplir las reglas de validación del guardado: si no es válido, responde `400` con errores por campo. El límite es de 3 peticiones por minuto y usuario (`429` al superarlo). Una prueba que se completa DEBE responder `200` con `{ "result", "message" }`, donde `result` es una de las categorías fijas `ok`, `authentication`, `timeout`, `unreachable`, `model-not-found` o `rejected`, y `message` un texto fijo en español. `rejected` indica que el proveedor rechazó los parámetros (modelo o esfuerzo no admitido; respuesta 400/422 del proveedor). `unreachable` abarca cualquier otro fallo sin categoría propia (429, 5xx, red u otros). La respuesta NO DEBE incluir texto, URL ni cabeceras del proveedor ni la clave.
+`POST /api/asistente/configuracion/prueba` DEBE probar los valores candidatos enviados en el cuerpo sin guardarlos; los campos ausentes DEBEN tomarse de la configuración efectiva y un cuerpo vacío prueba la efectiva. El candidato DEBE cumplir las reglas de validación del guardado: si no es válido, responde `400` con errores por campo. El límite es de 3 peticiones por minuto y usuario (`429` al superarlo). Una prueba que se completa DEBE responder `200` con `{ "result", "message" }`, donde `result` es una de las categorías fijas `ok`, `authentication`, `timeout`, `unreachable`, `model-not-found` o `rejected`, y `message` un texto fijo en español. `rejected` indica que el proveedor rechazó los parámetros (modelo o esfuerzo no admitido; respuesta 400/422 del proveedor; desviación aceptada W-4: con Ollama un 400 no expone el estado HTTP y se clasifica `unreachable`, no `rejected`; el 400 de OpenAI y de Anthropic sí es `rejected`). `unreachable` abarca cualquier otro fallo sin categoría propia (429, 5xx, red u otros). La respuesta NO DEBE incluir texto, URL ni cabeceras del proveedor ni la clave.
 
 #### Scenario: Conexión correcta
 - DADO un `IChatClient` falso que responde bien
@@ -229,7 +229,7 @@ La configuración efectiva DEBE resolverse como fila guardada sobre entorno. Un 
 #### Scenario: Parámetros rechazados por el proveedor
 - DADO un fallo simulado con estado HTTP 400 o 422 del proveedor (por ejemplo, esfuerzo no admitido por el modelo)
 - CUANDO se invoca la prueba
-- ENTONCES el resultado es `rejected` con su mensaje fijo en español
+- ENTONCES el resultado es `rejected` con su mensaje fijo en español (con Ollama, un 400 se clasifica `unreachable` porque no expone el estado HTTP; ver la desviación W-4)
 
 #### Scenario: Otros fallos
 - DADO fallos simulados con estado 429 o 5xx, o un error de red
@@ -268,7 +268,7 @@ La configuración efectiva DEBE resolverse como fila guardada sobre entorno. Un 
 
 ### Requirement: Auditoría de solo inserción
 
-Cada guardado, restablecimiento y cambio de clave DEBE insertar una fila de auditoría con quién, cuándo, la acción y los valores previo y nuevo no secretos. La auditoría NO DEBE contener la clave (ni en claro ni cifrada). Las filas NO DEBEN modificarse ni borrarse desde la aplicación.
+Cada guardado, restablecimiento y cambio de clave DEBE insertar una fila de auditoría con quién, cuándo, la acción y los valores previo y nuevo no secretos. La auditoría NO DEBE contener la clave (ni en claro ni cifrada). Las filas NO DEBEN modificarse ni borrarse desde la aplicación. Limitación: el trigger de PostgreSQL que lo impone protege contra errores de código y SQL accidental, no frente a quien tenga privilegios de propietario de la tabla (puede deshabilitar o eliminar el trigger); endurecerlo exigiría un rol de aplicación distinto del propietario o un event trigger.
 
 #### Scenario: Registro de un cambio
 - DADO un Manager que cambia el modelo de `a` a `b`

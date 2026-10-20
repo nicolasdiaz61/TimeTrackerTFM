@@ -22,7 +22,7 @@ Un responsable (`Manager`) configura desde la Web (`/asistente/configuracion`) e
 | 14 | #32 | PR 4.2 a 8 acumuladas, hacia `main` |
 | 15 | #33 | Cierre de la verificación |
 
-Nota: #27 a #31 se mergearon entre ramas apiladas (cada una contra la rama de la anterior, empezando por la de #26) y **llegaron a `main` juntas con #32**, que acumula la PR 4.2 a la 8. Por eso en el historial de `main` solo aparecen las fusiones de #31 y #32 y no las de #27 a #30.
+Nota: la columna «Orden» describe el orden de merge dentro de las ramas apiladas: #27 a #31 se fusionaron cada una contra la rama de la anterior (la #27 contra la de #26), no contra `main`. Las únicas fusiones contra `main` de este cambio a partir de #26 son #26, #32 (que trajo el contenido de #27 a #31) y #33. La fusión de #31 (`29bb3f0`) figura en el historial de `main`, pero solo porque ya estaba contenida en la rama de #32; las de #27 a #30 no aparecen como fusiones en `main`.
 
 ## Especificaciones sincronizadas
 
@@ -60,8 +60,13 @@ Sin REMOVED ni RENAMED. Cada requisito MODIFIED sustituyó al vigente con el mis
 
 ## Pendientes fuera del código
 
-- Custodia de la clave maestra `Ai__MasterKeys__{versión}` (quién la genera y dónde se guarda la copia de seguridad; punto abierto del diseño, decisión del responsable del producto).
-- Variables de Railway: `Ai__MasterKeys__1`, `Ai__ActiveMasterKeyVersion` y, si se desea, `Ai__AllowedProviders` (ver el README).
+- Custodia de la clave maestra `Ai__MasterKeys__{versión}` (quién la genera y dónde se guarda la copia de seguridad; punto abierto del diseño, decisión del responsable del producto, no resuelta por este cambio).
+- Variables de Railway (ver la sección Railway del README y el ADR 0019):
+  - `Cors__AllowedOrigins__0` es obligatoria: sin ella la API no arranca. Debe ser la URL de la Web.
+  - `Ai__MasterKeys__1` (32 bytes aleatorios en Base64), introducida solo por `--stdin`, y `Ai__ActiveMasterKeyVersion=1`. Ambas deben estar definidas **antes** de que un Manager guarde una clave de API; si no, el guardado falla cerrado.
+  - Si se desea, `Ai__AllowedProviders`.
+- Pérdida de la clave maestra: las claves de API guardadas quedan ilegibles y hay que reintroducirlas desde la Web.
+- Rotación de la clave maestra: añadir una versión nueva (`Ai__MasterKeys__2`), activarla con `Ai__ActiveMasterKeyVersion=2` y conservar la anterior hasta que ninguna fila la use (`credential_key_version` en `assistant_settings`); ver el README y el ADR 0018 (consecuencias).
 - Alta en Railway por el usuario (despliegue y orden descrito en el ADR 0019).
 
 ## Tareas
