@@ -61,6 +61,8 @@ internal sealed class FakeProtector : IAssistantCredentialProtector
 
     public bool IsAvailable => Available;
 
+    public ProtectionUnavailableReason UnavailableReason => Available ? ProtectionUnavailableReason.None : ProtectionUnavailableReason.NoActiveVersionConfigured;
+
     private static byte[] Scramble(byte[] data) => [.. data.Select(b => (byte)(b ^ 0x5A))];
 
     public EncryptedCredential Protect(AssistantCredential plaintext, AssistantProvider provider)

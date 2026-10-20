@@ -22,6 +22,9 @@ public static class ChatClientFactory
         _ => null,
     };
 
+    /// <summary>Proveedores del catálogo cuyo adaptador llega más tarde: <see cref="Create"/> devuelve <c>null</c> para ellos.</summary>
+    public static bool LacksAdapter(AiOptions options) => options.ResolvedProvider is AiProvider.OpenAI or AiProvider.Gemini;
+
     internal static AnthropicClient CreateAnthropicClient(AiOptions options)
         => new()
         {

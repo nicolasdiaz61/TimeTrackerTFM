@@ -95,6 +95,14 @@ La previsión de carga de revisión está al final («Review Workload Forecast»
 - [x] 3a.6 RED `IT` (sin Docker, clase de arranque existente): arranca sin `Ai__*` ni claves maestras, con `Gemini`/`OpenAI` válidos (`/health` 200 sin conectar), con `Ai__MasterKeys__1` inválida; falla con `GitHubModels` y con lista permitida inválida. Cubre SC «Sin clave maestra arranca», «Proveedor en la nube nuevo válido», «Las demás validaciones no cambian»; CP «El arranque no falla». GREEN: registro del protector (singleton) y línea informativa «protección de claves disponible/no disponible» sin valores (DD-7).
 - [x] 3a.7 REFACTOR y puerta de PR.
 
+## PR 3a.1 — Correcciones de la revisión de la PR 3a (≈ 150 líneas)
+
+- [x] 3a.1.1 RED+GREEN versiones de `Ai:MasterKeys` duplicadas tras normalizar (`1`/`01`): esa versión queda no disponible (fallo cerrado).
+- [x] 3a.1.2 RED+GREEN motivo categórico `ProtectionUnavailableReason` expuesto por el protector y escrito por `ProtectionStatusLogger` sin valores ni versiones.
+- [x] 3a.1.3 RED+GREEN log de arranque «el proveedor X aún no tiene adaptador» para OpenAI/Gemini.
+- [x] 3a.1.4 Constantes con nombre de los límites del validador, `AllowedProviders.Validate(string?)` sin relleno ficticio.
+- [x] 3a.1.5 `ZeroMemory`, comentario de `MasterKeyBytes + 3`, pruebas de 31/33/64 bytes y 32767/32768, sin la rama muerta `ModelRequired`.
+
 ---
 
 ## PR 3b — Persistencia, migración y auditoría (≈ 300 líneas)

@@ -50,4 +50,23 @@ public class AllowedProvidersTests
         Assert.Contains("Ai:AllowedProviders", result.Error);
         Assert.DoesNotContain(list.Split(',')[^1], result.Error);
     }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("   ")]
+    [InlineData(" anthropic , OPENAI,Anthropic ")]
+    public void Validate_AcceptsAnEmptyOrWellFormedList(string? list)
+        => Assert.Null(AllowedProviders.Validate(list));
+
+    [Theory]
+    [InlineData("Anthropic,GitHubModels")]
+    [InlineData("None")]
+    public void Validate_RejectsAnUnknownNameNamingTheKeyWithoutPrintingTheValue(string list)
+    {
+        var error = AllowedProviders.Validate(list);
+
+        Assert.Contains("Ai:AllowedProviders", error);
+        Assert.DoesNotContain(list.Split(',')[^1], error);
+    }
 }

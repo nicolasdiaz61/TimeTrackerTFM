@@ -25,21 +25,47 @@ public sealed class AesGcmCredentialProtector : IAssistantCredentialProtector
 
     public AesGcmCredentialProtector(IOptions<AiOptions> options)
     {
+        var seen = new HashSet<short>();
+        var unusable = new HashSet<short>();
         foreach (var (version, encoded) in options.Value.MasterKeys)
         {
-            if (TryParseVersion(version, out var parsed) && TryDecodeMasterKey(encoded, out var key))
+            if (!TryParseVersion(version, out var parsed))
+            {
+                continue;
+            }
+
+            // "1" y "01" son la misma versión: no se elige una al azar, ninguna de las dos queda disponible.
+            if (!seen.Add(parsed))
+            {
+                _masterKeys.Remove(parsed);
+                unusable.Add(parsed);
+            }
+            else if (TryDecodeMasterKey(encoded, out var key))
             {
                 _masterKeys[parsed] = key;
             }
+            else
+            {
+                unusable.Add(parsed);
+            }
         }
 
-        if (TryParseVersion(options.Value.ActiveMasterKeyVersion, out var active) && _masterKeys.ContainsKey(active))
+        var hasActive = TryParseVersion(options.Value.ActiveMasterKeyVersion, out var active);
+        if (hasActive && _masterKeys.ContainsKey(active))
         {
             _activeVersion = active;
+        }
+        else
+        {
+            UnavailableReason = string.IsNullOrWhiteSpace(options.Value.ActiveMasterKeyVersion) ? ProtectionUnavailableReason.NoActiveVersionConfigured
+                : hasActive && unusable.Contains(active) ? ProtectionUnavailableReason.InvalidOrDuplicateMasterKey
+                : ProtectionUnavailableReason.ActiveVersionWithoutKey;
         }
     }
 
     public bool IsAvailable => _activeVersion is not null;
+
+    public ProtectionUnavailableReason UnavailableReason { get; } = ProtectionUnavailableReason.None;
 
     public EncryptedCredential Protect(AssistantCredential plaintext, AssistantProvider provider)
     {
@@ -49,11 +75,18 @@ public sealed class AesGcmCredentialProtector : IAssistantCredentialProtector
         }
 
         var data = Encoding.UTF8.GetBytes(plaintext.Value);
-        var nonce = RandomNumberGenerator.GetBytes(NonceBytes);
-        var output = new byte[data.Length + TagBytes];
-        using var aes = new AesGcm(_masterKeys[version], TagBytes);
-        aes.Encrypt(nonce, data, output.AsSpan(0, data.Length), output.AsSpan(data.Length), AssociatedData(provider, version));
-        return new EncryptedCredential(output, nonce, version);
+        try
+        {
+            var nonce = RandomNumberGenerator.GetBytes(NonceBytes);
+            var output = new byte[data.Length + TagBytes];
+            using var aes = new AesGcm(_masterKeys[version], TagBytes);
+            aes.Encrypt(nonce, data, output.AsSpan(0, data.Length), output.AsSpan(data.Length), AssociatedData(provider, version));
+            return new EncryptedCredential(output, nonce, version);
+        }
+        finally
+        {
+            CryptographicOperations.ZeroMemory(data);
+        }
     }
 
     public bool TryUnprotect(EncryptedCredential stored, AssistantProvider provider, [NotNullWhen(true)] out AssistantCredential? plaintext)
@@ -70,14 +103,17 @@ public sealed class AesGcmCredentialProtector : IAssistantCredentialProtector
         {
             using var aes = new AesGcm(key, TagBytes);
             aes.Decrypt(stored.Nonce, stored.Ciphertext.AsSpan(0, cipherLength), stored.Ciphertext.AsSpan(cipherLength), data, AssociatedData(provider, stored.KeyVersion));
+            plaintext = new AssistantCredential(Encoding.UTF8.GetString(data));
+            return true;
         }
         catch (CryptographicException)
         {
             return false;
         }
-
-        plaintext = new AssistantCredential(Encoding.UTF8.GetString(data));
-        return true;
+        finally
+        {
+            CryptographicOperations.ZeroMemory(data);
+        }
     }
 
     private static byte[] AssociatedData(AssistantProvider provider, short version)
@@ -89,13 +125,21 @@ public sealed class AesGcmCredentialProtector : IAssistantCredentialProtector
     private static bool TryDecodeMasterKey(string? encoded, [NotNullWhen(true)] out byte[]? key)
     {
         key = null;
+        // El margen de un grupo Base64 (3 bytes) deja decodificar una clave algo más larga y rechazarla por longitud, no por falta de espacio.
         Span<byte> buffer = stackalloc byte[MasterKeyBytes + 3];
-        if (string.IsNullOrEmpty(encoded) || !Convert.TryFromBase64String(encoded, buffer, out var written) || written != MasterKeyBytes)
+        try
         {
-            return false;
-        }
+            if (string.IsNullOrEmpty(encoded) || !Convert.TryFromBase64String(encoded, buffer, out var written) || written != MasterKeyBytes)
+            {
+                return false;
+            }
 
-        key = buffer[..written].ToArray();
-        return true;
+            key = buffer[..written].ToArray();
+            return true;
+        }
+        finally
+        {
+            CryptographicOperations.ZeroMemory(buffer);
+        }
     }
 }
