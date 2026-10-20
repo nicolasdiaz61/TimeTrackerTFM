@@ -6,6 +6,8 @@ Define cómo `TimeTracker.Api` obtiene y valida su configuración: variables de 
 
 Convención (a confirmar en diseño): la clave `Cors:AllowedOrigins` se suministra por entorno como `Cors__AllowedOrigins__0`, `Cors__AllowedOrigins__1`, etc.
 
+Actualizada por `asistente-config-responsable`: 2 requisitos MODIFIED (arranque con la configuración del asistente y claves nuevas en `.env.example`).
+
 ## ADDED Requirements
 
 ### Requirement: Configuración por variables de entorno
@@ -76,7 +78,7 @@ Cuando el arranque falle por configuración, el mensaje DEBE nombrar la clave in
 
 ### Requirement: Documentación de claves en `.env.example`
 
-`.env.example` DEBE listar cada clave de entorno que la API y `docker-compose.yml` consumen, incluida la del puerto, con valor vacío o un marcador claramente ficticio: `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB`, `ConnectionStrings__Default`, `Database__ApplyMigrationsOnStartup`, `Jwt__SigningKey`, `Seed__DemoUsers` y `Seed__DemoPassword`, además de las existentes. `Jwt__SigningKey` DEBE figurar con valor vacío (con un comentario que indique cómo generarla). `Seed__DemoUsers` DEBE valer `false`. `Seed__DemoPassword` DEBE figurar con valor vacío (activa, no comentada) y un comentario de que solo se usa en local, que debe tener al menos 12 caracteres y que su valor de demostración se documenta únicamente en el README. Las nueve claves del asistente `Ai__Provider`, `Ai__Model`, `Ai__Endpoint`, `Ai__ApiKey`, `Ai__MaxOutputTokens`, `Ai__MaxToolIterations`, `Ai__TimeoutSeconds`, `Ai__RequestsPerMinute` y `Ai__DailyRequestsPerUser` DEBEN documentarse en `.env.example`: `Ai__Provider` y `Ai__ApiKey` como líneas activas con valor vacío (asistente deshabilitado por defecto) y las demás como líneas comentadas (`#`), con `Ai__Endpoint` de ejemplo `http://host.docker.internal:11434/` y los límites con sus valores por defecto (800, 5, 25, 5 y 50). DEBE haber un comentario que explique que sin `Ai__Provider` el asistente queda deshabilitado, los valores admitidos de `Ai__Provider` y que `Ai__ApiKey` es un secreto que nunca se escribe en el archivo. NO DEBE contener `Identity__DevelopmentEmployeeId`, ni valores reales (contraseñas, cadenas de conexión, claves de firma, claves de API). La clave del puerto PUEDE figurar comentada o sin definir, porque un valor vacío anularía el puerto que ya fija la imagen.
+`.env.example` DEBE listar cada clave de entorno que la API y `docker-compose.yml` consumen, incluida la del puerto, con valor vacío o un marcador claramente ficticio: `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB`, `ConnectionStrings__Default`, `Database__ApplyMigrationsOnStartup`, `Jwt__SigningKey`, `Seed__DemoUsers` y `Seed__DemoPassword`, además de las existentes. `Jwt__SigningKey` DEBE figurar con valor vacío (con un comentario que indique cómo generarla). `Seed__DemoUsers` DEBE valer `false`. `Seed__DemoPassword` DEBE figurar con valor vacío (activa, no comentada) y un comentario de que solo se usa en local, que debe tener al menos 12 caracteres y que su valor de demostración se documenta únicamente en el README. Las nueve claves del asistente `Ai__Provider`, `Ai__Model`, `Ai__Endpoint`, `Ai__ApiKey`, `Ai__MaxOutputTokens`, `Ai__MaxToolIterations`, `Ai__TimeoutSeconds`, `Ai__RequestsPerMinute` y `Ai__DailyRequestsPerUser` DEBEN documentarse en `.env.example`: `Ai__Provider` y `Ai__ApiKey` como líneas activas con valor vacío (asistente deshabilitado por defecto) y las demás como líneas comentadas (`#`), con `Ai__Endpoint` de ejemplo `http://host.docker.internal:11434/` y los límites con sus valores por defecto (800, 5, 25, 5 y 50). Las claves nuevas `Ai__Effort`, `Ai__AllowedProviders`, `Ai__MasterKeys__1`, `Ai__ActiveMasterKeyVersion` y `Ai__SettingsPollSeconds` TAMBIÉN DEBEN documentarse como líneas comentadas (`#`) y sin valores reales; en particular, `.env.example` NO DEBE contener ninguna clave maestra con valor, y su comentario DEBE indicar que se genera con 32 bytes aleatorios en Base64. DEBE haber un comentario que explique que sin `Ai__Provider` el asistente queda deshabilitado, los valores admitidos de `Ai__Provider` (`Anthropic`, `OpenAI`, `Gemini`, `Ollama`) y que `Ai__ApiKey` es un secreto que nunca se escribe en el archivo. NO DEBE contener `Identity__DevelopmentEmployeeId`, ni valores reales (contraseñas, cadenas de conexión, claves de firma, claves de API, claves maestras). La clave del puerto PUEDE figurar comentada o sin definir, porque un valor vacío anularía el puerto que ya fija la imagen.
 
 #### Scenario: Claves documentadas
 - DADO `.env.example`
@@ -100,8 +102,13 @@ Cuando el arranque falle por configuración, el mensaje DEBE nombrar la clave in
 
 #### Scenario: Claves de IA documentadas
 - DADO `.env.example`
-- CUANDO se buscan las nueve claves `Ai__*`
+- CUANDO se buscan las nueve claves `Ai__*` originales
 - ENTONCES las nueve aparecen; `Ai__Provider=` y `Ai__ApiKey=` están activas y con valor vacío, las otras siete llevan `#` inicial y ninguna lleva un valor real
+
+#### Scenario: Claves nuevas de IA documentadas
+- DADO `.env.example`
+- CUANDO se buscan `Ai__Effort`, `Ai__AllowedProviders`, `Ai__MasterKeys__1`, `Ai__ActiveMasterKeyVersion` y `Ai__SettingsPollSeconds`
+- ENTONCES las cinco aparecen con `#` inicial, ninguna lleva un valor real y no existe ninguna línea activa con una clave maestra con valor
 
 #### Scenario: Entrega sin clave de API
 - DADO `.env.example`
@@ -111,7 +118,7 @@ Cuando el arranque falle por configuración, el mensaje DEBE nombrar la clave in
 #### Scenario: Nota del asistente deshabilitado
 - DADO `.env.example`
 - CUANDO se leen los comentarios de las claves `Ai__*` (`Ai__Provider` y `Ai__ApiKey` activas pero vacías)
-- ENTONCES indican que sin `Ai__Provider` el asistente queda deshabilitado, los valores `Anthropic` y `Ollama`, y que la clave de API es un secreto que no se escribe en el archivo
+- ENTONCES indican que sin `Ai__Provider` el asistente queda deshabilitado, los valores `Anthropic`, `OpenAI`, `Gemini` y `Ollama`, y que la clave de API es un secreto que no se escribe en el archivo
 
 #### Scenario: Copiar el archivo no activa el asistente
 - DADO un `.env` creado copiando `.env.example` sin editar las claves `Ai__*`
@@ -300,7 +307,7 @@ La API DEBE leer `ForwardedHeaders:Enabled` (variable `ForwardedHeaders__Enabled
 
 ### Requirement: Arranque con la configuración del asistente
 
-La API DEBE validar las claves `Ai:*` con `ValidateOnStart()` y mismo patrón que `Jwt:SigningKey`. Sin `Ai:Provider` (ausente, `None` o en blanco) DEBE arrancar sin exigir ninguna otra clave `Ai:*`. Con `Ai:Provider` = `Anthropic` u `Ollama` y una clave `Ai:*` incorrecta o ausente según `assistant-configuration`, el proceso NO DEBE arrancar ni atender peticiones. El mensaje DEBE estar en español, nombrar la clave y la razón, y NO DEBE imprimir sus valores. Si varias validaciones fallan a la vez, la excepción PUEDE ser un `AggregateException`.
+La API DEBE validar las claves `Ai:*` con `ValidateOnStart()` y mismo patrón que `Jwt:SigningKey`. Sin `Ai:Provider` (ausente, `None` o en blanco) DEBE arrancar sin exigir ninguna otra clave `Ai:*`, salvo que `Ai:AllowedProviders` esté definida con un nombre desconocido, que sigue siendo un error de arranque (ver `assistant-configuration`). Con `Ai:Provider` = `Anthropic`, `OpenAI`, `Gemini` u `Ollama` y una clave `Ai:*` incorrecta o ausente según `assistant-configuration`, el proceso NO DEBE arrancar ni atender peticiones. La ausencia o invalidez de las claves maestras NO DEBE impedir el arranque. El mensaje DEBE estar en español, nombrar la clave y la razón, y NO DEBE imprimir sus valores. Si varias validaciones fallan a la vez, la excepción PUEDE ser un `AggregateException`.
 
 #### Scenario: Sin proveedor arranca
 - DADO el entorno con `Cors:AllowedOrigins`, `ConnectionStrings:Default` y `Jwt:SigningKey` válidos y sin claves `Ai__*`
@@ -317,10 +324,20 @@ La API DEBE validar las claves `Ai:*` con `ValidateOnStart()` y mismo patrón qu
 - CUANDO la API arranca
 - ENTONCES arranca y `GET /health` responde `200` aunque no haya servidor de Ollama accesible
 
+#### Scenario: Proveedor en la nube nuevo válido
+- DADO `Ai__Provider=Gemini` (y otro caso con `OpenAI`), `Ai__ApiKey` y `Ai__Model` válidos
+- CUANDO la API arranca
+- ENTONCES arranca y `GET /health` responde `200` sin conectar con el proveedor
+
 #### Scenario: Proveedor desconocido
-- DADO `Ai__Provider=Gemini`
+- DADO `Ai__Provider=GitHubModels`
 - CUANDO la API intenta arrancar
 - ENTONCES el arranque falla con un mensaje que contiene `Ai:Provider`
+
+#### Scenario: Sin clave maestra arranca
+- DADO `Ai__Provider=Ollama` válido y sin `Ai__MasterKeys__*` ni `Ai__ActiveMasterKeyVersion`
+- CUANDO la API arranca
+- ENTONCES arranca y `GET /health` responde `200`
 
 #### Scenario: El valor no se imprime
 - DADO `Ai__Provider=Anthropic`, `Ai__ApiKey` = `clave-secreta-prueba` y un `Ai:MaxOutputTokens` inválido
