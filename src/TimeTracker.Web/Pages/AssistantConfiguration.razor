@@ -49,7 +49,7 @@
     {
         <p role="status" aria-busy="true"><em>Cargando configuración...</em></p>
     }
-    else
+    else if (!form.ReloadOffered)
     {
         <button type="button" class="btn btn-outline-primary" @onclick="LoadAsync">Reintentar</button>
     }
@@ -142,7 +142,7 @@ else
         <div class="alert alert-danger mt-3" role="alertdialog" aria-labelledby="reset-title" data-testid="reset-confirmation">
             <p id="reset-title" class="mb-2"><strong>¿Restablecer al entorno?</strong></p>
             <p>Se borrará la configuración guardada vigente, incluida la clave, aunque otro responsable la haya cambiado después de que usted abriera esta página. El asistente volverá a usar los valores del entorno.</p>
-            <button type="button" class="btn btn-danger" @onclick="ResetAsync">Sí, restablecer</button>
+            <button type="button" class="btn btn-danger" @onclick="ResetAsync" disabled="@(!form.CanConfirmReset)">Sí, restablecer</button>
             <button type="button" class="btn btn-outline-secondary" @onclick="form.CancelReset">Cancelar</button>
         </div>
     }
@@ -221,7 +221,7 @@ else
         var result = await Api.GetAsync();
         if (result.Error is { } loadError)
         {
-            form.Fail(ConfigurationOperation.Load, loadError);
+            form.Fail(ConfigurationOperation.ReloadAfterReset, loadError);
             return;
         }
 

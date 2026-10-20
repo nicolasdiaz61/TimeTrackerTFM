@@ -225,6 +225,23 @@ public class RepositoryConventionsTests
         Assert.Contains("@attribute [Authorize]", chat, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public void Web_TheChatLinkMatchesOnlyItsExactRoute_SoItIsNotActiveOnTheConfigurationPage()
+    {
+        var menu = ReadWeb("Layout/NavMenu.razor");
+
+        Assert.Matches("""<NavLink class="nav-link" href="asistente" Match="NavLinkMatch\.All">""", menu);
+    }
+
+    [Fact]
+    public void Web_TheConfigurationPageDisablesTheResetConfirmationWhileBusyAndFlagsAFailedRereadAfterReset()
+    {
+        var page = ReadWeb("Pages/AssistantConfiguration.razor");
+
+        Assert.Matches("""@onclick="ResetAsync" disabled="@\(!form\.CanConfirmReset\)">Sí, restablecer""", page);
+        Assert.Contains("form.Fail(ConfigurationOperation.ReloadAfterReset, loadError)", page, StringComparison.Ordinal);
+    }
+
     private static string ReadWeb(string relativePath)
         => File.ReadAllText(Path.Combine(RepositoryRoot.Path, "src", "TimeTracker.Web", relativePath));
 

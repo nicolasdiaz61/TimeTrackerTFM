@@ -237,8 +237,10 @@ public class AssistantConfigurationFormTests
     [InlineData(HttpStatusCode.BadRequest)]
     [InlineData(HttpStatusCode.Conflict)]
     [InlineData(HttpStatusCode.TooManyRequests)]
+    [InlineData(HttpStatusCode.InternalServerError)]
+    [InlineData(HttpStatusCode.RequestEntityTooLarge)]
     [InlineData(null)]
-    public void FailedSave_ClearsTheCredentialAndKeepsTheOtherEdits(HttpStatusCode? status)
+    public void FailedSave_KeepsTheTypedCredentialAndTheOtherEdits_SoARetryDoesNotRetypeIt(HttpStatusCode? status)
     {
         var form = Loaded();
         form.Model = "otro-modelo";
@@ -247,9 +249,48 @@ public class AssistantConfigurationFormTests
 
         form.Fail(ConfigurationOperation.Save, Error(status));
 
-        Assert.Null(form.Credential);
+        Assert.Equal(TypedKey, form.Credential);
         Assert.Equal("otro-modelo", form.Model);
         Assert.False(form.IsBusy);
+    }
+
+    [Fact]
+    public void ReloadAfterConflict_ClearsTheTypedCredentialBecauseTheFormIsRebuiltFromTheServer()
+    {
+        var form = Loaded();
+        form.Credential = TypedKey;
+        Assert.True(form.TryBegin());
+        form.Fail(ConfigurationOperation.Save, Error(HttpStatusCode.Conflict, "La configuración cambió."));
+
+        Assert.True(form.TryBegin());
+        form.CompleteLoad(Dto(token: "9"));
+
+        Assert.Null(form.Credential);
+    }
+
+    [Fact]
+    public void AResetWhoseRereadFails_SaysTheResetWasAppliedMarksTheLoadStaleAndOffersReloading()
+    {
+        var form = Loaded(Dto(credentialConfigured: true, source: "stored"));
+        form.Credential = TypedKey;
+        form.RequestReset();
+        Assert.True(form.TryConfirmReset());
+
+        form.Fail(ConfigurationOperation.ReloadAfterReset, Error(null, ApiRequest.GenericErrorMessage));
+
+        Assert.False(form.IsLoaded);
+        Assert.Null(form.Credential);
+        Assert.Contains("restablecimiento sí se aplicó", form.ErrorMessage, StringComparison.Ordinal);
+        Assert.Contains(ApiRequest.GenericErrorMessage, form.ErrorMessage, StringComparison.Ordinal);
+        Assert.True(form.ReloadOffered);
+        Assert.False(form.IsBusy);
+        Assert.Null(form.SuccessMessage);
+        Assert.Throws<InvalidOperationException>(form.BuildSaveRequest);
+
+        Assert.True(form.TryBegin());
+        form.CompleteLoad(Dto(token: "0"));
+        Assert.True(form.IsLoaded);
+        Assert.Null(form.ErrorMessage);
     }
 
     [Fact]
@@ -442,7 +483,7 @@ public class AssistantConfigurationFormTests
     }
 
     [Fact]
-    public void FailedReset_ClearsTheCredentialAndTheConfirmation()
+    public void FailedReset_KeepsTheTypedCredentialAndClearsTheConfirmation()
     {
         var form = Loaded();
         form.RequestReset();
@@ -451,9 +492,35 @@ public class AssistantConfigurationFormTests
 
         form.Fail(ConfigurationOperation.Reset, Error(HttpStatusCode.Conflict, "La configuración cambió."));
 
-        Assert.Null(form.Credential);
+        Assert.Equal(TypedKey, form.Credential);
         Assert.False(form.ResetConfirmationPending);
         Assert.True(form.ReloadOffered);
+    }
+
+    [Fact]
+    public void WhileAnOperationRuns_TheResetCannotBeConfirmedAndTheConfirmationIsDropped()
+    {
+        var form = Loaded();
+        form.RequestReset();
+        Assert.True(form.CanConfirmReset);
+
+        Assert.True(form.TryBegin());
+
+        Assert.False(form.ResetConfirmationPending);
+        Assert.False(form.CanConfirmReset);
+        Assert.False(form.TryConfirmReset());
+        Assert.True(form.IsBusy);
+    }
+
+    [Fact]
+    public void ARequestToReset_IsIgnoredWhileAnOperationRuns()
+    {
+        var form = Loaded();
+        Assert.True(form.TryBegin());
+
+        form.RequestReset();
+
+        Assert.False(form.CanConfirmReset);
     }
 
     [Theory]
