@@ -137,6 +137,29 @@ public partial class DeliveryArtifactsTests
         }
     }
 
+    // 4b.12 (SC «Documentación en .env.example», parte del asistente): topes por compañía, comentados y con su valor por defecto.
+    [Theory]
+    [InlineData("Ai__RequestsPerMinutePerCompany", "30")]
+    [InlineData("Ai__DailyRequestsPerCompany", "500")]
+    [InlineData("Ai__MaxLoadedCompanies", "100")]
+    [InlineData("Ai__RuntimeIdleMinutes", "60")]
+    public void EnvExample_DocumentsTheCompanyLimitsCommentedWithTheirDefaults(string key, string defaultValue)
+    {
+        var example = ReadRepositoryFile(".env.example");
+
+        Assert.Matches($@"(?m)^# {key}={defaultValue}\s*$", example);
+        Assert.False(ActiveEnvEntries().ContainsKey(key), $"{key} no debe estar activa en .env.example.");
+    }
+
+    [Fact]
+    public void EnvExample_SaysThatAManagerDoesNotEditTheCompanyLimits()
+    {
+        var comments = string.Join('\n', ReadRepositoryFile(".env.example").Split('\n').Where(line => line.TrimStart().StartsWith('#')));
+
+        Assert.Contains("no las edita un Manager", comments, StringComparison.Ordinal);
+        Assert.Contains("Europe/Madrid", comments, StringComparison.Ordinal);
+    }
+
     [Fact]
     public void EnvExample_ExplainsTheDisabledAssistantProvidersAndTheSecretKey()
     {

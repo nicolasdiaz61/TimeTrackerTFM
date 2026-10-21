@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Options;
@@ -19,7 +20,7 @@ public static class AssistantServiceCollectionExtensions
     {
         services.AddSingleton<IValidateOptions<AiOptions>, AiOptionsValidator>();
         services.AddOptions<AiOptions>()
-            .BindConfiguration(AiOptions.SectionName)
+            .Configure<IConfiguration>(AiOptionsBinder.Bind)
             .ValidateOnStart();
 
         services.TryAddSingleton<IChatClientFactory, DefaultChatClientFactory>();
