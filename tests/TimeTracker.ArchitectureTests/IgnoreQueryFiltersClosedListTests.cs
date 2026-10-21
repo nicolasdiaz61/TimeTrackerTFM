@@ -19,8 +19,10 @@ public partial class IgnoreQueryFiltersClosedListTests
         ["src/TimeTracker.Infrastructure/Persistence/AssistantSettingsStore.cs"] = 1,
     };
 
-    // TRANSITORIO (tarea 3.6): `AssistantSettingsStore.ListVersionsAsync` nace en la tarea 4b.7, así que hasta entonces su entrada de la
-    // lista no tiene uso. La 4b.7 retira esta tolerancia y la lista queda con 2 sitios y ninguna entrada sin uso.
+    // TRANSITORIO (tarea 3.6, mantenida en la 4a): `AssistantSettingsStore.ListVersionsAsync` nace en la tarea 4b.7 (la 4a generaliza el almacén
+    // por la compañía del contexto, sin necesidad de un segundo `IgnoreQueryFilters`), así que hasta entonces su entrada de la
+    // lista no tiene uso. La tolerancia caduca sola: en cuanto la entrada tenga uso, `TheTransitionalTolerance_ExpiresAsSoonAsAnEntryGetsAUse`
+    // falla hasta que la 4b.7 la retire y la lista quede con 2 sitios y ninguna entrada sin uso.
     private static readonly string[] TransitionallyUnused = ["src/TimeTracker.Infrastructure/Persistence/AssistantSettingsStore.cs"];
 
     private static readonly string[] ProhibitedApis =
@@ -61,6 +63,18 @@ public partial class IgnoreQueryFiltersClosedListTests
 
         Assert.True(unused.Count == 0, $"Entradas de la lista cerrada sin uso: {string.Join(", ", unused)}");
         Assert.Single(TransitionallyUnused);
+    }
+
+    [Fact]
+    public void TheTransitionalTolerance_ExpiresAsSoonAsAnEntryGetsAUse()
+    {
+        var usage = CountUsagePerFile();
+
+        var alreadyUsed = TransitionallyUnused.Where(usage.ContainsKey).ToList();
+
+        Assert.True(
+            alreadyUsed.Count == 0,
+            $"La entrada transitoria ya tiene uso: retire la tolerancia TransitionallyUnused de esta prueba (la lista queda con todas sus entradas en uso): {string.Join(", ", alreadyUsed)}");
     }
 
     [Fact]
