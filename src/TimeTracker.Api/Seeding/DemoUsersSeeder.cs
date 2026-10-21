@@ -2,9 +2,10 @@ using Microsoft.Extensions.Options;
 
 using TimeTracker.Application.Authentication;
 using TimeTracker.Application.Companies;
-using TimeTracker.Application.Identity;
 using TimeTracker.Application.Users;
+using TimeTracker.Domain.Companies;
 using TimeTracker.Domain.Users;
+using TimeTracker.Infrastructure.Persistence;
 
 namespace TimeTracker.Api.Seeding;
 
@@ -26,11 +27,11 @@ public sealed partial class DemoUsersSeeder(
             return;
         }
 
-        await using var scope = services.CreateAsyncScope();
+        // La siembra actúa como la compañía por defecto (DD-22).
+        await using var scope = services.GetRequiredService<ICompanyScopeFactory>().CreateScope(Company.DefaultId);
         var users = scope.ServiceProvider.GetRequiredService<IUserRepository>();
         var hasher = scope.ServiceProvider.GetRequiredService<IPasswordHasher>();
-        var companyId = scope.ServiceProvider.GetRequiredService<ICompanyContext>().CompanyId
-            ?? throw new InvalidOperationException("Seed:DemoUsers: no hay compañía en el contexto para sembrar los usuarios de demostración.");
+        var companyId = Company.DefaultId;
         await scope.ServiceProvider.GetRequiredService<ICompanyRepository>().EnsureDefaultAsync(cancellationToken);
         var existingByEmail = await FindExistingAsync(companyId);
         var created = 0;

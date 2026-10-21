@@ -12,6 +12,8 @@ using TimeTracker.Application.TimeTracking;
 using TimeTracker.Application.Users;
 using TimeTracker.Domain.Users;
 using TimeTracker.Infrastructure.Assistant;
+using TimeTracker.Infrastructure.Persistence;
+using TimeTracker.Infrastructure.Tests.Fakes;
 
 namespace TimeTracker.Infrastructure.Tests.Assistant;
 
@@ -33,6 +35,9 @@ public sealed class AssistantRegistrationTests
         services.AddScoped<GetTimeEntriesUseCase>();
         services.AddScoped<GetTeamMembersUseCase>();
         services.AddScoped<GetTeamMemberTimeEntriesUseCase>();
+        services.AddScoped<RecordingCompanyContext>();
+        services.AddScoped<ICompanyContextSetter>(scope => scope.GetRequiredService<RecordingCompanyContext>());
+        services.AddSingleton<ICompanyScopeFactory, CompanyScopeFactory>();
         services.AddAssistant();
         return services.BuildServiceProvider(new ServiceProviderOptions { ValidateScopes = true, ValidateOnBuild = true });
     }

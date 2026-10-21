@@ -19,6 +19,7 @@ builder.Services.AddForwardedHeadersBehindProxy(builder.Configuration);
 builder.Services.AddRestrictiveCors();
 builder.Services.AddDatabaseConfiguration();
 builder.Services.AddJwtAuthentication();
+builder.Services.AddCompanyContext();
 builder.Services.AddDomainProblemDetails();
 builder.Services.AddTimeEntries();
 builder.Services.AddAuthorizationPolicies();
@@ -51,6 +52,8 @@ app.UseCors();
 // Autenticación y autorización antes del limitador: la política del asistente particiona por usuario (claim sub) y
 // un anónimo recibe 401 sin consumir permisos de nadie. CORS sigue antes: el 429 conserva las cabeceras del origen permitido.
 app.UseAuthentication();
+// La compañía sale solo del token ya validado y se fija antes de autorizar (V-10).
+app.UseCompanyContext();
 app.UseAuthorization();
 app.UseRateLimiter();
 

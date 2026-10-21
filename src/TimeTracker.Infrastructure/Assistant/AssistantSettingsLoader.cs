@@ -4,6 +4,8 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
 using TimeTracker.Application.Assistant.Configuration;
+using TimeTracker.Domain.Companies;
+using TimeTracker.Infrastructure.Persistence;
 
 namespace TimeTracker.Infrastructure.Assistant;
 
@@ -14,7 +16,7 @@ namespace TimeTracker.Infrastructure.Assistant;
 /// fresca, de modo que no puede publicar una versión más antigua que la ya aplicada.
 /// </summary>
 internal sealed class AssistantSettingsLoader(
-    IServiceScopeFactory scopeFactory,
+    ICompanyScopeFactory companyScopes,
     IOptions<AiOptions> options,
     IAssistantEnvironment environment,
     IAssistantCredentialProtector protector,
@@ -31,9 +33,12 @@ internal sealed class AssistantSettingsLoader(
 
     public string? LastRejectedVersion => Volatile.Read(ref _lastRejectedVersion);
 
+    // Puente transitorio (DD-14): el runtime sigue siendo un singleton que sirve a la compañía por defecto, hasta la PR 4b.
+    private AsyncServiceScope BridgeScope() => companyScopes.CreateScope(Company.DefaultId);
+
     public async Task<string> ReadVersionAsync(CancellationToken cancellationToken)
     {
-        await using var scope = scopeFactory.CreateAsyncScope();
+        await using var scope = BridgeScope();
         return await scope.ServiceProvider.GetRequiredService<IAssistantSettingsStore>().GetVersionAsync(cancellationToken);
     }
 
@@ -65,7 +70,7 @@ internal sealed class AssistantSettingsLoader(
 
     private async Task<AssistantSettings?> ReadStoredAsync(CancellationToken cancellationToken)
     {
-        await using var scope = scopeFactory.CreateAsyncScope();
+        await using var scope = BridgeScope();
         return await scope.ServiceProvider.GetRequiredService<IAssistantSettingsStore>().GetAsync(cancellationToken);
     }
 

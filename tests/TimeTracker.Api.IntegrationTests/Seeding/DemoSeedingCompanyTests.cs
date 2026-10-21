@@ -131,6 +131,20 @@ public class DemoSeedingCompanyTests(PostgresFixture postgres)
     private static Task InsertOtherCompanyAsync(string connectionString)
         => ExecuteAsync(connectionString, $"INSERT INTO companies (id, name, name_normalized, status, uses_platform_assistant, created_at) VALUES ('{OtherCompany}', 'Otra', 'otra', 'Active', false, now())");
 
+    [Fact]
+    public async Task Seeding_ActsInsideTheScopeOfTheDefaultCompany()
+    {
+        var connectionString = await MigratedDatabaseAsync();
+        var recorder = new RecordingCompanyScopeFactory();
+
+        using var factory = CreateFactory(connectionString, demoData: true).WithWebHostBuilder(recorder.InstallOn);
+        _ = factory.CreateClient();
+
+        // Una petición por cada sembrador (usuarios y fichajes), siempre con la compañía por defecto.
+        Assert.Equal([Company.DefaultId, Company.DefaultId], recorder.Requested);
+        Assert.Equal([Company.DefaultId.ToString()], await QueryAsync(connectionString, "SELECT DISTINCT company_id::text FROM users"));
+    }
+
     private static WebApplicationFactory<Program> CreateFactory(string connectionString, bool demoData)
         => new ApiFactory().WithWebHostBuilder(builder =>
         {

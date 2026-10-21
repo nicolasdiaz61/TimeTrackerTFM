@@ -6,7 +6,10 @@ using Microsoft.Extensions.Options;
 using Microsoft.Extensions.Time.Testing;
 
 using TimeTracker.Application.Assistant.Configuration;
+using TimeTracker.Application.Identity;
+using TimeTracker.Domain.Companies;
 using TimeTracker.Infrastructure.Assistant;
+using TimeTracker.Infrastructure.Persistence;
 using TimeTracker.Infrastructure.Tests.Fakes;
 
 namespace TimeTracker.Infrastructure.Tests.Assistant;
@@ -71,14 +74,27 @@ public sealed class AssistantSettingsLoaderTests : IDisposable
             InitialInner = new DisposalTrackingChatClient("entorno");
             Client = new AssistantChatClient(InitialInner, environment, Time);
             var services = new ServiceCollection();
-            services.AddSingleton<IAssistantSettingsStore>(Store);
+            services.AddScoped<RecordingCompanyContext>();
+            services.AddScoped<ICompanyContext>(scope => scope.GetRequiredService<RecordingCompanyContext>());
+            services.AddScoped<ICompanyContextSetter>(scope => scope.GetRequiredService<RecordingCompanyContext>());
+            // Registra la compañía que ve el almacén dentro del ámbito en el que lo resuelve el cargador.
+            services.AddScoped<IAssistantSettingsStore>(scope =>
+            {
+                CompaniesSeenByTheStore.Add(scope.GetRequiredService<ICompanyContext>().CompanyId);
+                return Store;
+            });
             Provider = services.BuildServiceProvider();
+            Scopes = new RecordingScopeFactory(new CompanyScopeFactory(Provider.GetRequiredService<IServiceScopeFactory>()));
             var options = Options.Create(environment);
             Loader = new AssistantSettingsLoader(
-                Provider.GetRequiredService<IServiceScopeFactory>(), options, new ConfigurationAssistantEnvironment(options), protector, Factory, Client, Logger);
+                Scopes, options, new ConfigurationAssistantEnvironment(options), protector, Factory, Client, Logger);
         }
 
         public FakeAssistantSettingsStore Store { get; } = new();
+
+        public List<Guid?> CompaniesSeenByTheStore { get; } = [];
+
+        public RecordingScopeFactory Scopes { get; }
 
         public RecordingChatClientFactory Factory { get; } = new();
 
@@ -93,6 +109,18 @@ public sealed class AssistantSettingsLoaderTests : IDisposable
         public ServiceProvider Provider { get; }
 
         public AssistantSettingsLoader Loader { get; }
+    }
+
+    [Fact]
+    public async Task LoadAndReadVersion_AlwaysActInsideTheScopeOfTheDefaultCompany()
+    {
+        var rig = NewRig(stored: Row(AssistantProvider.Ollama, "9", model: "db-m"));
+
+        await rig.Loader.ReadVersionAsync(CancellationToken.None);
+        await rig.Loader.LoadAsync(CancellationToken.None);
+
+        Assert.Equal([Company.DefaultId, Company.DefaultId], rig.Scopes.Requested);
+        Assert.Equal([(Guid?)Company.DefaultId, Company.DefaultId], rig.CompaniesSeenByTheStore);
     }
 
     [Fact]
