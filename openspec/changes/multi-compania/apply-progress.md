@@ -1,6 +1,6 @@
 # Progreso de apply: multi-compania
 
-Fase: sdd-apply · Modo: openspec · **Strict TDD** · Rama: `feat/multi-compania-pr1-modelo` (sale de `main` 9e572b8) · Fecha: 2026-10-21
+Fase: sdd-apply · Modo: openspec · **Strict TDD** · Rama de la PR 1: `feat/multi-compania-pr1-modelo` (sale de `main` 9e572b8) · Rama de la PR 1b: `feat/multi-compania-pr1b-contraer` (apilada sobre la anterior) · Fecha: 2026-10-21
 
 ## Estado acumulado
 
@@ -8,7 +8,9 @@ Fase: sdd-apply · Modo: openspec · **Strict TDD** · Rama: `feat/multi-compani
 |---|---|---|
 | PR 1 | 1.1, 1.5 a 1.13 | **Hechas** (11 de 15) |
 | PR 1 | 1.2 (V-1), 1.3 (V-4, parte Railway), 1.4 (V-6), 1.4b (V-3) | **Pendientes del responsable** (puertas previas al despliegue; apply no accede a producción ni a Railway) |
-| PR 1b a PR 8, tarea 9 | todas | Sin empezar (fuera del alcance de este lote) |
+| PR 1b | 1b.1, 1b.4 a 1b.10 | **Hechas** (10 de 12; ver la sección «PR 1b» al final) |
+| PR 1b | 1b.2 (puertas previas de despliegue), 1b.3 (reconfirmación de V-3 con el responsable; la parte local está hecha) | **Pendientes del responsable** (apply no accede a producción ni a Railway) |
+| PR 2 a PR 8, tarea 9 | todas | Sin empezar (fuera del alcance de este lote) |
 
 ## Lo que queda al responsable (puertas previas, sin marcar en `tasks.md`)
 
@@ -101,3 +103,87 @@ Detalle en `design.md`, sección 9, «Desviaciones y aclaraciones del diseño su
 
 - Despliegue de la PR 1: ver «Lo que queda al responsable» y la desviación 7.
 - Las tareas 1.2, 1.3, 1.4 y 1.4b siguen sin marcar a propósito.
+
+---
+
+# PR 1b — Migración B «contraer» y puente transitorio del asistente
+
+Rama `feat/multi-compania-pr1b-contraer` (apilada sobre `feat/multi-compania-pr1-modelo`, PR #36; cadena `stacked-to-main`) · Strict TDD · Copia previa en `..\TimeTracker.rollback\pr-mc1b\` (73 archivos).
+
+## Lo que queda al responsable (puertas previas, sin marcar en `tasks.md`)
+
+- **1b.2** — puertas previas del despliegue de la 1b: V-1 resuelta (huérfanos y decisión de Q-1), PR 1 desplegada y observada, V-6 comprobada ese día y `Database__ApplyMigrationsOnStartup=false` aplicado antes, V-3 reconfirmada, copia `pg_dump -Fc` restaurada en local (9.3), healthcheck y rollback de código identificados. El código se puede revisar y fusionar: si quedan huérfanos, B aborta de forma segura con el número de filas.
+- **1b.3 (reconfirmación)** — la vía y la versión de `psql` de Railway. La parte local está hecha (ver «V-3» en `design.md`).
+- No se ha accedido a Railway ni a ninguna base real.
+
+## Commits de esta entrega
+
+| Commit | Mensaje | Contenido |
+|---|---|---|
+| `c9beeac` | `feat(multi-compania): migración B «contraer» y puente transitorio del asistente` | Tareas 1b.1, 1b.4 a 1b.9: migración `EnforceCompanyIsolation` (SQL a mano, `Designer`, snapshot), modelo y almacén del asistente (puente), pruebas nuevas y ajuste de las existentes |
+| (este) | `docs(openspec): progreso de apply de la PR 1b de multi-compania` | `tasks.md`, `design.md` (resultados de V-n y desviaciones), este archivo |
+
+Tamaño del commit de código (`git diff HEAD~1`): **+1 907 / -398 en 35 archivos**. Producción: +546 / -35 en 7 archivos, de los que el `Designer` generado son 390 líneas; sin él, **≈ +156 / -35** (migración escrita a mano 131 líneas, puente del almacén +18/-7, snapshot +1/-10). Pruebas: +1 361 / -363 en 28 archivos. La previsión era 400-650 líneas sin `Designer`: el código de producción cabe holgadamente; las pruebas pesan más (migración con datos, `Down`, scripts, FK, ensayo completo) y hay un ajuste de las pruebas existentes que usaban empleados sueltos.
+
+## Evidencia de Strict TDD (ciclo por tarea)
+
+| Tarea | Archivo de prueba | Capa | Safety net | RED | GREEN | TRIANGULATE | REFACTOR |
+|---|---|---|---|---|---|---|---|
+| 1b.1 | — | — | N/A (copia) | N/A | `..\TimeTracker.rollback\pr-mc1b\` | N/A | N/A |
+| 1b.4 | `Persistence/EnforceCompanyIsolationMigrationTests` (`PrimaryKeyOfAssistantSettings`) | Integración | N/A | Lectura de `AddAssistantSettings` y snapshot: `PK_assistant_settings` sobre `id`; la prueba fija el nombre antes y después de B | incluido en 1b.5 | Antes de B (`id`) y después (`company_id`) | Limpio |
+| 1b.5 | `Persistence/EnforceCompanyIsolationMigrationTests` | Integración (Testcontainers `postgres:18-alpine`) | Pruebas de migración y modelo de la PR 1 en verde | 8 pruebas, 7 en rojo: esperaba `time_entries huérfanos: 1`, `is_nullable` «YES» en vez de «NO», `23502` no lanzado (el `DEFAULT` seguía), índices y restricciones inexistentes | 8/8 | Huérfano (1 y 2), sin huérfano, relleno de filas con `company_id` nulo, `DEFAULT` retirado, triggers, índices y FK, `HasPendingModelChanges` | Limpio. Una prueba pasó a la primera (`Up_KeepsTheAppendOnlyTriggersPresentAndActive`): ya se cumplía tras A; la cubre además `Up_RemovesTheAuditDefault...` |
+| 1b.6 | `Persistence/CompositeForeignKeyTests` | Integración | N/A (nuevo) | 5 de 8 en rojo (sin FK no había `23503`) | 8/8 | Responsable ajeno, propio y nulo; fichaje de otra compañía, propio y de empleado inexistente; compañía inexistente; borrado de usuario con fichajes | Limpio |
+| 1b.6b | `Persistence/UsersTableConstraintsTests`, `Persistence/TimeEntriesColumnsTests` | Integración | `UserConstraintsTests`/`UserSchemaTests` previos (se fusionan) | 6 de 14 en rojo (`company_id` anulable, FK con el nombre antiguo, sin `23502`) | 14/14 | Correo duplicado en la misma y otra compañía, rol, mayúsculas, `confdeltype`, ida y vuelta de `UserAccount` y `TimeEntry` | Limpio |
+| 1b.7 | `Persistence/EnforceCompanyIsolationDownTests` | Integración | N/A | 5 de 6 en rojo (`Down` sin comprobación ni restauración de la clave `id`) | 6/6 | Una compañía con y sin fila de configuración; dos compañías con una fila y con dos; tres compañías sin filas (la condición no depende de las filas); secuencia completa | Limpio |
+| 1b.7b (V-3) | `Persistence/EnforceCompanyIsolationScriptTests` | Integración | N/A | «Verde a la primera»: el comportamiento ya existía y se descubrió ensayándolo a mano con `psql`; la prueba lo fija. Mutación temporal: sustituir la comprobación de huérfanos por una versión que no aborta (no ejecutada para esta prueba; sí se ejecutó una variante sintáctica que confirmó que el `DO` anidado funciona en el script idempotente) | 3/3 | Script idempotente de `Up B` con huérfano (sin cambios parciales, incluido el relleno residual), sin huérfano (y repetido), `Down B` con dos y con una compañía | Limpio |
+| 1b.8 | `Startup/ApplyMigrationsOnStartupTests` | Integración | `DatabaseMigrationStartupTests` | 2/2 en rojo (la API no aplicaba B) | 2/2 | A y B antes de servir; B aborta y la API no arranca | Limpio |
+| 1b.8b | `Assistant/AssistantBridgeTests` | Integración (`FakeChatClient`) | `AssistantSettingsStoreTests`, `...ExternalSaveTests`, `...MultiInstanceTests` | 2 de 4 en rojo (almacén contra la clave `id`) | 4/4 | Fila de la compañía por defecto con clave `company_id`; fila ajena ignorada y auditoría con la compañía por defecto; guardado por API que llega a otra instancia tras su sondeo; sin fila gana el entorno y con clave guardada gana la guardada | Limpio |
+| 1b.9 | `Persistence/EnforceCompanyIsolationRehearsalTests` | Integración (ensayo) | N/A | «Verde a la primera»: ensambla piezas ya probadas (misma justificación que 1.12); quitar el relleno residual o la comprobación de huérfanos lo rompería | 1/1 | Un escenario completo | Limpio |
+| 1b.10 | — | — | Suite completa | — | Puerta de la PR (abajo) | — | `dotnet format` sin cambios; sin código muerto |
+
+### Resumen de pruebas
+
+- Pruebas nuevas: 46 (8 + 6 + 3 + 8 + 11 + 3 + 2 + 4 + 1); retiradas por sustitución: 11 (`UserConstraintsTests` 6, `UserSchemaTests` 1, `TimeEntriesForeignKeyTests` 2, `AddCompaniesRehearsalTests` 1, `Columns_AreExactlySix` 1). Integración: 573 → 608.
+- Total tras la PR: 95 + 331 + 399 + 156 + 288 + 608 = **1 877 pruebas**; 1 872 en verde y **5 con fallo de entorno** (ver más abajo).
+- Capas: integración con PostgreSQL real (Testcontainers) y ensayo con `psql` en un contenedor propio y desechable; ninguna llamada a un proveedor real de IA.
+
+### Evidencia de unidad de trabajo
+
+| Evidencia | Valor |
+|---|---|
+| Prueba focalizada | `dotnet test tests/TimeTracker.Api.IntegrationTests -c Release --no-build --filter "FullyQualifiedName~EnforceCompanyIsolation\|FullyQualifiedName~CompositeForeignKey\|FullyQualifiedName~UsersTableConstraints\|FullyQualifiedName~TimeEntriesColumns\|FullyQualifiedName~ApplyMigrationsOnStartup\|FullyQualifiedName~AssistantBridge"` → 47/47 (el comando de `tasks.md`, solo `FullyQualifiedName~EnforceCompanyIsolation`, da 18/18) |
+| Arnés de ejecución | `EnforceCompanyIsolationRehearsalTests` (API sobre una base con la forma de la de producción: `Up A`, aborto por huérfano, `Up B`, `Down B` con una y con dos compañías, `Down A`, de nuevo `Up A` y `Up B` al arrancar, flujo mínimo) y la ejecución manual de los scripts con `psql 18.6 -v ON_ERROR_STOP=1 --single-transaction` en un contenedor propio (retirado al terminar). Nada contra producción |
+| Límite de reversión | Revertir `c9beeac` y restaurar `..\TimeTracker.rollback\pr-mc1b\`; contra una base ya migrada con B, `Down` de `EnforceCompanyIsolation` (solo con una compañía y antes de abrir el registro) |
+
+## Puerta de la PR
+
+| Paso | Resultado |
+|---|---|
+| DOCKER-CHECK | `docker info` responde (29.7.2); solo lectura; los contenedores existentes no se tocaron |
+| Entorno limpio | Sin variables `Cors__`, `ConnectionStrings__`, `Database__`, `Jwt__`, `Seed__`, `Ai__`, `Registration__`, `Company__`, `ForwardedHeaders__`, `ASPNETCORE_`, `DOTNET_ENVIRONMENT` |
+| RESTORE | Correcto |
+| BUILD | `-warnaserror`: 0 advertencias, 0 errores |
+| TEST | Domain 95, Application 331, Web 288, Infrastructure 399, Architecture 156: 0 fallos. Api.Integration 608: 603 superadas y **5 con fallo de entorno** (puerto 5000 de Windows reservado: `AssistantBodyLimitTests` ×3 y `BodyOver8KiB_Returns413_AndNothingIsReadOrWritten` ×2, con `Failed to bind to address http://localhost:5000`); con `ASPNETCORE_URLS=http://127.0.0.1:0` solo en ese comando de diagnóstico, pasan 5/5 |
+| COV-A | Application: líneas 99,9 %, ramas 96,6 % (mínimo 80 %) |
+| COV-D | Domain: líneas 100,0 %, ramas 100,0 % (mínimo 100 %) |
+| FORMAT | `--verify-no-changes`: sin cambios |
+| VULN | Sin `has the following vulnerable packages` |
+| EF-PENDING | «No changes have been made to the model since the last migration» (`--startup-project src/TimeTracker.Infrastructure`) |
+
+## Desviaciones del diseño y de las tareas
+
+Detalle en `design.md`, sección 9, «Desviaciones y aclaraciones del diseño surgidas en la PR 1b»:
+
+1. El `Down` de B deja `assistant_settings.id` con `DEFAULT 1` (lo pide la spec; A lo dejó sin valor por defecto).
+2. El snapshot casi no cambia en B (A ya reflejaba el modelo final); `ix_assistant_settings_company_id` nunca llega a existir.
+3. El puente del almacén usa la constante `Company.DefaultId` sin cambiar el constructor (no lee `ICompanyContext`); el cargador y el poller no cambian porque ya leen a través del almacén.
+4. Las pruebas existentes crean ahora el usuario de cada fichaje (la FK compuesta lo exige); se sustituyen cuatro clases de prueba cuyos escenarios cambian de signo.
+5. Cinco pruebas de integración dependen del puerto 5000, reservado en esta máquina: bloqueo de entorno, sin relación con el cambio.
+6. Hallazgo para el runbook (V-3): el script de EF lleva `START TRANSACTION`/`COMMIT` y, bajo `--single-transaction`, `psql` avisa; es inocuo con un script por migración y no hay que concatenar migraciones.
+7. La nota de la tarea 1b.6 («se anota en el ADR 0020 que la baja de usuarios queda pendiente») se traslada a la PR 4a, donde nace el ADR 0020 (DD-24); el diseño (DD-2) ya la recoge.
+
+## Riesgos abiertos
+
+- Despliegue de la PR 1b: ver «Lo que queda al responsable». Hasta que la V-1 esté resuelta no se sabe si hay huérfanos; B los detecta y aborta (fusionar es seguro, desplegar no).
+- El rollback de un clic de Railway contra el esquema B no es válido (los `INSERT` de `time_entries` fallan por `company_id NOT NULL` y el almacén antiguo lee `assistant_settings.id`): ejecutar `Down` antes de redesplegar el código anterior.
+- Las tareas 1.2, 1.3, 1.4, 1.4b, 1b.2 y 1b.3 siguen sin marcar a propósito.
