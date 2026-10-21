@@ -232,7 +232,7 @@ La Web DEBE ofrecer `/asistente/configuracion` solo a Managers (enlace de menú 
 
 ### Requirement: Recarga en caliente por compañía
 
-El runtime del asistente DEBE mantener una instantánea de configuración por compañía (construida de forma perezosa en la primera pregunta de la compañía y sustituida cuando cambia la versión `xmin` de su fila), y la instantánea de una compañía NUNCA DEBE atender a otra. Un sondeo global DEBE leer todas las parejas `(company_id, xmin)` en una consulta y recargar solo las compañías cuya versión cambió, conservando la gracia y la regla «conservar la última configuración válida» por compañía. Tras guardar o restablecer, la instancia local DEBE aplicar el cambio de esa compañía de inmediato; las demás instancias, en unos 30 segundos. El número de instantáneas cargadas DEBE estar acotado (`Ai:MaxLoadedCompanies`, ver `assistant-configuration`), expulsando las de compañías menos usadas y liberando sus recursos (pipeline y cliente HTTP) al terminar las peticiones en curso. Una compañía sin fila no mantiene instantánea de proveedor (asistente deshabilitado).
+El runtime del asistente DEBE mantener una instantánea de configuración por compañía (construida de forma perezosa en la primera pregunta de la compañía y sustituida cuando cambia la versión `xmin` de su fila), y la instantánea de una compañía NUNCA DEBE atender a otra. Un sondeo global DEBE leer todas las parejas `(company_id, xmin)` en una consulta y recargar solo las compañías cuya versión cambió, conservando la gracia y la regla «conservar la última configuración válida» por compañía. Tras guardar o restablecer, la instancia local DEBE aplicar el cambio de esa compañía de inmediato; las demás instancias, en unos 30 segundos. El número de instantáneas cargadas DEBE estar acotado (`Ai:MaxLoadedCompanies`, ver `assistant-configuration`), expulsando las de compañías menos usadas y liberando sus recursos (pipeline y cliente HTTP) al terminar las peticiones en curso. Una compañía sin fila no mantiene instantánea de proveedor (asistente deshabilitado). Un fallo transitorio al cargar la instantánea de una compañía (base de datos caída o agotamiento de tiempo) NO DEBE cachearse: la petición que lo sufre recibe la respuesta genérica de asistente no disponible y la siguiente petición de esa compañía DEBE reintentar la carga. Si la primera fila que se lee de una compañía (sin instantánea válida previa) es inválida, no se puede descifrar o tiene un proveedor no permitido, esa compañía DEBE quedar con el asistente deshabilitado; NUNCA DEBE recurrirse a la configuración o la clave de plataforma, ni siquiera para la compañía demo.
 
 #### Scenario: Instantánea por compañía
 - DADO A con proveedor y modelo propios y B con otros, ambos con un `IChatClient` falso
@@ -253,6 +253,16 @@ El runtime del asistente DEBE mantener una instantánea de configuración por co
 - DADO una fila de B que no supera la validación o no se puede descifrar
 - CUANDO el sondeo la lee
 - ENTONCES B conserva su última configuración válida, A no se ve afectada y se registra un aviso sin secretos
+
+#### Scenario: Primera fila inválida
+- DADO una compañía B sin instantánea previa cuya fila no supera la validación o no se puede descifrar, y un entorno con proveedor y clave de plataforma
+- CUANDO un usuario de B pregunta
+- ENTONCES recibe `503` (asistente deshabilitado para B), no se usa la clave ni el proveedor de plataforma y no se invoca ningún modelo
+
+#### Scenario: Fallo transitorio de lectura no se cachea
+- DADO una base de datos que falla al leer la fila de la compañía A en la primera pregunta
+- CUANDO el usuario de A pregunta de nuevo con la base de datos ya disponible
+- ENTONCES la carga se reintenta, la instantánea de A se construye desde su fila y la pregunta recibe respuesta
 
 #### Scenario: Tope y expulsión
 - DADO `Ai__MaxLoadedCompanies=2` y preguntas de tres compañías con configuración

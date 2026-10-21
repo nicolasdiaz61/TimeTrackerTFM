@@ -4,18 +4,19 @@ Cambio: `multi-compania`. Capacidad EXISTENTE (`openspec/specs/authentication/sp
 
 > Aviso de delta que cambia escenarios vigentes:
 > - La cabecera «Fuera de alcance: … registro público …» de la especificación vigente deja de aplicar: el registro público existe, cerrado por defecto (ver `company-registration`). Siguen fuera de alcance el refresh token, la 2FA, la recuperación de contraseña, la revocación de tokens y las cookies.
-> - «Almacenamiento y verificación de contraseñas»: la contraseña en claro ya no es «nunca devuelta»: la contraseña temporal de un alta se devuelve una única vez (ver `employee-management`).
+> - «Almacenamiento y verificación de contraseñas»: la contraseña en claro ya no es «nunca devuelta»: la contraseña temporal de un alta o de una regeneración se devuelve una única vez (ver `employee-management`).
 > - «Política de respaldo autenticada»: los endpoints anónimos dejan de ser exactamente tres cuando `Registration:Enabled` es `true`.
 
 Notas de verificación adicionales:
 - `TestTokens` DEBE fabricar tokens con `cid` (y opcionalmente `cname`, `mcp`) de forma independiente del emisor de producción; el PR de tokens y fábricas se separa del resto (ver propuesta).
+- El contrato `docs/api/openapi.json` crece por entregas: la entrega del registro añade solo `/api/auth/register-company`; `/api/auth/change-password`, `/api/employees` y `/api/employees/{memberId}/temporary-password` entran con la entrega del alta y del cambio de contraseña (ver `tasks.md`, PR 5 y PR 6). Las exigencias de este delta sobre `change-password` aplican desde esa segunda entrega.
 - Los tokens vigentes sin `cid` quedan inválidos (`401`) al desplegar el cambio (caducan en 30 minutos de todos modos); es un fallo cerrado deliberado.
 
 ## MODIFIED Requirements
 
 ### Requirement: Almacenamiento y verificación de contraseñas
 
-La contraseña DEBE almacenarse solo como hash PBKDF2 con sal aleatoria generado con `PasswordHasher` tras el puerto `IPasswordHasher` (Application) y su adaptador en `Api`. La contraseña en claro NO DEBE persistirse ni registrarse, y NO DEBE devolverse en ninguna respuesta, con una única excepción: la contraseña temporal generada por el servidor en el alta de una persona, que DEBE devolverse una sola vez en la respuesta del alta (ver `employee-management`). La verificación DEBE devolver falso, sin lanzar excepción, para una contraseña incorrecta.
+La contraseña DEBE almacenarse solo como hash PBKDF2 con sal aleatoria generado con `PasswordHasher` tras el puerto `IPasswordHasher` (Application) y su adaptador en `Api`. La contraseña en claro NO DEBE persistirse ni registrarse, y NO DEBE devolverse en ninguna respuesta, con una única excepción, que comprende dos respuestas: la contraseña temporal generada por el servidor en el alta de una persona y la generada en la regeneración de la contraseña temporal, que DEBEN devolverse una sola vez, respectivamente en la respuesta del alta y en la de la regeneración (ver `employee-management`). La verificación DEBE devolver falso, sin lanzar excepción, para una contraseña incorrecta.
 (Previously: la contraseña en claro no debía devolverse en ninguna respuesta, sin excepciones)
 
 #### Scenario: El hash no contiene la contraseña
@@ -34,9 +35,9 @@ La contraseña DEBE almacenarse solo como hash PBKDF2 con sal aleatoria generado
 - ENTONCES son distintos y ambos verifican la contraseña
 
 #### Scenario: Única excepción de devolución
-- DADO el contrato regenerado y las respuestas de un recorrido completo (registro, alta, login, cambio de contraseña)
+- DADO el contrato regenerado y las respuestas de un recorrido completo (registro, alta, regeneración de la contraseña temporal, login, cambio de contraseña)
 - CUANDO se busca una contraseña en claro en las respuestas
-- ENTONCES solo aparece `temporaryPassword` en la respuesta del alta y ninguna contraseña en ninguna otra
+- ENTONCES solo aparece `temporaryPassword` en la respuesta del alta y en la de la regeneración, y ninguna contraseña en ninguna otra
 
 ### Requirement: Política de respaldo autenticada
 
@@ -151,6 +152,25 @@ El puerto `ICurrentUser` DEBE exponer, además del identificador del empleado y 
 - DADO un token de la compañía A y un cuerpo, consulta o cabecera que afirman la compañía B
 - CUANDO se procesa la petición
 - ENTONCES `ICurrentUser.CompanyId` vale el de A
+
+### Requirement: Emisión de tokens solo para compañías activas
+
+Toda operación que emita un token nuevo (inicio de sesión, registro de compañía y cambio de contraseña) DEBE comprobar que la compañía del usuario tiene `status` = `Active` antes de emitirlo. Si la compañía no está `Active`, el inicio de sesión y el cambio de contraseña DEBEN responder el mismo `401` `application/problem+json` genérico que unas credenciales erróneas, sin emitir token y, en el cambio de contraseña, sin modificar el hash ni `must_change_password`. La compañía recién creada por el registro es `Active`, de modo que el token del registro se emite con la misma regla. Un token ya emitido conserva su validez hasta caducar (límite aceptado y documentado en el ADR 0020; ver `company-isolation`).
+
+#### Scenario: Cambio de contraseña con compañía suspendida
+- DADO una persona con sesión vigente cuya compañía pasa a `Suspended` y una `newPassword` válida
+- CUANDO envía `POST /api/auth/change-password` con la contraseña actual correcta
+- ENTONCES recibe el mismo `401` genérico que un inicio de sesión con credenciales erróneas, no se emite token y el hash y `must_change_password` no cambian
+
+#### Scenario: Cambio de contraseña con compañía activa
+- DADO una persona de una compañía `Active`
+- CUANDO cambia su contraseña correctamente
+- ENTONCES recibe `200` con un token nuevo que lleva el `cid` y el `cname` de su compañía
+
+#### Scenario: Registro emite token de una compañía activa
+- DADO un registro correcto
+- CUANDO se decodifica el token de la respuesta
+- ENTONCES la compañía creada está `Active` y el token lleva su `cid`
 
 ### Requirement: Contrato OpenAPI del registro y de la sesión de compañía
 

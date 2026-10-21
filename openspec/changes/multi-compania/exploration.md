@@ -1,5 +1,7 @@
 # Exploración: multi-compania
 
+> Estado: superado por `proposal.md`, `design.md` y las specs (`specs/**`) en lo que contradiga. Este documento recoge la fase de exploración y no se actualiza con las decisiones posteriores.
+
 Resumen de los hallazgos del explorador, revisados contra el código y las especificaciones el 2026-10-20, y de las decisiones firmes del usuario. Lo que no se pudo comprobar se marca «no verificado». Rama de trabajo: `docs/multi-compania-propuesta`.
 
 ## Decisiones firmes del usuario
@@ -78,7 +80,7 @@ Resumen de los hallazgos del explorador, revisados contra el código y las espec
 
 **Autorregistro sin correo.** `POST /api/auth/register-company` anónimo (`companyName`, `managerName`, `email`, `password`, `inviteCode`):
 - una transacción crea compañía y Manager;
-- política de tasa por IP (depende de `ForwardedHeaders`, ya activo en Railway según el ADR 0013);
+- política de tasa por IP (depende de `ForwardedHeaders`, que el ADR 0013 define opcional y apagado por defecto; que esté activo en Railway no está verificado, ver `design.md` V-7);
 - código de invitación comparado en tiempo constante;
 - nombre de compañía normalizado y único (solo duplicado exacto);
 - contraseña de 12 a 128 caracteres sin reglas de composición;
@@ -90,7 +92,7 @@ Resumen de los hallazgos del explorador, revisados contra el código y las espec
 **Migración en dos pasos (expandir/contraer).**
 - A) Crear `companies`, la compañía por defecto de id fijo, `company_id` nullable en `users`, `time_entries`, `assistant_settings` y auditoría (rellenar; la auditoría por `DEFAULT` constante).
 - B) NOT NULL, índice único `(company_id, id)`, FK compuestas, índices, PK de `assistant_settings` a `company_id` y retirada del singleton.
-- Reversibilidad: el `Down` de B restaura el singleton solo si hay una fila. Copia de seguridad previa. `Database__ApplyMigrationsOnStartup=true` aplica al arrancar; un rollback de código no revierte el esquema (ejecutar `Down` antes de redesplegar el código antiguo). Ensayo con datos copiados.
+- Reversibilidad: el `Down` de B restaura el singleton solo si hay una sola compañía (aborta con más de una). Copia de seguridad previa. `Database__ApplyMigrationsOnStartup=true` aplica al arrancar (valor real en producción no verificado; Railway no tiene autodespliegue, solo `railway up` manual: ver `design.md`); un rollback de código no revierte el esquema (ejecutar `Down` antes de redesplegar el código antiguo). Ensayo con datos copiados.
 
 **Siembra.** `DemoUsersSeeder` y `DemoDataSeeder` crean o encuentran la compañía demo de forma idempotente.
 

@@ -2,7 +2,9 @@
 
 Cambio: `multi-compania`. Capacidad NUEVA; todos los requisitos son `ADDED`. Define el alta de personas (Employees y Managers) por un Manager dentro de su propia compañía, la contraseña temporal de un solo uso, su regeneración antes del primer acceso, el cambio de contraseña obligatorio en el primer inicio de sesión, el endpoint de cambio de contraseña y el tope de personas por compañía. La política de contraseñas se especifica en `company-registration`; el token y la sesión, en `authentication`; las tablas, en `team-access` y `company-isolation`.
 
-Decisiones firmes: alta por un Manager con contraseña temporal de un solo uso y cambio forzado en el primer inicio (`MustChangePassword`); un Manager puede crear otros Managers solo dentro de su compañía, sin jerarquías nuevas; topes por compañía configurables por entorno y no editables por el Manager.
+Decisiones firmes: alta por un Manager con contraseña temporal de un solo uso y cambio forzado en el primer inicio (`MustChangePassword`); un Manager puede crear otros Managers solo dentro de su compañía, sin jerarquías nuevas; la contraseña temporal solo la regenera el responsable directo de la persona (mínimo privilegio); topes por compañía configurables por entorno y no editables por el Manager.
+
+Riesgo aceptado y documentado: la contraseña temporal no caduca (no hay caducidad por tiempo; el runbook prevé revisar periódicamente las cuentas con `must_change_password` antigua), y un token `mcp` ya emitido no se invalida al regenerar la contraseña temporal (caduca como máximo a los 30 minutos).
 
 Supuestos de contrato fijados por esta especificación (el diseño puede ajustar nombres de ruta con nota en el diseño): `POST /api/employees` para el alta, `POST /api/employees/{memberId}/temporary-password` para regenerar la contraseña temporal y `POST /api/auth/change-password` para el cambio de contraseña; la contraseña temporal la genera el servidor y se devuelve una sola vez (en el alta o en la regeneración). Los límites de tasa de 30 peticiones por minuto del alta y de la regeneración y los 3 reintentos acotados del tope bajo concurrencia son valores propuestos por el diseño y adoptados aquí como parte del contrato.
 
@@ -108,7 +110,7 @@ El servidor DEBE generar la contraseña temporal con un generador criptográfica
 
 ### Requirement: Regenerar la contraseña temporal
 
-`POST /api/employees/{memberId}/temporary-password` DEBE exigir autenticación y la política de Manager (sin token `401`; con rol distinto de `Manager` `403`). Solo PUEDE regenerar la contraseña temporal de una persona de su propia compañía, y solo mientras esa persona tenga `must_change_password` = `true` (aún no ha cambiado la contraseña temporal; es el criterio de «antes del primer acceso»). Un `memberId` de otra compañía y uno inexistente DEBEN producir exactamente la misma respuesta `404` `application/problem+json` (ver `company-isolation`). Si la persona ya cambió su contraseña, DEBE responder `409` sin modificar nada. Con éxito, el servidor DEBE generar una contraseña temporal nueva con las mismas reglas de «Contraseña temporal de un solo uso», sustituir el hash (manteniendo `must_change_password` = `true`) y responder `200` con `{ temporaryPassword }` y `Cache-Control: no-store`, una sola vez; la contraseña anterior DEBE dejar de ser válida. La operación DEBE limitarse a 30 peticiones por minuto y por usuario autenticado (política propia; `429` al superarlo, con `Retry-After` y cabeceras CORS). DEBE registrar únicamente metadatos (instante, resultado, identificadores del Manager y de la persona) y NUNCA la contraseña, ni anterior ni nueva, en registros ni en filas de auditoría. La petición NO DEBE aceptar compañía ni contraseña del cliente.
+`POST /api/employees/{memberId}/temporary-password` DEBE exigir autenticación y la política de Manager (sin token `401`; con rol distinto de `Manager` `403`). Solo PUEDE regenerar la contraseña temporal de una persona que sea reporte directo suyo (la misma relación que compone su equipo, ver `team-access`; mínimo privilegio), y solo mientras esa persona tenga `must_change_password` = `true` (aún no ha cambiado la contraseña temporal; es el criterio de «antes del primer acceso»). Un `memberId` de otra compañía, uno inexistente y el de una persona de su compañía que no sea reporte directo suyo (por ejemplo, de otro Manager) DEBEN producir exactamente la misma respuesta `404` `application/problem+json` (ver `company-isolation`). Si la persona ya cambió su contraseña, DEBE responder `409` sin modificar nada. La actualización del hash DEBE protegerse con el token de concurrencia de la fila del usuario (`xmin`): si la fila cambió entre su lectura y el guardado (por ejemplo, la persona cambió su contraseña entre tanto), DEBE responder `409` sin modificar nada y sin pisar la contraseña elegida por la persona. Con éxito, el servidor DEBE generar una contraseña temporal nueva con las mismas reglas de «Contraseña temporal de un solo uso», sustituir el hash (manteniendo `must_change_password` = `true`) y responder `200` con `{ temporaryPassword }` y `Cache-Control: no-store`, una sola vez; la contraseña anterior DEBE dejar de ser válida. La operación DEBE limitarse a 30 peticiones por minuto y por usuario autenticado (política propia; `429` al superarlo, con `Retry-After` y cabeceras CORS). DEBE registrar únicamente metadatos (instante, resultado, identificadores del Manager y de la persona) y NUNCA la contraseña, ni anterior ni nueva, en registros ni en filas de auditoría. La petición NO DEBE aceptar compañía ni contraseña del cliente.
 
 #### Scenario: Regeneración correcta
 - DADO una persona de la compañía A con cambio pendiente y su Manager de A
@@ -124,6 +126,16 @@ El servidor DEBE generar la contraseña temporal con un generador criptográfica
 - DADO una persona con cambio pendiente de la compañía B y, por separado, un `memberId` inexistente
 - CUANDO el Manager de A envía la regeneración con cada uno
 - ENTONCES ambas respuestas son `404` idénticas (salvo `traceId`) y el hash de la persona de B no cambia
+
+#### Scenario: Manager que no es el responsable directo
+- DADO una persona con cambio pendiente cuyo responsable es el Manager `m1` de la compañía A y otro Manager `m2` de la misma compañía A
+- CUANDO `m2` envía la regeneración para esa persona
+- ENTONCES recibe el mismo `404` que para un `memberId` inexistente y el hash no cambia
+
+#### Scenario: Carrera con el cambio de contraseña de la persona
+- DADO una persona con cambio pendiente cuyo Manager ha leído su fila para regenerar y que cambia su contraseña antes de que el Manager guarde
+- CUANDO el Manager guarda la contraseña temporal nueva
+- ENTONCES recibe `409`, el hash conserva la contraseña elegida por la persona y `must_change_password` sigue en `false`
 
 #### Scenario: Anónimo y Employee
 - DADO una petición sin token y otra con un token de `Employee`
@@ -166,7 +178,7 @@ Mientras `must_change_password` sea `true`, el inicio de sesión DEBE emitir un 
 
 ### Requirement: Endpoint de cambio de contraseña
 
-`POST /api/auth/change-password` DEBE exigir autenticación (sin token `401`) y aceptar `currentPassword` y `newPassword`. DEBE verificar `currentPassword` contra el hash del usuario del token; si no coincide, DEBE responder `400` con error en el campo `currentPassword` y NO DEBE cambiar nada. `newPassword` DEBE cumplir la política de contraseñas y ser distinta de `currentPassword` (`400` con error en `newPassword`). Con éxito DEBE actualizar el hash, poner `must_change_password` = `false` y responder `200` con el mismo cuerpo que el inicio de sesión (`{ accessToken, expiresAt, user }`) con un token nuevo sin `mcp`. NO DEBE aceptar identificadores de persona ni de compañía del cliente. DEBE limitarse a 5 peticiones por minuto y por usuario autenticado (política `change-password`; `429` al superarlo, con `Retry-After` y cabeceras CORS). Ni la contraseña actual ni la nueva DEBEN aparecer en respuestas, registros ni en el contrato OpenAPI como valores.
+`POST /api/auth/change-password` DEBE exigir autenticación (sin token `401`) y aceptar `currentPassword` y `newPassword`. Antes de cambiar nada DEBE comprobar que la compañía del usuario está `Active` (si no, el mismo `401` genérico que el inicio de sesión, ver `authentication`). DEBE verificar `currentPassword` contra el hash del usuario del token; si no coincide, DEBE responder `400` con error en el campo `currentPassword` y NO DEBE cambiar nada. `newPassword` DEBE cumplir la política de contraseñas y ser distinta de `currentPassword` (`400` con error en `newPassword`). La actualización DEBE protegerse con el token de concurrencia de la fila del usuario (`xmin`): si la fila cambió entre su lectura y el guardado (por ejemplo, un Manager regeneró la contraseña temporal entre tanto), DEBE responder `409` sin modificar nada. Con éxito DEBE actualizar el hash, poner `must_change_password` = `false` y responder `200` con el mismo cuerpo que el inicio de sesión (`{ accessToken, expiresAt, user }`) con un token nuevo sin `mcp`. NO DEBE aceptar identificadores de persona ni de compañía del cliente. DEBE limitarse a 5 peticiones por minuto y por usuario autenticado (política `change-password`; `429` al superarlo, con `Retry-After` y cabeceras CORS). Ni la contraseña actual ni la nueva DEBEN aparecer en respuestas, registros ni en el contrato OpenAPI como valores.
 
 #### Scenario: Cambio correcto
 - DADO una persona con cambio pendiente y su contraseña temporal
@@ -187,6 +199,16 @@ Mientras `must_change_password` sea `true`, el inicio de sesión DEBE emitir un 
 - DADO una petición sin cabecera `Authorization`
 - CUANDO se envía
 - ENTONCES recibe `401`
+
+#### Scenario: Compañía suspendida
+- DADO una persona con sesión vigente cuya compañía está `Suspended`
+- CUANDO envía un cambio de contraseña correcto
+- ENTONCES recibe el `401` genérico, no se emite token y el hash no cambia
+
+#### Scenario: Conflicto de concurrencia
+- DADO una persona cuyo Manager regenera su contraseña temporal entre la lectura de su fila y el guardado de su cambio
+- CUANDO se guarda el cambio de la persona
+- ENTONCES recibe `409`, no se pisa la contraseña temporal nueva y `must_change_password` no cambia
 
 #### Scenario: Límite de tasa
 - DADO un usuario con 5 intentos en el último minuto
@@ -234,7 +256,7 @@ El número de usuarios de una compañía (Employees y Managers) NO DEBE superar 
 
 ### Requirement: Contrato OpenAPI del alta y del cambio de contraseña
 
-`docs/api/openapi.json` DEBE incluir `post` en `/api/employees` (respuestas `201`, `400`, `401`, `403`, `409` y `429`), `post` en `/api/employees/{memberId}/temporary-password` (`200`, `401`, `403`, `404`, `409` y `429`) y `post` en `/api/auth/change-password` (`200`, `400`, `401`, `403`, `429`), con la exigencia Bearer, y NO DEBE contener parámetros ni propiedades `companyId`, `passwordHash` ni `employeeId` en esas operaciones (el `memberId` de la ruta de regeneración sí es válido). Los esquemas de respuesta del alta y de la regeneración DEBEN ser los únicos que contienen `temporaryPassword`.
+`docs/api/openapi.json` DEBE incluir `post` en `/api/employees` (respuestas `201`, `400`, `401`, `403`, `409` y `429`), `post` en `/api/employees/{memberId}/temporary-password` (`200`, `401`, `403`, `404`, `409` y `429`) y `post` en `/api/auth/change-password` (`200`, `400`, `401`, `403`, `409`, `429`), con la exigencia Bearer, y NO DEBE contener parámetros ni propiedades `companyId`, `passwordHash` ni `employeeId` en esas operaciones (el `memberId` de la ruta de regeneración sí es válido). Los esquemas de respuesta del alta y de la regeneración DEBEN ser los únicos que contienen `temporaryPassword`.
 
 #### Scenario: Rutas y respuestas
 - DADO el contrato regenerado

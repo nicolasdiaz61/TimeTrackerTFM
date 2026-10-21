@@ -78,7 +78,7 @@ El cuerpo DEBE incluir `inviteCode`. El código DEBE compararse con cada código
 
 ### Requirement: Creación atómica de la compañía y su primer Manager
 
-Un registro válido DEBE crear, en una única transacción, la compañía (`Active`) y su primer usuario con rol `Manager`, sin responsable, con `must_change_password` = `false` y con la contraseña almacenada solo como hash. DEBE responder `201` con `application/json` y el mismo cuerpo que el inicio de sesión (`{ accessToken, expiresAt, user }`, ver `authentication`), de modo que la persona queda con sesión iniciada. Si cualquier paso falla, NO DEBE quedar ni compañía ni usuario. NO DEBE enviarse ningún correo ni exigirse verificación de correo. La compañía nueva NO DEBE tener fila de configuración del asistente (asistente deshabilitado; ver `assistant-settings`).
+Un registro válido DEBE crear, en una única transacción, la compañía (`Active`) y su primer usuario con rol `Manager`, sin responsable, con `must_change_password` = `false` y con la contraseña almacenada solo como hash. DEBE responder `201` con `application/json` y el mismo cuerpo que el inicio de sesión (`{ accessToken, expiresAt, user }`, ver `authentication`), de modo que la persona queda con sesión iniciada. Si cualquier paso falla, NO DEBE quedar ni compañía ni usuario. NO DEBE enviarse ningún correo ni exigirse verificación de correo. La compañía nueva NO DEBE tener fila de configuración del asistente (asistente deshabilitado; ver `assistant-settings`). El token de la respuesta DEBE emitirse con la misma regla que el inicio de sesión (la compañía creada es `Active`, ver `authentication`). El endpoint es anónimo y DEBE ignorar cualquier token que acompañe a la petición (no lee la identidad ni la compañía del usuario): la compañía y el usuario se crean en el ámbito de la compañía nueva (`CreateScope(nuevoId)`), y el contexto de compañía de la petición NO DEBE adoptar la compañía del token en esta ruta, de modo que una petición con un token vigente no provoque un error `500` ni escriba o lea datos de la compañía del token.
 
 #### Scenario: Registro correcto
 - DADO un cuerpo válido con `companyName`, `managerName`, `email`, `password` e `inviteCode`
@@ -99,6 +99,11 @@ Un registro válido DEBE crear, en una única transacción, la compañía (`Acti
 - DADO una compañía recién registrada y un entorno con proveedor de IA de plataforma configurado
 - CUANDO su Manager envía `POST /api/asistente` con un cuerpo válido
 - ENTONCES recibe `503` con el aviso de asistente deshabilitado y no se invoca ningún modelo
+
+#### Scenario: Registro con un token vigente
+- DADO `Registration__Enabled=true`, un código válido y una petición con un token vigente de un Manager de la compañía A
+- CUANDO se envía un registro válido
+- ENTONCES recibe `201`, se crea una compañía nueva distinta de A con su Manager, el token de la respuesta lleva el `cid` de la compañía nueva, la compañía A y sus datos no cambian y no hay `500`
 
 #### Scenario: Sin correo
 - DADO el código de registro

@@ -12,7 +12,7 @@ Cambio: `multi-compania`. Capacidad EXISTENTE (`openspec/specs/team-access/spec.
 
 ### Requirement: Cuenta de usuario en el dominio
 
-`TimeTracker.Domain` DEBE ofrecer `UserAccount.Create(id, companyId, email, displayName, passwordHash, role, managerId, mustChangePassword)` como único modo de construir un usuario (constructor privado). DEBE rechazar con `ArgumentException` o una derivada: `id` igual a `Guid.Empty`; `companyId` igual a `Guid.Empty`; `email` en blanco, sin `@` o de más de 254 caracteres; `displayName` en blanco o de más de 100 caracteres; `passwordHash` en blanco; un `role` no definido en `UserRole`; un `managerId` igual a `Guid.Empty` o igual al propio `id`. El `email` DEBE guardarse sin espacios exteriores y en minúsculas (cultura invariante) y el `displayName` sin espacios exteriores. `managerId` nulo es válido. `CompanyId` y `MustChangePassword` DEBEN exponerse como propiedades inmutables en Domain; el cambio de contraseña DEBE hacerse con una operación de dominio que reemplace el hash y ponga `MustChangePassword` en falso.
+`TimeTracker.Domain` DEBE ofrecer `UserAccount.Create(id, companyId, email, displayName, passwordHash, role, managerId, mustChangePassword)` como único modo de construir un usuario (constructor privado). DEBE rechazar con `ArgumentException` o una derivada: `id` igual a `Guid.Empty`; `companyId` igual a `Guid.Empty`; `email` en blanco, sin `@` o de más de 254 caracteres; `displayName` en blanco o de más de 100 caracteres; `passwordHash` en blanco; un `role` no definido en `UserRole`; un `managerId` igual a `Guid.Empty` o igual al propio `id`. El `email` DEBE guardarse sin espacios exteriores y en minúsculas (cultura invariante) y el `displayName` sin espacios exteriores. `managerId` nulo es válido. `CompanyId` y `MustChangePassword` DEBEN exponerse como propiedades inmutables en Domain; el cambio de contraseña DEBE hacerse con una operación de dominio (`ChangePassword(hash)`) que reemplace el hash y ponga `MustChangePassword` en falso, y la regeneración de la contraseña temporal con otra (`RegenerateTemporaryPassword(hash)`) que reemplace el hash y mantenga `MustChangePassword` en `true`.
 (Previously: `UserAccount.Create(id, email, displayName, passwordHash, role, managerId)`, sin compañía ni indicador de cambio de contraseña)
 
 #### Scenario: Usuario válido con correo normalizado
@@ -70,9 +70,14 @@ Cambio: `multi-compania`. Capacidad EXISTENTE (`openspec/specs/team-access/spec.
 - CUANDO se aplica la operación de cambio de contraseña con un hash nuevo no vacío
 - ENTONCES `PasswordHash` es el nuevo, `MustChangePassword` es `false` y un hash en blanco lanza `ArgumentException` o una derivada sin modificar el usuario
 
+#### Scenario: Regeneración de la contraseña temporal en el dominio
+- DADO un usuario con `MustChangePassword` = `true`
+- CUANDO se aplica `RegenerateTemporaryPassword` con un hash nuevo no vacío
+- ENTONCES `PasswordHash` es el nuevo, `MustChangePassword` sigue en `true` y un hash en blanco lanza `ArgumentException` o una derivada sin modificar el usuario
+
 ### Requirement: Tabla users con restricciones
 
-La base DEBE tener la tabla `users` con `id` (uuid, clave primaria), `company_id` (uuid), `email`, `display_name`, `password_hash`, `role` (texto con el nombre del valor de `UserRole`), `manager_id` (uuid, nulo) y `must_change_password` (booleano, valor por defecto `false`), todas obligatorias salvo `manager_id`. DEBE existir un índice único global sobre `email` (el correo es único en toda la base, no por compañía), un índice único `(company_id, id)`, una clave foránea de `company_id` hacia `companies(id)`, una clave foránea autorreferencial compuesta `(company_id, manager_id)` → `users(company_id, id)` con `NO ACTION` (no diferible; `MATCH SIMPLE`, de modo que un `manager_id` nulo no exige nada), una restricción `CHECK` `manager_id <> id`, una `CHECK` que limite `role` a `Employee` y `Manager` y una `CHECK` que exija `email` en minúsculas (`email = lower(email)`). DEBE existir además un índice sobre `(company_id, manager_id)`. El mapeo DEBE ser Fluent en `Infrastructure`; `Domain` NO DEBE referenciar EF Core.
+La base DEBE tener la tabla `users` con `id` (uuid, clave primaria), `company_id` (uuid), `email`, `display_name`, `password_hash`, `role` (texto con el nombre del valor de `UserRole`), `manager_id` (uuid, nulo) y `must_change_password` (booleano, valor por defecto `false`), todas obligatorias salvo `manager_id`. DEBE existir un índice único global sobre `email` (el correo es único en toda la base, no por compañía), un índice único `(company_id, id)`, una clave foránea de `company_id` hacia `companies(id)`, una clave foránea autorreferencial compuesta `(company_id, manager_id)` → `users(company_id, id)` con `NO ACTION` (no diferible; `MATCH SIMPLE`, de modo que un `manager_id` nulo no exige nada), una restricción `CHECK` `manager_id <> id`, una `CHECK` que limite `role` a `Employee` y `Manager` y una `CHECK` que exija `email` en minúsculas (`email = lower(email)`). DEBE existir además un índice sobre `(company_id, manager_id)`. El token de concurrencia de la fila es la columna de sistema `xmin` (no añade columnas; lo usan el cambio de contraseña y la regeneración de la contraseña temporal, ver `employee-management`). El mapeo DEBE ser Fluent en `Infrastructure`; `Domain` NO DEBE referenciar EF Core.
 (Previously: columnas `id`, `email`, `display_name`, `password_hash`, `role`, `manager_id`; clave foránea simple `manager_id` → `users(id)` con `ON DELETE RESTRICT`; índice sobre `manager_id`)
 
 #### Scenario: Columnas
@@ -129,6 +134,11 @@ La base DEBE tener la tabla `users` con `id` (uuid, clave primaria), `company_id
 - DADO un `UserAccount` de rol `Manager` con `MustChangePassword` = `true` guardado
 - CUANDO se lee con un contexto nuevo de su compañía
 - ENTONCES `Id`, `CompanyId`, `Email`, `DisplayName`, `PasswordHash`, `Role`, `ManagerId` y `MustChangePassword` coinciden con los guardados
+
+#### Scenario: Token de concurrencia de la fila
+- DADO dos contextos que leen la misma fila de `users` y uno de ellos guarda un cambio de contraseña
+- CUANDO el otro intenta guardar otro cambio sobre la fila leída
+- ENTONCES el segundo guardado falla por concurrencia (se traduce en `409`) y la fila conserva el primer cambio
 
 ### Requirement: Siembra de usuarios de demostración
 
@@ -199,7 +209,7 @@ Con `Seed:DemoUsers` = `true`, la API DEBE crear, en el arranque, tras aplicar l
 
 ### Requirement: Equipo y fichajes acotados a la compañía
 
-El equipo de un Manager DEBE componerse solo de usuarios de su misma compañía: `GET /api/team/members`, `GET /api/team/members/{memberId}/time-entries`, `IUserRepository` (búsqueda de reportes directos, `FindDirectReportAsync` y nombre visible por identificador) y los casos de uso del equipo DEBEN operar siempre sobre la compañía del token (ver `company-isolation`), con independencia del `ManagerId` almacenado. Un `memberId` de otra compañía DEBE producir exactamente la misma respuesta que uno inexistente (ver «Control por objeto con 404 idéntico»). El rol y el acceso a `/api/team` siguen según «Acceso del equipo solo para el rol Manager». La búsqueda de usuario por correo para el inicio de sesión es global (uso de la lista cerrada de `IgnoreQueryFilters`).
+El equipo de un Manager DEBE componerse solo de usuarios de su misma compañía: `GET /api/team/members`, `GET /api/team/members/{memberId}/time-entries`, `IUserRepository` (búsqueda de reportes directos, `FindDirectReportAsync` y nombre visible por identificador) y los casos de uso del equipo DEBEN operar siempre sobre la compañía del token (ver `company-isolation`) y componerse solo de los reportes directos del Manager del token. Un `memberId` de otra compañía DEBE producir exactamente la misma respuesta que uno inexistente (ver «Control por objeto con 404 idéntico»). El rol y el acceso a `/api/team` siguen según «Acceso del equipo solo para el rol Manager». La búsqueda de usuario por correo para el inicio de sesión es global (uso de la lista cerrada de `IgnoreQueryFilters`).
 
 #### Scenario: Equipo solo de la compañía
 - DADO un Manager de A con dos reportes y un Manager de B con dos reportes

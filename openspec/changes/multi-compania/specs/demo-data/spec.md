@@ -44,7 +44,7 @@ Notas de verificación adicionales:
 
 ### Requirement: La siembra demo se apaga al abrir el registro
 
-La siembra de usuarios demo (contraseña pública documentada en el README) NO DEBE ejecutarse cuando `Registration:Enabled` = `true`: la combinación `Seed:DemoUsers` = `true` y `Registration:Enabled` = `true` DEBE impedir el arranque con un mensaje en español que nombre ambas claves (ver `startup-configuration`), de modo que nunca coexistan usuarios con contraseña pública y registro abierto. `Seed:DemoData`, que ya exige `Seed:DemoUsers` = `true`, queda apagada por la misma razón. Con `Registration:Enabled` = `false` (valor por defecto) la siembra conserva su comportamiento.
+La siembra de usuarios demo (contraseña pública documentada en el README) NO DEBE ejecutarse cuando `Registration:Enabled` = `true`: la combinación `Seed:DemoUsers` = `true` y `Registration:Enabled` = `true` DEBE impedir el arranque con un mensaje en español que nombre ambas claves (ver `startup-configuration`), de modo que nunca coexistan usuarios con contraseña pública y registro abierto. `Seed:DemoData`, que ya exige `Seed:DemoUsers` = `true`, queda apagada por la misma razón. Con `Registration:Enabled` = `false` (valor por defecto) la siembra conserva su comportamiento. Apagar la siembra no retira los usuarios demo ya existentes: en `Production`, con el registro abierto, el arranque también falla mientras exista algún usuario del dominio de demostración en la compañía por defecto (ver `startup-configuration`).
 
 #### Scenario: Registro abierto con siembra de datos
 - DADO `Seed__DemoUsers=true`, `Seed__DemoData=true`, `Seed__DemoPassword` válida y `Registration__Enabled=true`

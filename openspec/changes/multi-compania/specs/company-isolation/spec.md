@@ -108,7 +108,7 @@ El correo DEBE seguir siendo único en toda la base (índice único global sobre
 
 ### Requirement: La compañía sale solo del token
 
-La compañía de cada operación DEBE obtenerse exclusivamente del claim `cid` del token ya validado, mediante `ICompanyContext` (puerto de Application, adaptador en `Api`, alimentado por `ICurrentUser.CompanyId`; ver `authentication`). `ICompanyContext` DEBE exponer la compañía como valor anulable (`Guid?`): sin usuario autenticado, o con un claim ausente o inválido, la compañía es nula y NO DEBE devolverse una compañía por defecto; el contexto no lanza excepción, de modo que el filtro global falla cerrado (cero filas, ver «Filtro global de consulta que falla cerrado»). Quien lanza una excepción es `ICurrentUser.CompanyId` (ver `authentication`). La compañía NO DEBE leerse de la ruta, la consulta, el cuerpo, las cabeceras ni el historial del asistente, y ningún caso de uso, herramienta ni endpoint DEBE recibirla como parámetro. El contrato `docs/api/openapi.json` NO DEBE contener ningún parámetro ni propiedad llamada `companyId` (sin distinguir mayúsculas).
+La compañía de cada operación DEBE obtenerse exclusivamente del claim `cid` del token ya validado, mediante `ICompanyContext` (puerto de Application, adaptador en `Api`, alimentado por `ICurrentUser.CompanyId`; ver `authentication`). `ICompanyContext` DEBE exponer la compañía como valor anulable (`Guid?`): sin usuario autenticado, o con un claim ausente o inválido, la compañía es nula y NO DEBE devolverse una compañía por defecto; el contexto no lanza excepción, de modo que el filtro global falla cerrado (cero filas, ver «Filtro global de consulta que falla cerrado»). Quien lanza una excepción es `ICurrentUser.CompanyId` (ver `authentication`). La compañía NO DEBE leerse de la ruta, la consulta, el cuerpo, las cabeceras ni el historial del asistente, y ningún caso de uso, herramienta ni endpoint DEBE recibirla como parámetro. La única excepción es el registro de compañías (ver `company-registration`): es anónimo, ignora cualquier token y crea la compañía en su propio ámbito (`ICompanyScopeFactory.CreateScope(nuevoId)`), sin que el contexto de la petición adopte la compañía del token en esa ruta. El contrato `docs/api/openapi.json` NO DEBE contener ningún parámetro ni propiedad llamada `companyId` (sin distinguir mayúsculas).
 
 #### Scenario: Compañía del token
 - DADO un token con `cid` = compañía A
@@ -242,7 +242,7 @@ Las pruebas de integración DEBEN construir dos compañías A y B (cada una con 
 
 ### Requirement: Migración expandir/contraer con datos existentes
 
-El esquema DEBE migrarse en dos migraciones consecutivas. La migración A (expandir) DEBE crear `companies`, insertar la compañía por defecto, y añadir `company_id` anulable (o con valor por defecto constante) a `users`, `time_entries` y `assistant_settings`, rellenándolo con la compañía por defecto, y a `assistant_settings_audit` con un `DEFAULT` constante igual al identificador de la compañía por defecto, SIN ejecutar ningún `UPDATE` sobre la auditoría y SIN alterar ni desactivar sus triggers de solo inserción. La migración B (contraer) DEBE hacer `company_id` obligatorio, quitar el `DEFAULT` de la auditoría, crear el índice único `(company_id, id)` de `users`, las claves foráneas compuestas, los índices, cambiar la clave primaria de `assistant_settings` a `company_id` y retirar la restricción de fila única. Si en `time_entries` existen filas cuyo `employee_id` no existe en `users` (huérfanas), la migración B DEBE abortar con un mensaje claro que indique el número de filas (sin datos personales) y sin cambios parciales. Tras ambas migraciones los datos previos (usuarios, fichajes, la fila de configuración y las filas de auditoría) DEBEN conservarse íntegros y asignados a la compañía por defecto, y los triggers de auditoría DEBEN seguir activos. El `Down` DEBE existir para ambas: el de B restaura la fila única de `assistant_settings` solo si hay a lo sumo una fila (si hay más, aborta con un mensaje claro sin modificar nada) y el de A retira lo añadido. El modelo NO DEBE tener cambios sin migrar tras ambas.
+El esquema DEBE migrarse en dos migraciones consecutivas. La migración A (expandir) DEBE crear `companies`, insertar la compañía por defecto, y añadir `company_id` anulable (o con valor por defecto constante) a `users`, `time_entries` y `assistant_settings`, rellenándolo con la compañía por defecto, y a `assistant_settings_audit` con un `DEFAULT` constante igual al identificador de la compañía por defecto, SIN ejecutar ningún `UPDATE` sobre la auditoría y SIN alterar ni desactivar sus triggers de solo inserción. La migración B (contraer) DEBE hacer `company_id` obligatorio, quitar el `DEFAULT` de la auditoría, crear el índice único `(company_id, id)` de `users`, las claves foráneas compuestas, los índices, cambiar la clave primaria de `assistant_settings` a `company_id` y retirar la restricción de fila única. Si en `time_entries` existen filas cuyo `employee_id` no existe en `users` (huérfanas), la migración B DEBE abortar con un mensaje claro que indique el número de filas (sin datos personales) y sin cambios parciales. Tras ambas migraciones los datos previos (usuarios, fichajes, la fila de configuración y las filas de auditoría) DEBEN conservarse íntegros y asignados a la compañía por defecto, y los triggers de auditoría DEBEN seguir activos. El `Down` DEBE existir para ambas. El de B DEBE abortar con un mensaje claro (que indique el número de compañías, sin datos personales) y sin modificar nada si existe más de una compañía (`count(*)` de `companies` mayor que 1) o si `users` contiene más de un `company_id` distinto; la condición NO DEBE depender del número de filas de `assistant_settings` (una sola fila de configuración con dos compañías existentes ya perdería la separación). Con una sola compañía, el `Down` de B restaura la fila única de `assistant_settings` (`id smallint DEFAULT 1`, clave primaria y restricción de fila única). El de A retira lo añadido. El modelo NO DEBE tener cambios sin migrar tras ambas.
 
 #### Scenario: Datos previos conservados
 - DADO una base migrada hasta `AddAssistantAuditImmutability` con usuarios, fichajes, una fila de configuración y filas de auditoría
@@ -269,15 +269,25 @@ El esquema DEBE migrarse en dos migraciones consecutivas. La migración A (expan
 - CUANDO se aplica la migración B
 - ENTONCES falla con un mensaje que indica el número de filas huérfanas, la base queda como tras la migración A y ninguna fila se pierde
 
-#### Scenario: Down de B con una sola fila de configuración
-- DADO la migración B aplicada con una fila de configuración
+#### Scenario: Down de B con una sola compañía
+- DADO la migración B aplicada, una sola compañía y una fila de configuración
 - CUANDO se ejecuta el `Down` de B
 - ENTONCES se restaura la restricción de fila única, los datos se conservan y la fila de configuración sigue legible
 
-#### Scenario: Down de B con varias filas de configuración
+#### Scenario: Down de B con una sola compañía y sin fila de configuración
+- DADO la migración B aplicada, una sola compañía y ninguna fila de configuración
+- CUANDO se ejecuta el `Down` de B
+- ENTONCES termina sin error y se restaura la restricción de fila única
+
+#### Scenario: Down de B con varias compañías
+- DADO la migración B aplicada, dos compañías y una sola fila de configuración (o ninguna)
+- CUANDO se ejecuta el `Down` de B
+- ENTONCES aborta con un mensaje claro que indica el número de compañías, no modifica nada y las compañías, usuarios, fichajes y la fila de configuración siguen presentes
+
+#### Scenario: Down de B con varias compañías y varias filas de configuración
 - DADO la migración B aplicada y filas de configuración de dos compañías
 - CUANDO se ejecuta el `Down` de B
-- ENTONCES aborta con un mensaje claro, no modifica nada y ambas filas siguen presentes
+- ENTONCES aborta con el mismo mensaje claro, no modifica nada y ambas filas siguen presentes
 
 #### Scenario: Down de A
 - DADO la base con A aplicada y B revertida
@@ -296,12 +306,12 @@ El esquema DEBE migrarse en dos migraciones consecutivas. La migración A (expan
 
 ### Requirement: Un rollback de código no revierte el esquema
 
-Desplegar una versión anterior del código NO DEBE revertir el esquema. El procedimiento de reversión (ejecutar el `Down` de B y A antes de redesplegar el código anterior, copia de seguridad previa y ensayo con datos copiados) DEBE estar documentado en el runbook, junto con la advertencia de que con varias compañías ya creadas el `Down` pierde la separación y solo es válido antes de abrir el registro.
+Desplegar una versión anterior del código NO DEBE revertir el esquema. El procedimiento de reversión (ejecutar el `Down` de B y A antes de redesplegar el código anterior, copia de seguridad previa y ensayo con datos copiados) DEBE estar documentado en el runbook, junto con la advertencia de que con varias compañías ya creadas el `Down` pierde la separación (el de B aborta) y solo es válido antes de abrir el registro. Una vez abierto el registro NO hay `Down`: el runbook DEBE describir el plan de corrección hacia delante (fix-forward: cerrar el registro, corregir y redesplegar código nuevo, o restaurar la copia aceptando la pérdida de los datos posteriores) y que, mientras tanto, ninguna compañía registrada puede usar la clave de IA de plataforma.
 
 #### Scenario: Runbook de reversión
 - DADO el runbook del repositorio
 - CUANDO se revisa
-- ENTONCES describe el orden `Down` B, `Down` A, redespliegue, la copia de seguridad previa, el ensayo con datos copiados y la advertencia de pérdida de separación
+- ENTONCES describe el orden `Down` B, `Down` A, redespliegue, la copia de seguridad previa, el ensayo con datos copiados, la advertencia de pérdida de separación y el plan de corrección hacia delante tras abrir el registro
 
 #### Scenario: El esquema no cambia al redesplegar
 - DADO una base con A y B aplicadas

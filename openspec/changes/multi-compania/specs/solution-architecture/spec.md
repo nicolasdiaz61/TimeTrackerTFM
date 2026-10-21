@@ -12,7 +12,7 @@ Notas de verificación adicionales:
 
 ### Requirement: Pruebas de arquitectura del aislamiento por compañía
 
-`TimeTracker.ArchitectureTests` DEBE incluir pruebas que fallen cuando: (1) una entidad del modelo de EF Core con propiedad `company_id` no tiene filtro global de consulta (recorrido de `context.Model.GetEntityTypes()`); (2) existe una llamada a `IgnoreQueryFilters` en `src/` fuera de la lista cerrada con motivo (ver `company-isolation`); (3) `docs/api/openapi.json` contiene un parámetro o propiedad `companyId` (sin distinguir mayúsculas); (4) un caso de uso, herramienta del asistente o endpoint declara un parámetro de compañía (`companyId`) en sus firmas públicas. Además, `ICompanyContext` DEBE ser un puerto de Application sin dependencias externas, con su adaptador solo en `TimeTracker.Api`; `Infrastructure` NO DEBE referenciar `HttpContext`. La regla de dependencias vigente (Domain sin paquetes, Application solo Domain) NO cambia.
+`TimeTracker.ArchitectureTests` DEBE incluir pruebas que fallen cuando: (1) una entidad del modelo de EF Core con propiedad `company_id` no tiene filtro global de consulta (recorrido de `context.Model.GetEntityTypes()`); (2) existe una llamada a `IgnoreQueryFilters` en `src/` fuera de la lista cerrada con motivo (ver `company-isolation`); (3) `docs/api/openapi.json` contiene un parámetro o propiedad `companyId` (sin distinguir mayúsculas); (4) un caso de uso, herramienta del asistente o endpoint declara un parámetro de compañía (`companyId`) en sus firmas públicas; (5) `ICompanyScopeFactory.CreateScope` se invoca en `src/` desde un tipo que no figura en una lista cerrada con su motivo (excepción acotada a la regla «sin localizadores de servicios» de `AGENTS.md` §3, documentada en el ADR 0020). Además, `ICompanyContext` DEBE ser un puerto de Application sin dependencias externas, con su adaptador solo en `TimeTracker.Api`; `Infrastructure` NO DEBE referenciar `HttpContext`. La regla de dependencias vigente (Domain sin paquetes, Application solo Domain) NO cambia.
 
 #### Scenario: Todas las entidades con company_id tienen filtro
 - DADO el modelo vigente
@@ -34,6 +34,11 @@ Notas de verificación adicionales:
 - CUANDO la prueba revisa sus firmas
 - ENTONCES ninguno tiene un parámetro de compañía
 
+#### Scenario: CreateScope en lista cerrada
+- DADO el código de `src/`
+- CUANDO se ejecuta la prueba de la lista cerrada de llamadores de `CreateScope`
+- ENTONCES pasa; una llamada temporal desde otro tipo la hace fallar indicando el archivo (comprobado una vez)
+
 #### Scenario: Puerto en Application, adaptador en Api
 - DADO `ICompanyContext`
 - CUANDO se ejecutan `DependencyRuleTests`
@@ -46,7 +51,12 @@ La generación de `docs/api/openapi.json` durante el build (`GetDocument.Insider
 #### Scenario: Contrato con el registro
 - DADO un entorno sin `Registration__*`
 - CUANDO se ejecuta `dotnet build` de `TimeTracker.Api`
-- ENTONCES el build termina con `0` y `docs/api/openapi.json` contiene `/api/auth/register-company`, `/api/auth/change-password` y `/api/employees`
+- ENTONCES el build termina con `0` y `docs/api/openapi.json` contiene `/api/auth/register-company`
+
+#### Scenario: Contrato con el alta y el cambio de contraseña
+- DADO un entorno sin `Registration__*` y los endpoints del alta, la regeneración y el cambio de contraseña ya implementados (entrega posterior a la del registro)
+- CUANDO se ejecuta `dotnet build` de `TimeTracker.Api`
+- ENTONCES el build termina con `0` y `docs/api/openapi.json` contiene además `/api/auth/change-password`, `/api/employees` y `/api/employees/{memberId}/temporary-password`
 
 #### Scenario: Sin efecto en la ejecución normal
 - DADO la API arrancada fuera de la generación del contrato, en `Production` y sin `Registration__Enabled`
@@ -60,7 +70,7 @@ La generación de `docs/api/openapi.json` durante el build (`GetDocument.Insider
 
 ### Requirement: Decisiones y límites documentados (ADR 0020 y 0021)
 
-El repositorio DEBE incluir el ADR 0020 (aislamiento multiempresa) y el ADR 0021 (sustituye al 0018 y 0019 solo en lo de «fila única/toda la instancia»; los ADR existentes NO se reescriben), cada uno con contexto, decisión, consecuencias y alternativas. El ADR 0020 DEBE registrar: la base compartida con `company_id` y el aislamiento en tres capas (claves foráneas compuestas, filtro global que falla cerrado, pruebas A/B y de arquitectura); la elección `NO ACTION` frente a `RESTRICT` y su justificación (código SQLSTATE `23503` frente a `23001`); la compañía por defecto de identificador fijo y su doble papel de compañía demo; la clave `cid` y `cname` del token con su límite aceptado (token de 30 minutos: una compañía suspendida o un rol obsoleto conservan el acceso hasta caducar); la RLS de PostgreSQL diferida (el rol de la aplicación es propietario de las tablas: harían falta un rol distinto, `FORCE ROW LEVEL SECURITY` y `app.company_id` por transacción con el pool de Npgsql) como endurecimiento futuro; la enumeración de correos por el `409` del registro como riesgo aceptado; que cualquier Manager de una compañía edita la configuración del asistente como riesgo aceptado; que un rollback de código NO revierte el esquema; y la posposición explícita de la supresión y exportación de datos (RGPD). El ADR 0021 DEBE registrar la configuración del asistente por compañía (una fila por compañía, instantáneas por compañía con sondeo global, auditoría con `company_id`, asistente deshabilitado sin fila, clave de plataforma solo para la demo) y la protección de la clave con AAD v2 como mejora no bloqueante. `AGENTS.md` (§1 y §7), `README.md`, `.env.example` y el runbook DEBEN actualizarse en el mismo cambio, sin valores secretos.
+El repositorio DEBE incluir el ADR 0020 (aislamiento multiempresa) y el ADR 0021 (sustituye al 0018 y 0019 solo en lo de «fila única/toda la instancia»; los ADR existentes NO se reescriben), cada uno con contexto, decisión, consecuencias y alternativas. El ADR 0020 DEBE registrar: la base compartida con `company_id` y el aislamiento en tres capas (claves foráneas compuestas, filtro global que falla cerrado, pruebas A/B y de arquitectura); la elección `NO ACTION` frente a `RESTRICT` y su justificación (código SQLSTATE `23503` frente a `23001`); la compañía por defecto de identificador fijo y su doble papel de compañía demo; la clave `cid` y `cname` del token con su límite aceptado (token de 30 minutos: una compañía suspendida o un rol obsoleto conservan el acceso hasta caducar); la RLS de PostgreSQL diferida (el rol de la aplicación es propietario de las tablas: harían falta un rol distinto, `FORCE ROW LEVEL SECURITY` y `app.company_id` por transacción con el pool de Npgsql) como endurecimiento futuro; la enumeración de correos por el `409` del registro como riesgo aceptado; que cualquier Manager de una compañía edita la configuración del asistente como riesgo aceptado; la excepción acotada a la regla «sin localizadores de servicios» que suponen `ICompanyScopeFactory.CreateScope` y el contexto de compañía ambiental, con su lista cerrada de llamadores vigilada por una prueba de arquitectura; que un rollback de código NO revierte el esquema; y la posposición explícita de la supresión y exportación de datos (RGPD). El ADR 0021 DEBE registrar la configuración del asistente por compañía (una fila por compañía, instantáneas por compañía con sondeo global, auditoría con `company_id`, asistente deshabilitado sin fila, clave de plataforma solo para la demo) y la protección de la clave con AAD v2 como mejora no bloqueante. `AGENTS.md` (§1 y §7), `README.md`, `.env.example` y el runbook DEBEN actualizarse en el mismo cambio, sin valores secretos.
 
 #### Scenario: ADR nuevos presentes
 - DADO `docs/adr/`
@@ -70,7 +80,7 @@ El repositorio DEBE incluir el ADR 0020 (aislamiento multiempresa) y el ADR 0021
 #### Scenario: Contenido del ADR 0020
 - DADO el ADR 0020
 - CUANDO se revisan sus consecuencias y alternativas
-- ENTONCES menciona `NO ACTION` frente a `RESTRICT`, la RLS diferida y el rol propietario, el límite del token de 30 minutos, la enumeración de correos, el riesgo de que cualquier Manager edite la configuración, que el rollback de código no revierte el esquema y la posposición de la supresión y exportación RGPD
+- ENTONCES menciona `NO ACTION` frente a `RESTRICT`, la RLS diferida y el rol propietario, el límite del token de 30 minutos, la enumeración de correos, el riesgo de que cualquier Manager edite la configuración, la excepción acotada a «sin localizadores de servicios» (`CreateScope`), que el rollback de código no revierte el esquema y la posposición de la supresión y exportación RGPD
 
 #### Scenario: ADR anteriores intactos
 - DADO los ADR 0001 a 0019

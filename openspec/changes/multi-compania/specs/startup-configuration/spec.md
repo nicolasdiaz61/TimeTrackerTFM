@@ -107,7 +107,7 @@ Con `Seed:DemoUsers` = `true` y `Registration:Enabled` = `true`, la API NO DEBE 
 
 ### Requirement: El registro abierto en producción exige ForwardedHeaders
 
-Con `Registration:Enabled` = `true` y el entorno `Production`, la API NO DEBE arrancar si `ForwardedHeaders:Enabled` no es `true`: el mensaje en español DEBE nombrar `ForwardedHeaders:Enabled` y explicar que, sin él, el límite por IP del registro (ver `company-registration`) comparte una sola partición para todos los clientes. La validación DEBE ocurrir antes de cualquier migración o siembra y NO DEBE imprimir ningún código de invitación ni otro valor secreto. Con el registro cerrado (valor por defecto) o fuera de `Production`, `ForwardedHeaders` sigue siendo opcional y apagado por defecto (ADR 0013).
+Con `Registration:Enabled` = `true` y el entorno `Production`, la API NO DEBE arrancar si `ForwardedHeaders:Enabled` no es `true` o si el número de saltos efectivo (`ForwardedHeaders:Hops`, el definido o, si no se define, el valor por defecto del ADR 0013) es menor que 1: el mensaje en español DEBE nombrar `ForwardedHeaders:Enabled` (o `ForwardedHeaders:Hops` según el caso) y explicar que, sin ellos, el límite por IP del registro (ver `company-registration`) comparte una sola partición para todos los clientes o puede falsearse con una cabecera `X-Forwarded-For` del cliente. La validación DEBE ocurrir antes de cualquier migración o siembra y NO DEBE imprimir ningún código de invitación ni otro valor secreto. Con el registro cerrado (valor por defecto) o fuera de `Production`, `ForwardedHeaders` sigue siendo opcional y apagado por defecto (ADR 0013).
 
 #### Scenario: Registro abierto en producción sin ForwardedHeaders
 - DADO `ASPNETCORE_ENVIRONMENT=Production`, `Registration__Enabled=true` con un código válido y `ForwardedHeaders__Enabled` sin definir
@@ -119,6 +119,16 @@ Con `Registration:Enabled` = `true` y el entorno `Production`, la API NO DEBE ar
 - CUANDO la API arranca
 - ENTONCES arranca
 
+#### Scenario: Registro abierto en producción con saltos no válidos
+- DADO `Production`, `Registration__Enabled=true` con un código válido, `ForwardedHeaders__Enabled=true` y `ForwardedHeaders__Hops=0`
+- CUANDO la API intenta arrancar
+- ENTONCES el arranque falla con un mensaje que contiene `ForwardedHeaders:Hops`, no se aplica ninguna migración ni siembra y el mensaje no contiene el código
+
+#### Scenario: Un X-Forwarded-For adicional del cliente no cambia la partición
+- DADO `ForwardedHeaders:Enabled` = `true` con `Hops` = 1, 5 intentos de registro con `X-Forwarded-For` = una IP concreta (la que añade el proxy) y un sexto con `X-Forwarded-For` = una IP falsa elegida por el cliente seguida de esa misma IP
+- CUANDO se envía el sexto
+- ENTONCES se considera la misma IP de origen (la añadida por el proxy), cae en la misma partición del límite y recibe `429`
+
 #### Scenario: Registro abierto fuera de producción
 - DADO `Development`, `Registration__Enabled=true` con un código válido y `ForwardedHeaders__Enabled` sin definir
 - CUANDO la API arranca
@@ -128,6 +138,30 @@ Con `Registration:Enabled` = `true` y el entorno `Production`, la API NO DEBE ar
 - DADO `Production`, `Registration__Enabled` sin definir y `ForwardedHeaders__Enabled` sin definir
 - CUANDO la API arranca
 - ENTONCES arranca (el requisito solo se aplica con el registro abierto)
+
+### Requirement: El registro abierto en producción exige que no existan usuarios demo
+
+Con `Registration:Enabled` = `true` y el entorno `Production`, la API NO DEBE arrancar si existe algún usuario con un correo del dominio de demostración (`@example.test`) en la compañía por defecto (la compañía demo, la única donde la siembra crea usuarios con contraseña pública). El mensaje en español DEBE nombrar `Registration:Enabled`, indicar que deben retirarse los usuarios de demostración antes de abrir el registro y NO DEBE imprimir correos, contraseñas ni códigos de invitación. La comprobación DEBE ejecutarse tras aplicar las migraciones (si están activas) y antes de atender peticiones, y NO DEBE exigirse con el registro cerrado ni fuera de `Production`.
+
+#### Scenario: Usuarios demo con el registro abierto en producción
+- DADO `Production`, `Registration__Enabled=true` con un código válido, `ForwardedHeaders__Enabled=true` con `Hops` = 1 y un usuario `luis.empleado@example.test` en la compañía por defecto
+- CUANDO la API intenta arrancar
+- ENTONCES el arranque falla con un mensaje que contiene `Registration:Enabled`, no atiende ninguna petición y el mensaje no contiene ningún correo, contraseña ni código
+
+#### Scenario: Sin usuarios demo
+- DADO las mismas variables y la compañía por defecto sin ningún usuario del dominio demo
+- CUANDO la API arranca
+- ENTONCES arranca
+
+#### Scenario: Registro cerrado con usuarios demo
+- DADO `Production`, `Registration__Enabled` sin definir y usuarios demo en la compañía por defecto
+- CUANDO la API arranca
+- ENTONCES arranca (el requisito solo se aplica con el registro abierto)
+
+#### Scenario: Fuera de producción
+- DADO `Development`, `Registration__Enabled=true` con un código válido y usuarios demo
+- CUANDO la API arranca
+- ENTONCES arranca
 
 ### Requirement: Documentación en `.env.example` de las claves multi-compañía
 
