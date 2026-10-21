@@ -156,9 +156,9 @@ public sealed class AssistantSettingsStoreTests(PostgresFixture postgres) : IAsy
     }
 
     [Theory]
-    [InlineData("INSERT INTO assistant_settings (id, provider, updated_by, updated_at) VALUES (2, 'None', gen_random_uuid(), now())", "ck_assistant_settings_singleton")]
-    [InlineData("INSERT INTO assistant_settings (id, provider, updated_by, updated_at, credential_ciphertext) VALUES (1, 'None', gen_random_uuid(), now(), '\\x01')", "ck_assistant_settings_credential_all_or_none")]
-    [InlineData("INSERT INTO assistant_settings (id, provider, updated_by, updated_at, credential_ciphertext, credential_nonce, credential_key_version) VALUES (1, 'None', gen_random_uuid(), now(), '\\x01', '\\x0102', 1)", "ck_assistant_settings_credential_nonce_length")]
+    [InlineData("INSERT INTO assistant_settings (company_id, provider, updated_by, updated_at) VALUES (gen_random_uuid(), 'None', gen_random_uuid(), now())", "fk_assistant_settings_companies_company_id")]
+    [InlineData("INSERT INTO assistant_settings (company_id, provider, updated_by, updated_at, credential_ciphertext) VALUES ('00000000-0000-7000-8000-000000000001', 'None', gen_random_uuid(), now(), '\\x01')", "ck_assistant_settings_credential_all_or_none")]
+    [InlineData("INSERT INTO assistant_settings (company_id, provider, updated_by, updated_at, credential_ciphertext, credential_nonce, credential_key_version) VALUES ('00000000-0000-7000-8000-000000000001', 'None', gen_random_uuid(), now(), '\\x01', '\\x0102', 1)", "ck_assistant_settings_credential_nonce_length")]
     public async Task Check_RejectsInvalidRows(string sql, string constraint)
     {
         var error = await Assert.ThrowsAsync<PostgresException>(() => ExecuteAsync(sql));
@@ -168,7 +168,7 @@ public sealed class AssistantSettingsStoreTests(PostgresFixture postgres) : IAsy
 
     [Fact]
     public async Task Check_AcceptsARowWithTheThreeCredentialColumnsAndAValidNonce()
-        => await ExecuteAsync("INSERT INTO assistant_settings (id, provider, updated_by, updated_at, credential_ciphertext, credential_nonce, credential_key_version) VALUES (1, 'None', gen_random_uuid(), now(), '\\x01', '\\x000102030405060708090a0b', 1)");
+        => await ExecuteAsync("INSERT INTO assistant_settings (company_id, provider, updated_by, updated_at, credential_ciphertext, credential_nonce, credential_key_version) VALUES ('00000000-0000-7000-8000-000000000001', 'None', gen_random_uuid(), now(), '\\x01', '\\x000102030405060708090a0b', 1)");
 
     [Fact]
     public async Task Delete_WithTheCurrentToken_RemovesTheRowAndAuditsTheReset()

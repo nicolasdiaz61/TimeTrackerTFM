@@ -1,14 +1,9 @@
-using TimeTracker.Domain.Companies;
-
 namespace TimeTracker.Infrastructure.Persistence;
 
-/// <summary>Fila única de configuración del asistente (tabla <c>assistant_settings</c>); el token de concurrencia es <c>xmin</c>.</summary>
+/// <summary>Fila de configuración del asistente de una compañía (tabla <c>assistant_settings</c>, clave primaria <c>company_id</c>); el token de concurrencia es <c>xmin</c>.</summary>
 internal sealed class AssistantSettingsRecord
 {
-    public short Id { get; set; } = 1;
-
-    // Transitorio hasta la PR 1b, donde pasa a ser la clave primaria: el almacén sigue sirviendo a la compañía por defecto.
-    public Guid CompanyId { get; set; } = Company.DefaultId;
+    public Guid CompanyId { get; set; }
 
     public string Provider { get; set; } = string.Empty;
 

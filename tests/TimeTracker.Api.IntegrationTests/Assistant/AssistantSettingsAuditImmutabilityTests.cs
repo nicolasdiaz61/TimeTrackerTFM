@@ -17,7 +17,7 @@ namespace TimeTracker.Api.IntegrationTests.Assistant;
 public sealed class AssistantSettingsAuditImmutabilityTests(PostgresFixture postgres) : IAsyncLifetime
 {
     private const string PreviousMigration = "20261020001902_AddAssistantSettings";
-    private const string InsertAudit = "INSERT INTO assistant_settings_audit (occurred_at, actor_id, action, credential_changed) VALUES (now(), gen_random_uuid(), 'Saved', false)";
+    private const string InsertAudit = "INSERT INTO assistant_settings_audit (company_id, occurred_at, actor_id, action, credential_changed) VALUES ('00000000-0000-7000-8000-000000000001', now(), gen_random_uuid(), 'Saved', false)";
 
     private string _connectionString = string.Empty;
 

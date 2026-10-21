@@ -46,7 +46,7 @@ public class ApiFactory : WebApplicationFactory<Program>
     /// </summary>
     protected virtual bool KeepsAssistantSettingsPoller => false;
 
-    public HttpClient CreateClientFor(Guid userId, string role)
+    public virtual HttpClient CreateClientFor(Guid userId, string role)
     {
         var client = CreateDefaultClient();
         client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", TokenFor(userId, role));

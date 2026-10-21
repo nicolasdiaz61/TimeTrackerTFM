@@ -1,5 +1,3 @@
-using TimeTracker.Domain.Companies;
-
 namespace TimeTracker.Infrastructure.Persistence;
 
 /// <summary>Fila de auditoría de solo inserción; <c>Previous</c> y <c>Current</c> son JSON con valores no secretos.</summary>
@@ -7,8 +5,7 @@ internal sealed class AssistantSettingsAuditRecord
 {
     public long Id { get; set; }
 
-    // Transitorio hasta que la compañía llegue del contexto: la auditoría actual es la de la compañía por defecto.
-    public Guid CompanyId { get; set; } = Company.DefaultId;
+    public Guid CompanyId { get; set; }
 
     public DateTimeOffset OccurredAt { get; set; }
 
