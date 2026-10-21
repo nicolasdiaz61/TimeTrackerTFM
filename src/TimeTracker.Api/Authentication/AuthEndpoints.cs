@@ -21,12 +21,14 @@ public static partial class AuthEndpoints
             .ProducesProblem(StatusCodes.Status401Unauthorized)
             .ProducesProblem(StatusCodes.Status429TooManyRequests);
 
-        // Sin base de datos: todo sale de los claims del token ya validado (AU-33). Lo protege la política de respaldo.
+        // Sin base de datos: todo sale de los claims del token ya validado (AU-33), incluidos cname y mcp (DD-6). Lo protege la política de respaldo.
         group.MapGet("me", (ClaimsPrincipal user) => TypedResults.Ok(new UserResponse(
                 Guid.Parse(user.FindFirstValue("sub")!),
                 user.FindFirstValue("email")!,
                 user.FindFirstValue("name")!,
-                user.FindFirstValue("role")!)))
+                user.FindFirstValue("role")!,
+                user.FindFirstValue(JwtDefaults.CompanyNameClaim) ?? string.Empty,
+                user.FindFirstValue(JwtDefaults.PasswordChangePendingClaim) == JwtDefaults.PasswordChangePendingValue)))
             .ProducesProblem(StatusCodes.Status401Unauthorized);
 
         return endpoints;

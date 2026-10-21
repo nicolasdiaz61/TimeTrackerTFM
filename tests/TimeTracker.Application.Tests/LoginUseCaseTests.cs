@@ -13,15 +13,17 @@ public class LoginUseCaseTests
     private readonly InMemoryUserRepository _users = new();
     private readonly FakePasswordHasher _hasher = new();
     private readonly FakeAccessTokenIssuer _issuer = new();
+    private readonly InMemoryCompanyRepository _companies = new();
     private readonly UserAccount _luis;
 
     public LoginUseCaseTests()
     {
         _luis = UserAccount.Create(LuisId, Company.DefaultId, "luis.empleado@example.test", "Luis Empleado", _hasher.Hash(Password), UserRole.Employee, null);
         _users.Seed(_luis);
+        _companies.Seed(Company.DefaultId, "Demo");
     }
 
-    private LoginUseCase CreateUseCase() => new(_users, _hasher, _issuer);
+    private LoginUseCase CreateUseCase() => new(_users, _hasher, new SessionIssuer(_companies, _issuer));
 
     [Fact]
     public async Task Login_WithValidCredentials_ReturnsTokenAndSummary()
@@ -31,7 +33,7 @@ public class LoginUseCaseTests
         Assert.NotNull(result);
         Assert.Equal($"token-de-{LuisId}", result.Token.Value);
         Assert.Equal(FakeAccessTokenIssuer.ExpiresAt, result.Token.ExpiresAt);
-        Assert.Equal(new UserSummary(LuisId, "luis.empleado@example.test", "Luis Empleado", UserRole.Employee), result.User);
+        Assert.Equal(new UserSummary(LuisId, "luis.empleado@example.test", "Luis Empleado", UserRole.Employee, "Demo", MustChangePassword: false), result.User);
     }
 
     [Fact]
@@ -40,6 +42,33 @@ public class LoginUseCaseTests
         await CreateUseCase().ExecuteAsync(new LoginCommand("luis.empleado@example.test", Password), CancellationToken.None);
 
         Assert.Same(_luis, Assert.Single(_issuer.IssuedFor));
+    }
+
+    [Fact]
+    public async Task Login_WithASuspendedCompany_ReturnsNullAfterVerifyingThePasswordAndIssuesNothing()
+    {
+        _companies.Seed(Company.DefaultId, "Demo", CompanyStatus.Suspended);
+
+        var result = await CreateUseCase().ExecuteAsync(new LoginCommand("luis.empleado@example.test", Password), CancellationToken.None);
+
+        Assert.Null(result);
+        Assert.Equal(1, _hasher.VerifyCalls);
+        Assert.Empty(_issuer.IssuedFor);
+    }
+
+    [Fact]
+    public async Task Login_WithAnActiveCompany_ReadsTheCompanyOfTheUserAndPutsItsNameInTheToken()
+    {
+        var acmeId = Guid.Parse("0197a1b2-aaaa-7e4f-8a5b-6c7d8e9f0001");
+        _companies.Seed(acmeId, "Acme Norte");
+        _users.Seed(UserAccount.Create(Guid.Parse("0197a1b2-4c3d-7e4f-8a5b-6c7d8e9f0a4e"), acmeId, "ana@example.test", "Ana Responsable", _hasher.Hash(Password), UserRole.Manager, null, mustChangePassword: true));
+
+        var result = await CreateUseCase().ExecuteAsync(new LoginCommand("ana@example.test", Password), CancellationToken.None);
+
+        Assert.NotNull(result);
+        Assert.Equal(("Acme Norte", true), (result.User.CompanyName, result.User.MustChangePassword));
+        Assert.Equal("Acme Norte", Assert.Single(_issuer.CompanyNames));
+        Assert.Equal(acmeId, Assert.Single(_companies.LoginInfoRequests));
     }
 
     [Fact]
@@ -107,6 +136,7 @@ public class LoginUseCaseTests
         Assert.Null(result);
         Assert.Equal(0, _users.FindByEmailCalls);
         Assert.Equal(0, _hasher.VerifyCalls);
+        Assert.Empty(_companies.LoginInfoRequests);
     }
 
     [Fact]

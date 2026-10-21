@@ -23,6 +23,7 @@ public static class AuthenticationServiceCollectionExtensions
         // Singletons: el hash ficticio se calcula una vez y la clave de firma se prepara una vez.
         services.AddSingleton<IPasswordHasher, AspNetPasswordHasher>();
         services.AddSingleton<IAccessTokenIssuer, JwtAccessTokenIssuer>();
+        services.AddScoped<SessionIssuer>();
         services.AddScoped<LoginUseCase>();
 
         // La identidad del empleado sale del claim sub del token (DD-14); ya no existe identidad provisional.
@@ -68,15 +69,18 @@ public static class AuthenticationServiceCollectionExtensions
         };
     }
 
-    // `sub` debe ser un GUID real y `role` uno de los roles conocidos: así ICurrentUser nunca ve un token a medias (DD-10).
+    // `sub` debe ser un GUID real, `role` uno de los roles conocidos y `cid` un GUID no vacío: así ICurrentUser nunca ve un token
+    // a medias (DD-10) y no existe una compañía por defecto: sin cid válido, falla cerrado (DD-6). Un `mcp` distinto de «true»
+    // no invalida el token: se trata como sin cambio de contraseña pendiente.
     private static Task RejectInvalidClaims(TokenValidatedContext context)
     {
         var principal = context.Principal;
         var subjectIsValid = Guid.TryParse(principal?.FindFirst("sub")?.Value, out var subject) && subject != Guid.Empty;
         var roleIsValid = Enum.TryParse<UserRole>(principal?.FindFirst("role")?.Value, ignoreCase: false, out var role) && Enum.IsDefined(role);
-        if (!subjectIsValid || !roleIsValid)
+        var companyIsValid = Guid.TryParse(principal?.FindFirst(JwtDefaults.CompanyClaim)?.Value, out var company) && company != Guid.Empty;
+        if (!subjectIsValid || !roleIsValid || !companyIsValid)
         {
-            context.Fail("Los claims sub o role no son válidos.");
+            context.Fail("Los claims sub, role o cid no son válidos.");
         }
 
         return Task.CompletedTask;

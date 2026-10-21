@@ -1376,7 +1376,9 @@
           "id",
           "email",
           "displayName",
-          "role"
+          "role",
+          "companyName",
+          "mustChangePassword"
         ],
         "type": "object",
         "properties": {
@@ -1392,6 +1394,12 @@
           },
           "role": {
             "type": "string"
+          },
+          "companyName": {
+            "type": "string"
+          },
+          "mustChangePassword": {
+            "type": "boolean"
           }
         }
       }
