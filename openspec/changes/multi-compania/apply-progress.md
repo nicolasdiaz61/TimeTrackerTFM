@@ -1,6 +1,6 @@
 # Progreso de apply: multi-compania
 
-Fase: sdd-apply · Modo: openspec · **Strict TDD** · Rama de la PR 1: `feat/multi-compania-pr1-modelo` (sale de `main` 9e572b8) · Rama de la PR 1b: `feat/multi-compania-pr1b-contraer` (apilada sobre la anterior) · Fecha: 2026-10-21
+Fase: sdd-apply · Modo: openspec · **Strict TDD** · Rama de la PR 1: `feat/multi-compania-pr1-modelo` (sale de `main` 9e572b8) · Rama de la PR 1b: `feat/multi-compania-pr1b-contraer` (apilada sobre la anterior) · Rama de la PR 3: `feat/multi-compania-pr3-aislamiento` (apilada sobre la PR 2) · Fecha: 2026-10-21
 
 ## Estado acumulado
 
@@ -11,7 +11,8 @@ Fase: sdd-apply · Modo: openspec · **Strict TDD** · Rama de la PR 1: `feat/mu
 | PR 1b | 1b.1, 1b.4 a 1b.10 | **Hechas** (10 de 12; ver la sección «PR 1b» al final) |
 | PR 1b | 1b.2 (puertas previas de despliegue), 1b.3 (reconfirmación de V-3 con el responsable; la parte local está hecha) | **Pendientes del responsable** (apply no accede a producción ni a Railway) |
 | PR 2 | 2.1 a 2.11 (con 2.9b) | **Hechas** (12 de 12; ver la sección PR 2 al final; sin tareas de producción) |
-| PR 3 a PR 8, tarea 9 | todas | Sin empezar (fuera del alcance de este lote) |
+| PR 3 | 3.1 a 3.12 | **Hechas** (12 de 12; ver la sección PR 3 al final; sin tareas de producción) |
+| PR 4a a PR 8, tarea 9 | todas | Sin empezar (fuera del alcance de este lote) |
 
 ## Lo que queda al responsable (puertas previas, sin marcar en `tasks.md`)
 
@@ -264,3 +265,80 @@ Detalle en `design.md`, sección 9, «Desviaciones y aclaraciones del diseño su
 
 - 401 masivo en el despliegue (los tokens vigentes caducan como mucho a los 30 minutos): comunicarlo en la descripción de la PR.
 - Sin filtro de consulta todavía (PR 3): el aislamiento de lectura aún no está activo; el contexto ya es el del token.
+
+---
+
+# PR 3 — Aislamiento de consultas
+
+Rama `feat/multi-compania-pr3-aislamiento` (apilada sobre `feat/multi-compania-pr2-claim`, PR #38; cadena `stacked-to-main`) · Strict TDD · Copia previa en `..\TimeTracker.rollback\pr-mc3\` (22 archivos).
+
+## Lo que queda al responsable
+
+Nada de producción en esta PR (sin migración ni cambio de esquema). Al desplegarla el filtro queda activo: el puente del asistente y la siembra siguen funcionando con `CreateScope(Company.DefaultId)`; si una consulta olvidara el contexto, el síntoma sería «no veo datos» (falla cerrado), no una fuga. Es la capa 2 de la regla de apertura del registro (punto 4 del encabezado de `tasks.md`): la apertura sigue exigiendo las PR 1 a 4b fusionadas y desplegadas.
+
+## Commits de esta entrega
+
+| Commit | Mensaje | Contenido |
+|---|---|---|
+| `02202e2` | `feat(multi-compania): filtro global que falla cerrado y guarda de escritura por compañía` | 3.2 a 3.5: filtro por convención, guarda en `SaveChanges`, `CompanyScopeViolationException`, spike V-2/V-9, `TwoCompanyFixture`, pruebas de fallo cerrado, guarda y modelo |
+| `1e80196` | `test(multi-compania): lista cerrada de IgnoreQueryFilters y APIs que evitan el filtro` | 3.6: sitio 1 (`FindByEmailAsync`) y prueba de arquitectura |
+| `f9a2b9e` | `test(multi-compania): guardas de arquitectura de que la compañía sale solo del token` | 3.7 |
+| `6e15ea9` | `test(multi-compania): pruebas A/B de equipo, fichajes, endpoints existentes, correo global y siembra` | 3.8 a 3.11 |
+| `2215b3a` | `style(multi-compania): orden de los using en AssistantSettingsStoreTests` | Ajuste de `dotnet format` |
+| (este) | `docs(openspec): progreso de apply de la PR 3 de multi-compania` | `tasks.md`, `design.md` (V-2, V-9 y desviaciones), este archivo |
+
+Tamaño (`git diff c9cb0d5 HEAD` de los commits de código): 19 archivos, **+1 516 / -8**; producción **+86 / -3** (contexto, excepción, un `IgnoreQueryFilters` y el `InternalsVisibleTo`) y pruebas **+1 430 / -5**. Muy por debajo de la previsión de 700-1000 líneas en producción; las pruebas pesan más (dos compañías, mutaciones, escáneres de arquitectura).
+
+## Evidencia de Strict TDD (ciclo por tarea)
+
+| Tarea | Archivo de prueba | Capa | Safety net | RED | GREEN | TRIANGULATE | REFACTOR |
+|---|---|---|---|---|---|---|---|
+| 3.1 | — | — | N/A (copia) | N/A | `..\TimeTracker.rollback\pr-mc3\` | N/A | N/A |
+| 3.2 | `IT/Persistence/QueryFilterSpikeTests` | Integración (Testcontainers) | Compilación y suite de integración de la PR 2 en verde | CS1729 «`TimeTrackerDbContext` no contiene un constructor que tome 2 argumentos» (`CurrentCompanyId` aún no existía) | 4/4 tras el filtro; la hipótesis de V-9 resultó falsa (`Find` sí aplica el filtro) y la prueba pasó a documentar el resultado real | Dos contextos con compañías distintas y consulta repetida; cambio de compañía entre consultas; `ExecuteUpdate`/`ExecuteDelete` | Limpio |
+| 3.3 | `IT/Persistence/FailClosedFilterTests` | Integración | Idem | Compilación (ver 3.2); mutación comprobada: sin el bucle del filtro fallan 6 de 7 | 7/7 | Sin compañía y con `Guid.Empty`; compañía A y B; unión, join y agrupación; `companies` sin filtro; puente del almacén con y sin compañía | Limpio |
+| 3.4 | `AR/CompanyIsolationModelTests` | Arquitectura | 156 de arquitectura | «Verde a la primera» (el filtro de 3.3 ya cubría el modelo); la comprobación se valida con un contexto temporal con `company_id` sin filtro (detectado) y otro con filtro (no) | 4/4 | Modelo real, cuatro tablas, lista de excepciones vacía, tipo sin filtro | Limpio |
+| 3.5 | `IT/Persistence/WriteGuardTests` | Integración | Idem | CS0246 «`CompanyScopeViolationException` no se encontró» | 11/11 | `Add`/`Update`/`Remove` ajenos; cambio de `CompanyId` (a otra compañía y a la del contexto; mutación comprobada: sin la comprobación del valor original falla la segunda); sin compañía y vacía; síncrono; mensaje sin datos; 500 por HTTP con registro sin datos personales | Limpio |
+| 3.6 | `AR/IgnoreQueryFiltersClosedListTests` | Arquitectura | 156 de arquitectura | 2 de 24 en rojo (el sitio 1 no existía: recuento 0 en vez de 1) | 24/24 | Escáner con y sin comentario, comentario lejano o sin motivo, APIs prohibidas; mutación comprobada: un `IgnoreQueryFilters` temporal en `TimeEntryRepository` hace fallar la prueba indicando el archivo | Limpio |
+| 3.7 | `AR/CompanyGuardsTests` | Arquitectura | Idem | «Verde a la primera» (el contrato ya cumplía); mutación comprobada: un literal `"cid"` temporal en un repositorio hace fallar la prueba indicando el archivo; el comprobador de firmas se prueba con tipos sintéticos | 11/11 | OpenAPI (parámetros y esquemas), firmas, repositorios, literales | Limpio |
+| 3.8 | `IT/CompanyIsolation/TeamAndTimeEntriesIsolationTests` | Integración | Pruebas de equipo y fichajes en verde | «Verde a la primera» parcial: los identificadores ya acotaban; mutación comprobada: sin el filtro fallan el token inconsistente (cid de A con la identidad de B) y los fichajes propios | 8/8 | A y B, mismo 404 (estado, tipo, cabeceras y cuerpo sin `traceId`), ventana futura, `companyId` por consulta, cabecera y cuerpo ignorado | Limpio |
+| 3.9 | `IT/CompanyIsolation/ExistingEndpointsMatrixTests` | Integración | Idem | «Verde a la primera»; mutación comprobada: sin el filtro y quitando `ManagerId` de `FindDirectReportAsync` fallan los dos casos de Manager | 4/4 | Empleado y Manager de A y de B (fichajes, equipo, `me`) | Limpio |
+| 3.10 | `IT/Persistence/UserLookupTests` | Integración | `UserRepositoryTests` en verde | «Verde a la primera» (el sitio 1 vino con 3.6); mutación comprobada: sin `IgnoreQueryFilters` fallan las pruebas de login | 4/4 | `23505` de `ux_users_email`, búsqueda de correo con contexto A, B, vacío y sin compañía, búsquedas acotadas, `managerId` ajeno | Limpio |
+| 3.11 | `IT/Seeding/DemoSeedingCompanyTests` (+1) | Integración | 7/7 de siembra de la PR 2 | «Verde a la primera»: las pruebas de las PR 1 y 2 ya corrían con el filtro activo; se añade el caso con compañías ajenas presentes | 8/8 | Dos arranques, compañías ajenas intactas, fichajes demo con la compañía demo | Limpio |
+| 3.12 | — | — | Suite completa | — | Puerta de la PR (abajo) | — | `dotnet format` aplicado (orden de `using`) |
+
+### Resumen de pruebas
+
+- Total tras la PR: 95 + 337 + 402 + 214 + 288 + 698 = **2 034 pruebas** (antes 1 956), todas en verde. Nuevas: arquitectura +39, integración +39.
+- Ninguna llamada a un proveedor real de IA.
+
+### Evidencia de unidad de trabajo
+
+| Evidencia | Valor |
+|---|---|
+| Prueba focalizada | `ASPNETCORE_URLS=http://127.0.0.1:0 dotnet test tests/TimeTracker.Api.IntegrationTests -c Release --no-build --filter "FullyQualifiedName~CompanyIsolation\|FullyQualifiedName~QueryFilterSpike\|FullyQualifiedName~FailClosedFilter\|FullyQualifiedName~WriteGuard\|FullyQualifiedName~UserLookup"` más `T-AR` (todo en verde). El comando de `tasks.md` (`~CompanyIsolation`) solo cubre las dos clases de la carpeta `CompanyIsolation`; el resto vive en `Persistence/` |
+| Arnés de ejecución | La API real con PostgreSQL (Testcontainers) y dos compañías: lecturas y escrituras de todos los endpoints existentes con tokens de A y de B; `AssistantBridgeTests` y `AssistantSettings*` siguen en verde con el filtro activo. Nada contra producción |
+| Límite de reversión | Revertir los cinco commits de código y restaurar `..\TimeTracker.rollback\pr-mc3\`; no hay migración (las FK compuestas siguen protegiendo el esquema) |
+
+## Puerta de la PR (todo en verde)
+
+| Paso | Resultado |
+|---|---|
+| DOCKER-CHECK | `docker info` responde (29.7.2); solo lectura |
+| Entorno limpio | Sin variables `Cors__`, `ConnectionStrings__`, `Database__`, `Jwt__`, `Seed__`, `Ai__`, `Registration__`, `Company__`, `ForwardedHeaders__`, `ASPNETCORE_`, `DOTNET_ENVIRONMENT` |
+| RESTORE | Correcto |
+| BUILD | `-warnaserror`: 0 advertencias, 0 errores |
+| TEST | Domain 95, Application 337, Web 288, Infrastructure 402, Architecture 214, Api.Integration 698: 0 fallos (con `ASPNETCORE_URLS=http://127.0.0.1:0` solo en ese comando, por el puerto 5000 reservado) |
+| COV-A | Application: líneas 99,9 %, ramas 96,6 % (mínimo 80 %) |
+| COV-D | Domain: líneas 100,0 %, ramas 100,0 % (mínimo 100 %) |
+| FORMAT | `--verify-no-changes`: sin cambios |
+| VULN | Sin `has the following vulnerable packages` |
+| EF-PENDING | «No changes have been made to the model since the last migration» (`--startup-project src/TimeTracker.Infrastructure`) |
+
+## Desviaciones
+
+Detalle en `design.md`, sección 9, «Desviaciones y aclaraciones del diseño surgidas en la PR 3»: V-9 (`FindAsync` sí aplica el filtro en 10.0.12; las prohibiciones se mantienen), V-2 (existen filtros con nombre; no se adoptan), el constructor `internal` del contexto para el diseño, la guarda que también rechaza escrituras sin compañía, `InternalsVisibleTo` a las pruebas de integración, la tolerancia transitoria de la lista cerrada hasta 4b.7 y el efecto del filtro sobre el almacén puente.
+
+## Riesgos abiertos
+
+- La tolerancia `TransitionallyUnused` de `IgnoreQueryFiltersClosedListTests` debe retirarse en la 4b.7 (sitio 2, `ListVersionsAsync`).
+- Cada consulta fuera de contexto falla cerrado (devuelve vacío): un olvido se nota como «no veo datos».
