@@ -7,8 +7,8 @@ using Npgsql;
 
 using TimeTracker.Api.IntegrationTests.Postgres;
 using TimeTracker.Api.IntegrationTests.Support;
-using TimeTracker.Domain.Companies;
 using TimeTracker.Application.Assistant.Configuration;
+using TimeTracker.Domain.Companies;
 using TimeTracker.Infrastructure.Assistant;
 using TimeTracker.Infrastructure.Persistence;
 
