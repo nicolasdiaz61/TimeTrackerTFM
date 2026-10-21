@@ -1,5 +1,6 @@
 using TimeTracker.Application.DemoData;
 using TimeTracker.Application.Time;
+using TimeTracker.Domain.Companies;
 using TimeTracker.Domain.TimeTracking;
 
 namespace TimeTracker.Application.Tests.DemoData;
@@ -27,8 +28,8 @@ public class DemoScheduleGeneratorTests
 
         foreach (var date in Window(WindowStart, 30))
         {
-            var first = Signature(DemoScheduleGenerator.GenerateDay(Employee, profile, date));
-            var second = Signature(DemoScheduleGenerator.GenerateDay(Employee, profile, date));
+            var first = Signature(DemoScheduleGenerator.GenerateDay(Company.DefaultId, Employee, profile, date));
+            var second = Signature(DemoScheduleGenerator.GenerateDay(Company.DefaultId, Employee, profile, date));
 
             Assert.Equal(first, second);
         }
@@ -42,10 +43,23 @@ public class DemoScheduleGeneratorTests
         var profile = AllProfiles[index];
         var date = new DateOnly(2026, 10, 7);
 
-        var viaFirstWindow = Window(WindowStart, 30).Where(day => day == date).Select(day => Signature(DemoScheduleGenerator.GenerateDay(Employee, profile, day)));
-        var viaSecondWindow = Window(WindowStart.AddDays(3), 30).Where(day => day == date).Select(day => Signature(DemoScheduleGenerator.GenerateDay(Employee, profile, day)));
+        var viaFirstWindow = Window(WindowStart, 30).Where(day => day == date).Select(day => Signature(DemoScheduleGenerator.GenerateDay(Company.DefaultId, Employee, profile, day)));
+        var viaSecondWindow = Window(WindowStart.AddDays(3), 30).Where(day => day == date).Select(day => Signature(DemoScheduleGenerator.GenerateDay(Company.DefaultId, Employee, profile, day)));
 
         Assert.Equal(viaFirstWindow, viaSecondWindow);
+    }
+
+    [Theory]
+    [MemberData(nameof(ProfileIndexes))]
+    public void GenerateDay_CreatesEveryIntervalInTheGivenCompany(int index)
+    {
+        var otherCompany = Guid.Parse("0197a1b2-9c3d-7e4f-8a5b-6c7d8e9f0a9d");
+        var entries = Window(WindowStart, 14)
+            .SelectMany(day => DemoScheduleGenerator.GenerateDay(otherCompany, Employee, AllProfiles[index], day))
+            .ToList();
+
+        Assert.NotEmpty(entries);
+        Assert.All(entries, entry => Assert.Equal(otherCompany, entry.CompanyId));
     }
 
     [Theory]
@@ -56,7 +70,7 @@ public class DemoScheduleGeneratorTests
 
         foreach (var date in Window(WindowStart, 90))
         {
-            var entries = DemoScheduleGenerator.GenerateDay(Employee, profile, date);
+            var entries = DemoScheduleGenerator.GenerateDay(Company.DefaultId, Employee, profile, date);
 
             if (entries.Count == 0)
             {
@@ -88,7 +102,7 @@ public class DemoScheduleGeneratorTests
         var weekend = Window(WindowStart, 90).Where(day => day.DayOfWeek is DayOfWeek.Saturday or DayOfWeek.Sunday).ToList();
 
         Assert.NotEmpty(weekend);
-        Assert.All(weekend, day => Assert.Empty(DemoScheduleGenerator.GenerateDay(Employee, profile, day)));
+        Assert.All(weekend, day => Assert.Empty(DemoScheduleGenerator.GenerateDay(Company.DefaultId, Employee, profile, day)));
     }
 
     [Theory]
@@ -101,7 +115,7 @@ public class DemoScheduleGeneratorTests
         {
             var absent = Window(WindowStart.AddDays(offset), 30)
                 .Count(day => day.DayOfWeek is not (DayOfWeek.Saturday or DayOfWeek.Sunday)
-                    && DemoScheduleGenerator.GenerateDay(Employee, profile, day).Count == 0);
+                    && DemoScheduleGenerator.GenerateDay(Company.DefaultId, Employee, profile, day).Count == 0);
 
             Assert.InRange(absent, 1, 2);
         }
@@ -112,7 +126,7 @@ public class DemoScheduleGeneratorTests
     {
         var summaries = AllProfiles
             .Select(profile => Window(WindowStart, 30)
-                .SelectMany(day => DemoScheduleGenerator.GenerateDay(Employee, profile, day))
+                .SelectMany(day => DemoScheduleGenerator.GenerateDay(Company.DefaultId, Employee, profile, day))
                 .Aggregate((Work: 0, Breaks: 0, Meals: 0), (total, entry) => entry.Type switch
                 {
                     TimeEntryType.Work => (total.Work + entry.CalculateDuration()!.Value.Minutes, total.Breaks, total.Meals),
@@ -129,7 +143,7 @@ public class DemoScheduleGeneratorTests
     {
         var wednesdays = Window(WindowStart, 90).Where(day => day.DayOfWeek == DayOfWeek.Wednesday).ToList();
 
-        var entries = wednesdays.SelectMany(day => DemoScheduleGenerator.GenerateDay(Employee, DemoScheduleProfiles.LateShift, day)).ToList();
+        var entries = wednesdays.SelectMany(day => DemoScheduleGenerator.GenerateDay(Company.DefaultId, Employee, DemoScheduleProfiles.LateShift, day)).ToList();
 
         Assert.NotEmpty(entries);
         Assert.DoesNotContain(entries, entry => entry.Type == TimeEntryType.MealBreak);
@@ -142,7 +156,7 @@ public class DemoScheduleGeneratorTests
         var mondays = Window(WindowStart, 90).Where(day => day.DayOfWeek == DayOfWeek.Monday);
 
         var meals = mondays
-            .SelectMany(day => DemoScheduleGenerator.GenerateDay(Employee, DemoScheduleProfiles.LateShift, day))
+            .SelectMany(day => DemoScheduleGenerator.GenerateDay(Company.DefaultId, Employee, DemoScheduleProfiles.LateShift, day))
             .Where(entry => entry.Type == TimeEntryType.MealBreak)
             .ToList();
 
@@ -155,7 +169,7 @@ public class DemoScheduleGeneratorTests
     {
         foreach (var date in Window(WindowStart, 30))
         {
-            var entries = DemoScheduleGenerator.GenerateDay(Employee, DemoScheduleProfiles.HalfDay, date);
+            var entries = DemoScheduleGenerator.GenerateDay(Company.DefaultId, Employee, DemoScheduleProfiles.HalfDay, date);
 
             Assert.DoesNotContain(entries, entry => entry.Type == TimeEntryType.MealBreak);
             Assert.True(entries.Count(entry => entry.Type == TimeEntryType.Break) <= 1);
@@ -166,7 +180,7 @@ public class DemoScheduleGeneratorTests
     public void EarlyBird_HasAnHourLongMealBreakWithMinuteVariation()
     {
         var meals = Window(WindowStart, 30)
-            .SelectMany(day => DemoScheduleGenerator.GenerateDay(Employee, DemoScheduleProfiles.EarlyBird, day))
+            .SelectMany(day => DemoScheduleGenerator.GenerateDay(Company.DefaultId, Employee, DemoScheduleProfiles.EarlyBird, day))
             .Where(entry => entry.Type == TimeEntryType.MealBreak)
             .Select(entry => entry.CalculateDuration()!.Value.Minutes)
             .ToList();
@@ -180,7 +194,7 @@ public class DemoScheduleGeneratorTests
     public void Manager_HasVariableBreaksAcrossDays()
     {
         var breaksPerDay = Window(WindowStart, 60)
-            .Select(day => DemoScheduleGenerator.GenerateDay(Employee, DemoScheduleProfiles.Manager, day))
+            .Select(day => DemoScheduleGenerator.GenerateDay(Company.DefaultId, Employee, DemoScheduleProfiles.Manager, day))
             .Where(entries => entries.Count > 0)
             .Select(entries => entries.Count(entry => entry.Type != TimeEntryType.Work))
             .Distinct()
@@ -204,7 +218,7 @@ public class DemoScheduleGeneratorTests
             ]));
         var date = FirstWorkday(profile, WindowStart);
 
-        var entries = DemoScheduleGenerator.GenerateDay(Employee, profile, date);
+        var entries = DemoScheduleGenerator.GenerateDay(Company.DefaultId, Employee, profile, date);
 
         Assert.Equal(
             [
@@ -222,8 +236,8 @@ public class DemoScheduleGeneratorTests
         var summer = FirstWorkday(profile, new DateOnly(2026, 7, 13));
         var winter = FirstWorkday(profile, new DateOnly(2026, 1, 12));
 
-        var inSummer = DemoScheduleGenerator.GenerateDay(Employee, profile, summer).Single();
-        var inWinter = DemoScheduleGenerator.GenerateDay(Employee, profile, winter).Single();
+        var inSummer = DemoScheduleGenerator.GenerateDay(Company.DefaultId, Employee, profile, summer).Single();
+        var inWinter = DemoScheduleGenerator.GenerateDay(Company.DefaultId, Employee, profile, winter).Single();
 
         Assert.Equal(TimeSpan.FromHours(6), inSummer.ClockInAt.TimeOfDay);
         Assert.Equal(TimeSpan.FromHours(14), inSummer.ClockOutAt!.Value.TimeOfDay);
@@ -238,8 +252,8 @@ public class DemoScheduleGeneratorTests
         var friday = FirstWorkday(profile, new DateOnly(2026, 10, 23));
         var monday = FirstWorkday(profile, new DateOnly(2026, 10, 26));
 
-        var beforeChange = DemoScheduleGenerator.GenerateDay(Employee, profile, friday).Single();
-        var afterChange = DemoScheduleGenerator.GenerateDay(Employee, profile, monday).Single();
+        var beforeChange = DemoScheduleGenerator.GenerateDay(Company.DefaultId, Employee, profile, friday).Single();
+        var afterChange = DemoScheduleGenerator.GenerateDay(Company.DefaultId, Employee, profile, monday).Single();
 
         Assert.Equal(TimeSpan.FromHours(6), beforeChange.ClockInAt.TimeOfDay);
         Assert.Equal(TimeSpan.FromHours(7), afterChange.ClockInAt.TimeOfDay);

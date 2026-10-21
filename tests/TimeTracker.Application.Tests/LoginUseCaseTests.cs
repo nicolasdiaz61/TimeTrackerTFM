@@ -1,5 +1,6 @@
 using TimeTracker.Application.Authentication;
 using TimeTracker.Application.Tests.Fakes;
+using TimeTracker.Domain.Companies;
 using TimeTracker.Domain.Users;
 
 namespace TimeTracker.Application.Tests;
@@ -16,7 +17,7 @@ public class LoginUseCaseTests
 
     public LoginUseCaseTests()
     {
-        _luis = UserAccount.Create(LuisId, "luis.empleado@example.test", "Luis Empleado", _hasher.Hash(Password), UserRole.Employee, null);
+        _luis = UserAccount.Create(LuisId, Company.DefaultId, "luis.empleado@example.test", "Luis Empleado", _hasher.Hash(Password), UserRole.Employee, null);
         _users.Seed(_luis);
     }
 
@@ -53,7 +54,7 @@ public class LoginUseCaseTests
     [Fact]
     public async Task Login_VerifiesThePasswordWithoutTrimming()
     {
-        var marta = UserAccount.Create(Guid.Parse("0197a1b2-4c3d-7e4f-8a5b-6c7d8e9f0a4e"), "marta.responsable@example.test", "Marta Responsable", _hasher.Hash(" clave "), UserRole.Manager, null);
+        var marta = UserAccount.Create(Guid.Parse("0197a1b2-4c3d-7e4f-8a5b-6c7d8e9f0a4e"), Company.DefaultId, "marta.responsable@example.test", "Marta Responsable", _hasher.Hash(" clave "), UserRole.Manager, null);
         _users.Seed(marta);
 
         var result = await CreateUseCase().ExecuteAsync(new LoginCommand("marta.responsable@example.test", " clave "), CancellationToken.None);
@@ -113,7 +114,7 @@ public class LoginUseCaseTests
     {
         var email = new string('b', UserAccount.MaxEmailLength - "@example.test".Length) + "@example.test";
         var password = new string('p', LoginUseCase.MaxPasswordLength);
-        _users.Seed(UserAccount.Create(Guid.Parse("0197a1b2-5c3d-7e4f-8a5b-6c7d8e9f0a5f"), email, "Usuario Limite", _hasher.Hash(password), UserRole.Employee, null));
+        _users.Seed(UserAccount.Create(Guid.Parse("0197a1b2-5c3d-7e4f-8a5b-6c7d8e9f0a5f"), Company.DefaultId, email, "Usuario Limite", _hasher.Hash(password), UserRole.Employee, null));
 
         var result = await CreateUseCase().ExecuteAsync(new LoginCommand(email, password), CancellationToken.None);
 

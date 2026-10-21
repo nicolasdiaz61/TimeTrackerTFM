@@ -44,12 +44,13 @@ public class MigrationTests(PostgresFixture postgres)
         var migrations = await QueryAsync(connectionString, "SELECT \"MigrationId\" FROM \"__EFMigrationsHistory\" ORDER BY \"MigrationId\"");
         var tables = await QueryAsync(connectionString, "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public'");
 
-        Assert.Equal(5, migrations.Count);
+        Assert.Equal(6, migrations.Count);
         Assert.Contains(migrations, migration => migration.EndsWith("_InitialTimeEntries", StringComparison.Ordinal));
         Assert.EndsWith("_AddUsers", migrations[1], StringComparison.Ordinal);
         Assert.EndsWith("_AddTimeEntryType", migrations[2], StringComparison.Ordinal);
         Assert.EndsWith("_AddAssistantSettings", migrations[3], StringComparison.Ordinal);
         Assert.EndsWith("_AddAssistantAuditImmutability", migrations[4], StringComparison.Ordinal);
+        Assert.EndsWith("_AddCompanies", migrations[5], StringComparison.Ordinal);
         Assert.Contains("time_entries", tables);
         Assert.Contains("users", tables);
     }
@@ -145,7 +146,7 @@ public class MigrationTests(PostgresFixture postgres)
                 $"INSERT INTO time_entries (id, employee_id, clock_in_at, clock_out_at, type) VALUES ('{entryId}', '{Guid.NewGuid()}', '2026-10-12T08:00:00Z', '2026-10-12T09:00:00Z', 'Break')");
             var before = await TableShapeAsync(connectionString);
 
-            await context.Database.MigrateAsync(CancellationToken.None);
+            await MigrateToAsync(context, "_AddAssistantSettings");
 
             var after = await TableShapeAsync(connectionString);
             Assert.Equal(before, after.Where(line => !line.StartsWith("assistant_settings", StringComparison.Ordinal)));
@@ -185,7 +186,7 @@ public class MigrationTests(PostgresFixture postgres)
         await ExecuteAsync(connectionString, "INSERT INTO assistant_settings_audit (occurred_at, actor_id, action, credential_changed) VALUES (now(), gen_random_uuid(), 'Saved', false)");
         var before = await TableShapeAsync(connectionString);
 
-        await context.Database.MigrateAsync(CancellationToken.None);
+        await MigrateToAsync(context, "_AddAssistantAuditImmutability");
 
         Assert.Equal(before, await TableShapeAsync(connectionString));
         Assert.Equal([entryId.ToString()], await QueryAsync(connectionString, "SELECT id::text FROM time_entries"));
@@ -260,12 +261,12 @@ public class MigrationTests(PostgresFixture postgres)
     }
 
     [Fact]
-    public async Task Columns_AreExactlyFive()
+    public async Task Columns_AreExactlySix()
     {
         var columns = await QueryAsync(postgres.ConnectionString, "SELECT column_name FROM information_schema.columns WHERE table_name = 'time_entries'");
 
-        // El token de concurrencia es la columna de sistema xmin: no aparece entre las columnas del esquema.
-        Assert.Equal(["clock_in_at", "clock_out_at", "employee_id", "id", "type"], columns.Order(StringComparer.Ordinal));
+        // company_id llega anulable con la migración A (la B lo hace obligatorio).         // El token de concurrencia es la columna de sistema xmin: no aparece entre las columnas del esquema.
+        Assert.Equal(["clock_in_at", "clock_out_at", "company_id", "employee_id", "id", "type"], columns.Order(StringComparer.Ordinal));
     }
 
     [Fact]

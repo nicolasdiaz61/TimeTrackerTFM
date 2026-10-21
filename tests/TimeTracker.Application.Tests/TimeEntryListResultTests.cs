@@ -1,4 +1,5 @@
 using TimeTracker.Application.TimeTracking;
+using TimeTracker.Domain.Companies;
 using TimeTracker.Domain.TimeTracking;
 
 namespace TimeTracker.Application.Tests;
@@ -11,11 +12,11 @@ public class TimeEntryListResultTests
     [Fact]
     public void From_WithClosedAndOpenEntries_TotalsOnlyClosed()
     {
-        var first = TimeEntry.Start(EmployeeId, TimeEntryType.Work, EightAm);
+        var first = TimeEntry.Start(Company.DefaultId, EmployeeId, TimeEntryType.Work, EightAm);
         first.Close(EightAm.AddMinutes(60));
-        var second = TimeEntry.Start(EmployeeId, TimeEntryType.Work, EightAm.AddHours(2));
+        var second = TimeEntry.Start(Company.DefaultId, EmployeeId, TimeEntryType.Work, EightAm.AddHours(2));
         second.Close(EightAm.AddHours(2).AddMinutes(30));
-        var open = TimeEntry.Start(EmployeeId, TimeEntryType.Work, EightAm.AddHours(4));
+        var open = TimeEntry.Start(Company.DefaultId, EmployeeId, TimeEntryType.Work, EightAm.AddHours(4));
 
         var result = TimeEntryListResult.From([first, second, open], open);
 
@@ -42,7 +43,7 @@ public class TimeEntryListResultTests
         var breakEntry = Closed(TimeEntryType.Break, EightAm.AddHours(1), 15);
         var work2 = Closed(TimeEntryType.Work, EightAm.AddHours(2), 30);
         var meal = Closed(TimeEntryType.MealBreak, EightAm.AddHours(3), 45);
-        var openBreak = TimeEntry.Start(EmployeeId, TimeEntryType.Break, EightAm.AddHours(5));
+        var openBreak = TimeEntry.Start(Company.DefaultId, EmployeeId, TimeEntryType.Break, EightAm.AddHours(5));
 
         var result = TimeEntryListResult.From([openBreak, meal, work2, breakEntry, work1], openBreak);
 
@@ -60,7 +61,7 @@ public class TimeEntryListResultTests
     public void From_StatusFollowsTheOpenEntry(TimeEntryType openType, TimeTrackingStatus expected)
     {
         var closed = Closed(TimeEntryType.Work, EightAm, 60);
-        var open = TimeEntry.Start(EmployeeId, openType, EightAm.AddHours(2));
+        var open = TimeEntry.Start(Company.DefaultId, EmployeeId, openType, EightAm.AddHours(2));
 
         Assert.Equal(expected, TimeEntryListResult.From([open, closed], open).Status);
     }
@@ -75,7 +76,7 @@ public class TimeEntryListResultTests
     [Fact]
     public void From_StatusComesFromTheOpenEntryEvenWhenItIsNotInTheItems()
     {
-        var open = TimeEntry.Start(EmployeeId, TimeEntryType.MealBreak, EightAm);
+        var open = TimeEntry.Start(Company.DefaultId, EmployeeId, TimeEntryType.MealBreak, EightAm);
 
         var result = TimeEntryListResult.From([Closed(TimeEntryType.Work, EightAm.AddDays(-40), 60)], open);
 
@@ -94,7 +95,7 @@ public class TimeEntryListResultTests
 
     private static TimeEntry Closed(TimeEntryType type, DateTimeOffset start, int minutes)
     {
-        var entry = TimeEntry.Start(EmployeeId, type, start);
+        var entry = TimeEntry.Start(Company.DefaultId, EmployeeId, type, start);
         entry.Close(start.AddMinutes(minutes));
         return entry;
     }

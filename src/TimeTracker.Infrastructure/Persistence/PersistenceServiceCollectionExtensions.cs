@@ -3,7 +3,9 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 
 using TimeTracker.Application.Assistant.Configuration;
+using TimeTracker.Application.Companies;
 using TimeTracker.Application.DemoData;
+using TimeTracker.Application.Identity;
 using TimeTracker.Application.TimeTracking;
 using TimeTracker.Application.Users;
 
@@ -16,6 +18,9 @@ public static class PersistenceServiceCollectionExtensions
     {
         services.AddDbContext<TimeTrackerDbContext>((provider, options) =>
             options.UseNpgsql(provider.GetRequiredService<IOptions<ConnectionStringOptions>>().Value.Default));
+        // Transitorio (PR 1): una sola compañía. La PR 2 lo sustituye por el contexto que toma la compañía del token.
+        services.AddScoped<ICompanyContext, FixedCompanyContext>();
+        services.AddScoped<ICompanyRepository, CompanyRepository>();
         services.AddScoped<ITimeEntryRepository, TimeEntryRepository>();
         services.AddScoped<IUserRepository, UserRepository>();
         services.AddScoped<IDemoTimeEntryStore, DemoTimeEntryStore>();

@@ -2,6 +2,7 @@ using Microsoft.Extensions.Time.Testing;
 
 using TimeTracker.Application.Tests.Fakes;
 using TimeTracker.Application.TimeTracking;
+using TimeTracker.Domain.Companies;
 using TimeTracker.Domain.TimeTracking;
 
 namespace TimeTracker.Application.Tests;
@@ -21,7 +22,7 @@ public class StartBreakUseCaseTests
     [InlineData(TimeEntryType.MealBreak)]
     public async Task StartBreak_WhileWorking_ClosesWorkAndOpensBreakAtomically(TimeEntryType breakType)
     {
-        var work = TimeEntry.Start(EmployeeId, TimeEntryType.Work, EightAm);
+        var work = TimeEntry.Start(Company.DefaultId, EmployeeId, TimeEntryType.Work, EightAm);
         _repository.Seed(work);
 
         var result = await CreateUseCase().ExecuteAsync(breakType, CancellationToken.None);
@@ -49,7 +50,7 @@ public class StartBreakUseCaseTests
     [Fact]
     public async Task StartBreak_WhenAlreadyOnBreak_ThrowsAndKeepsBreakOpen()
     {
-        var pause = TimeEntry.Start(EmployeeId, TimeEntryType.Break, EightAm);
+        var pause = TimeEntry.Start(Company.DefaultId, EmployeeId, TimeEntryType.Break, EightAm);
         _repository.Seed(pause);
 
         await Assert.ThrowsAsync<NotWorkingException>(
@@ -62,7 +63,7 @@ public class StartBreakUseCaseTests
     [Fact]
     public async Task StartBreak_WithOnlyOtherEmployeeWorking_ThrowsAndLeavesItUntouched()
     {
-        var others = TimeEntry.Start(Guid.Parse("9a7c1e52-0b3d-4f68-8a14-2e5d7b9c4f10"), TimeEntryType.Work, EightAm);
+        var others = TimeEntry.Start(Company.DefaultId, Guid.Parse("9a7c1e52-0b3d-4f68-8a14-2e5d7b9c4f10"), TimeEntryType.Work, EightAm);
         _repository.Seed(others);
 
         await Assert.ThrowsAsync<NotWorkingException>(
@@ -75,7 +76,7 @@ public class StartBreakUseCaseTests
     [Fact]
     public async Task StartBreak_WhenClockBeforeStart_ThrowsAndWorkStaysOpen()
     {
-        var work = TimeEntry.Start(EmployeeId, TimeEntryType.Work, EightAm);
+        var work = TimeEntry.Start(Company.DefaultId, EmployeeId, TimeEntryType.Work, EightAm);
         _repository.Seed(work);
         var early = new StartBreakUseCase(_repository, new FixedCurrentUser(EmployeeId), new FakeTimeProvider(EightAm.AddHours(-1)));
 
@@ -89,7 +90,7 @@ public class StartBreakUseCaseTests
     [Fact]
     public async Task StartBreak_WithWorkAsBreakType_Throws()
     {
-        _repository.Seed(TimeEntry.Start(EmployeeId, TimeEntryType.Work, EightAm));
+        _repository.Seed(TimeEntry.Start(Company.DefaultId, EmployeeId, TimeEntryType.Work, EightAm));
 
         await Assert.ThrowsAsync<ArgumentOutOfRangeException>(
             () => CreateUseCase().ExecuteAsync(TimeEntryType.Work, CancellationToken.None));

@@ -5,6 +5,7 @@ using Microsoft.Extensions.Options;
 using Microsoft.Extensions.Time.Testing;
 
 using TimeTracker.Api.Authentication;
+using TimeTracker.Domain.Companies;
 using TimeTracker.Domain.Users;
 
 namespace TimeTracker.Api.IntegrationTests.Authentication;
@@ -89,7 +90,7 @@ public class JwtAccessTokenIssuerTests
     }
 
     private static UserAccount NewUser()
-        => UserAccount.Create(Guid.NewGuid(), "Marta.Responsable@example.test", "Marta Ejemplo", StoredHash, UserRole.Manager, managerId: null);
+        => UserAccount.Create(Guid.NewGuid(), Company.DefaultId, "Marta.Responsable@example.test", "Marta Ejemplo", StoredHash, UserRole.Manager, managerId: null);
 
     private JwtAccessTokenIssuer CreateIssuer()
         => new(Options.Create(new JwtOptions { SigningKey = ApiFactory.ValidSigningKey }), _clock);

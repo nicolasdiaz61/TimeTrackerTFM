@@ -30,7 +30,7 @@ public sealed partial class DemoDataSeeder(
         {
             var user = await users.FindByEmailAsync(UserAccount.NormalizeEmail(demo.Email), cancellationToken)
                 ?? throw new InvalidOperationException("Seed:DemoData: falta un usuario de demostración; los fichajes demo se siembran tras Seed:DemoUsers.");
-            employees.Add(new DemoEmployee(user.Id, demo.Schedule));
+            employees.Add(new DemoEmployee(user.Id, user.CompanyId, demo.Schedule));
         }
 
         var result = await scope.ServiceProvider.GetRequiredService<SeedDemoTimeEntriesUseCase>().ExecuteAsync(employees, cancellationToken);

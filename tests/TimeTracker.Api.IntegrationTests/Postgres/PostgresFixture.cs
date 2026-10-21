@@ -55,6 +55,8 @@ public sealed class PostgresFixture : IAsyncLifetime
             await command.ExecuteNonQueryAsync();
         }
 
-        return new NpgsqlConnectionStringBuilder(ConnectionString) { Database = name }.ConnectionString;
+        // Cada base nueva tiene su propio grupo de conexiones: las inactivas se cierran pronto para que decenas de bases no agoten
+        // max_connections del servidor compartido (el síntoma era un 500 aislado en las pruebas con 10 peticiones en paralelo).
+        return new NpgsqlConnectionStringBuilder(ConnectionString) { Database = name, ConnectionIdleLifetime = 2, ConnectionPruningInterval = 1 }.ConnectionString;
     }
 }

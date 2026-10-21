@@ -3,7 +3,7 @@ using TimeTracker.Domain.TimeTracking;
 
 namespace TimeTracker.Application.TimeTracking;
 
-public sealed class ClockInUseCase(ITimeEntryRepository repository, ICurrentUser currentUser, TimeProvider timeProvider)
+public sealed class ClockInUseCase(ITimeEntryRepository repository, ICurrentUser currentUser, ICompanyContext companyContext, TimeProvider timeProvider)
 {
     public async Task<TimeEntryResult> ExecuteAsync(CancellationToken cancellationToken)
     {
@@ -13,7 +13,8 @@ public sealed class ClockInUseCase(ITimeEntryRepository repository, ICurrentUser
             throw new OpenTimeEntryAlreadyExistsException();
         }
 
-        var entry = TimeEntry.Start(currentUser.EmployeeId, TimeEntryType.Work, timeProvider.GetUtcNow());
+        var companyId = companyContext.CompanyId ?? throw new InvalidOperationException("No hay compañía en el contexto para crear el fichaje.");
+        var entry = TimeEntry.Start(companyId, currentUser.EmployeeId, TimeEntryType.Work, timeProvider.GetUtcNow());
         await repository.AddAsync(entry, cancellationToken);
         return TimeEntryResult.From(entry);
     }

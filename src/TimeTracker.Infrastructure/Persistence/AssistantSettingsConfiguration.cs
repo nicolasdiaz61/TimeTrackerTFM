@@ -1,6 +1,8 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 
+using TimeTracker.Domain.Companies;
+
 namespace TimeTracker.Infrastructure.Persistence;
 
 internal sealed class AssistantSettingsConfiguration : IEntityTypeConfiguration<AssistantSettingsRecord>
@@ -25,6 +27,7 @@ internal sealed class AssistantSettingsConfiguration : IEntityTypeConfiguration<
 
         builder.HasKey(row => row.Id);
         builder.Property(row => row.Id).HasColumnName("id").ValueGeneratedNever();
+        builder.Property(row => row.CompanyId).HasColumnName("company_id").IsRequired();
         builder.Property(row => row.Provider).HasColumnName("provider").HasMaxLength(16).IsRequired();
         builder.Property(row => row.Model).HasColumnName("model").HasMaxLength(100);
         builder.Property(row => row.TimeoutSeconds).HasColumnName("timeout_seconds");
@@ -35,6 +38,15 @@ internal sealed class AssistantSettingsConfiguration : IEntityTypeConfiguration<
         builder.Property(row => row.CredentialKeyVersion).HasColumnName("credential_key_version");
         builder.Property(row => row.UpdatedBy).HasColumnName("updated_by").IsRequired();
         builder.Property(row => row.UpdatedAt).HasColumnName("updated_at").HasColumnType("timestamp with time zone").IsRequired();
+
+        builder.HasOne<Company>()
+            .WithMany()
+            .HasForeignKey(row => row.CompanyId)
+            .OnDelete(DeleteBehavior.NoAction)
+            .HasConstraintName("fk_assistant_settings_companies_company_id");
+
+        // Índice de apoyo de la clave foránea; la PR 1b lo retira cuando company_id pasa a ser la clave primaria.
+        builder.HasIndex(row => row.CompanyId).HasDatabaseName("ix_assistant_settings_company_id");
 
         // Mismo token que time_entries: la columna de sistema xmin (sin columna propia).
         builder.Property<uint>("xmin").HasColumnName("xmin").HasColumnType("xid").ValueGeneratedOnAddOrUpdate().IsConcurrencyToken();

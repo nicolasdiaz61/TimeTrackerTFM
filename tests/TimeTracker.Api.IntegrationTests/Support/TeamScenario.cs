@@ -1,4 +1,5 @@
 using TimeTracker.Api.IntegrationTests.Postgres;
+using TimeTracker.Domain.Companies;
 using TimeTracker.Domain.TimeTracking;
 using TimeTracker.Domain.Users;
 
@@ -31,7 +32,7 @@ internal sealed record TeamScenario(UserAccount Marta, UserAccount Luis, UserAcc
         await using var context = postgres.CreateContext(postgres.ConnectionString);
         for (var day = 0; day < count; day++)
         {
-            var entry = TimeEntry.Start(employeeId, TimeEntryType.Work, firstStart.AddDays(day));
+            var entry = TimeEntry.Start(Company.DefaultId, employeeId, TimeEntryType.Work, firstStart.AddDays(day));
             entry.Close(entry.ClockInAt.AddMinutes(minutes));
             context.TimeEntries.Add(entry);
         }
@@ -42,7 +43,7 @@ internal sealed record TeamScenario(UserAccount Marta, UserAccount Luis, UserAcc
     /// <summary>Inserta un fichaje; con <paramref name="minutes"/> nulo queda abierto.</summary>
     public static async Task AddEntryAsync(PostgresFixture postgres, Guid employeeId, DateTimeOffset at, int? minutes, TimeEntryType type = TimeEntryType.Work)
     {
-        var entry = TimeEntry.Start(employeeId, type, at);
+        var entry = TimeEntry.Start(Company.DefaultId, employeeId, type, at);
         if (minutes is { } worked)
         {
             entry.Close(at.AddMinutes(worked));

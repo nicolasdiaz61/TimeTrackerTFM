@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 
 using TimeTracker.Api.IntegrationTests.Postgres;
+using TimeTracker.Domain.Companies;
 using TimeTracker.Domain.TimeTracking;
 using TimeTracker.Infrastructure.Persistence;
 
@@ -34,7 +35,7 @@ public class DemoTimeEntryStoreTests(PostgresFixture postgres)
     public async Task AddRange_PersistsAllEntriesWithTheirTypesAndInstants()
     {
         var employee = Guid.NewGuid();
-        var work = TimeEntry.Start(employee, TimeEntryType.Work, From.AddHours(8));
+        var work = TimeEntry.Start(Company.DefaultId, employee, TimeEntryType.Work, From.AddHours(8));
         var meal = work.Pause(TimeEntryType.MealBreak, From.AddHours(12));
         var afternoon = meal.Resume(From.AddHours(13));
         afternoon.Close(From.AddHours(17));
@@ -66,7 +67,7 @@ public class DemoTimeEntryStoreTests(PostgresFixture postgres)
 
     private static TimeEntry Closed(Guid employeeId, DateTimeOffset start)
     {
-        var entry = TimeEntry.Start(employeeId, TimeEntryType.Work, start);
+        var entry = TimeEntry.Start(Company.DefaultId, employeeId, TimeEntryType.Work, start);
         entry.Close(start.AddHours(1));
         return entry;
     }
