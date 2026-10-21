@@ -11,7 +11,8 @@ public sealed class UserRepository(TimeTrackerDbContext context) : IUserReposito
     public Task<UserAccount?> FindByEmailAsync(string normalizedEmail, CancellationToken cancellationToken)
     {
         var email = UserAccount.NormalizeEmail(normalizedEmail);
-        return context.Users.AsNoTracking().FirstOrDefaultAsync(user => user.Email == email, cancellationToken);
+        // company-filter-bypass: el login no tiene compañía todavía y el correo es único global (DD-9, sitio 1 de la lista cerrada).
+        return context.Users.IgnoreQueryFilters().AsNoTracking().FirstOrDefaultAsync(user => user.Email == email, cancellationToken);
     }
 
     public async Task<IReadOnlyList<UserAccount>> ListDirectReportsAsync(Guid managerId, int limit, CancellationToken cancellationToken)
