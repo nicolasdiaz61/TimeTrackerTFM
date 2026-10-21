@@ -8,7 +8,7 @@ public sealed class ResetAssistantSettingsUseCase(
     ICurrentUser currentUser,
     TimeProvider timeProvider)
 {
-    /// <summary>Borra la configuración guardada y vuelve al entorno. Sin fila no audita ni recarga; si otro Manager guardó tras la lectura, no borra (<c>Conflict</c>).</summary>
+    /// <summary>Borra la configuración guardada de la compañía y vuelve al valor por defecto de su tipo. Sin fila no audita ni recarga; si otro Manager guardó tras la lectura, no borra (<c>Conflict</c>).</summary>
     public async Task<DeleteOutcome> ExecuteAsync(CancellationToken cancellationToken)
     {
         var previous = await store.GetAsync(cancellationToken);
@@ -28,7 +28,7 @@ public sealed class ResetAssistantSettingsUseCase(
         var outcome = await store.DeleteAsync(previous.Version, audit, cancellationToken);
         if (outcome == DeleteOutcome.Deleted)
         {
-            await reloader.ReloadAfterCommitAsync(cancellationToken);
+            await reloader.ReloadAfterCommitAsync(currentUser.CompanyId, cancellationToken);
         }
 
         return outcome;

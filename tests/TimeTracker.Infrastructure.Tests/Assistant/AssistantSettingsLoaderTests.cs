@@ -6,7 +6,9 @@ using Microsoft.Extensions.Options;
 using Microsoft.Extensions.Time.Testing;
 
 using TimeTracker.Application.Assistant.Configuration;
+using TimeTracker.Application.Companies;
 using TimeTracker.Application.Identity;
+using TimeTracker.Application.Tests.Fakes;
 using TimeTracker.Domain.Companies;
 using TimeTracker.Infrastructure.Assistant;
 using TimeTracker.Infrastructure.Persistence;
@@ -57,6 +59,13 @@ public sealed class AssistantSettingsLoaderTests : IDisposable
     private static EncryptedCredential Encrypt(AesGcmCredentialProtector protector, AssistantProvider provider)
         => protector.Protect(new AssistantCredential(Secret), provider, Company.DefaultId);
 
+    private static InMemoryCompanyRepository PlatformDefaultCompany()
+    {
+        var companies = new InMemoryCompanyRepository();
+        companies.Seed(Company.DefaultId, "Demo", usesPlatformAssistant: true);
+        return companies;
+    }
+
     private Rig NewRig(AiOptions? environment = null, AesGcmCredentialProtector? protector = null, AssistantSettings? stored = null)
     {
         var rig = new Rig(environment ?? Environment(), protector ?? Protector("1", ("1", KeyOne)), stored);
@@ -74,6 +83,7 @@ public sealed class AssistantSettingsLoaderTests : IDisposable
             InitialInner = new DisposalTrackingChatClient("entorno");
             Client = new AssistantChatClient(InitialInner, environment, Time);
             var services = new ServiceCollection();
+            services.AddScoped<ICompanyRepository>(_ => Companies);
             services.AddScoped<RecordingCompanyContext>();
             services.AddScoped<ICompanyContext>(scope => scope.GetRequiredService<RecordingCompanyContext>());
             services.AddScoped<ICompanyContextSetter>(scope => scope.GetRequiredService<RecordingCompanyContext>());
@@ -91,6 +101,9 @@ public sealed class AssistantSettingsLoaderTests : IDisposable
         }
 
         public FakeAssistantSettingsStore Store { get; } = new();
+
+        /// <summary>La compañía por defecto es la de plataforma salvo que una prueba la siembre de otro modo.</summary>
+        public InMemoryCompanyRepository Companies { get; } = PlatformDefaultCompany();
 
         public List<Guid?> CompaniesSeenByTheStore { get; } = [];
 
@@ -368,5 +381,77 @@ public sealed class AssistantSettingsLoaderTests : IDisposable
         Assert.Equal("90", await rig.Loader.ReadVersionAsync(CancellationToken.None));
         rig.Store.Stored = null;
         Assert.Equal("0", await rig.Loader.ReadVersionAsync(CancellationToken.None));
+    }
+
+    // Puente transitorio: la compañía por defecto solo usa los valores y la clave de plataforma si conserva uses_platform_assistant.
+
+    private static AiOptions PlatformEnvironment()
+        => new() { Provider = "Anthropic", Model = "env-m", ApiKey = Secret, Endpoint = "http://localhost:11434/", AllowedProviders = "Ollama,Anthropic,OpenAI", TimeoutSeconds = 25 };
+
+    [Fact]
+    public async Task LoadAsync_WhenTheDefaultCompanyIsNotPlatform_AndHasNoRow_DisablesTheAssistantInsteadOfUsingTheEnvironment()
+    {
+        var rig = NewRig(PlatformEnvironment());
+        rig.Companies.Seed(Company.DefaultId, "Demo", usesPlatformAssistant: false);
+
+        var outcome = await rig.Loader.LoadAsync(CancellationToken.None);
+
+        Assert.Equal(SettingsLoadOutcome.Applied, outcome);
+        Assert.False(rig.Client.IsEnabled);
+        Assert.Equal(AssistantSnapshot.DisabledVersion, rig.Client.Current.Version);
+        Assert.Null(rig.Client.Current.Options.ApiKey);
+        Assert.Equal("None", Assert.Single(rig.Factory.Created).Provider);
+        Assert.Equal(SettingsLoadOutcome.Unchanged, await rig.Loader.LoadAsync(CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task ReadVersionAsync_WhenTheDefaultCompanyIsNotPlatform_AndHasNoRow_ReportsTheDisabledVersion_SoThePollerDoesNotReloadEveryTime()
+    {
+        var rig = NewRig(PlatformEnvironment());
+        rig.Companies.Seed(Company.DefaultId, "Demo", usesPlatformAssistant: false);
+
+        Assert.Equal(AssistantSnapshot.DisabledVersion, await rig.Loader.ReadVersionAsync(CancellationToken.None));
+        rig.Companies.Seed(Company.DefaultId, "Demo", usesPlatformAssistant: true);
+        Assert.Equal("0", await rig.Loader.ReadVersionAsync(CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task LoadAsync_WhenTheDefaultCompanyIsNotPlatform_ARowNeverInheritsTheEnvironmentKeyOrModel()
+    {
+        var withoutKey = NewRig(PlatformEnvironment(), stored: Row(AssistantProvider.Anthropic, "11", model: "db-m"));
+        withoutKey.Companies.Seed(Company.DefaultId, "Demo", usesPlatformAssistant: false);
+        var ownModel = NewRig(PlatformEnvironment(), stored: Row(AssistantProvider.Ollama, "12", model: "db-m"));
+        ownModel.Companies.Seed(Company.DefaultId, "Demo", usesPlatformAssistant: false);
+        var withoutModel = NewRig(PlatformEnvironment(), stored: Row(AssistantProvider.Ollama, "13", model: null));
+        withoutModel.Companies.Seed(Company.DefaultId, "Demo", usesPlatformAssistant: false);
+
+        Assert.Equal(SettingsLoadOutcome.Rejected, await withoutKey.Loader.LoadAsync(CancellationToken.None));
+        Assert.Empty(withoutKey.Factory.Created);
+        Assert.Equal(SettingsLoadOutcome.Applied, await ownModel.Loader.LoadAsync(CancellationToken.None));
+        var created = Assert.Single(ownModel.Factory.Created);
+        Assert.Equal(("Ollama", "db-m", null), (created.Provider, created.Model, created.ApiKey));
+        Assert.Equal(SettingsLoadOutcome.Rejected, await withoutModel.Loader.LoadAsync(CancellationToken.None));
+        Assert.Empty(withoutModel.Factory.Created);
+    }
+
+    [Fact]
+    public async Task LoadAsync_WhenThePlatformCompanyRowIsAbsentFromTheTablesYet_TheDefaultCompanyKeepsUsingTheEnvironment()
+    {
+        var rig = NewRig(PlatformEnvironment());
+        rig.Companies.Failure = new Npgsql.PostgresException("no existe la tabla", "ERROR", "ERROR", Npgsql.PostgresErrorCodes.UndefinedTable);
+
+        Assert.Equal(SettingsLoadOutcome.Unchanged, await rig.Loader.LoadAsync(CancellationToken.None));
+        Assert.Equal("0", await rig.Loader.ReadVersionAsync(CancellationToken.None));
+        Assert.True(rig.Client.IsEnabled);
+    }
+
+    [Fact]
+    public async Task LoadAsync_WhenTheCompaniesReadFailsForAnotherReason_PropagatesAndKeepsTheLastValidOne()
+    {
+        var rig = NewRig(PlatformEnvironment());
+        rig.Companies.Failure = new TimeoutException("base de datos caída");
+
+        await Assert.ThrowsAsync<TimeoutException>(() => rig.Loader.LoadAsync(CancellationToken.None));
+        Assert.True(rig.Client.IsEnabled);
     }
 }

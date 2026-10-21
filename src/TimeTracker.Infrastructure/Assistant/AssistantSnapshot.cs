@@ -12,6 +12,12 @@ internal sealed record AssistantSnapshot(IChatClient? Pipeline, AiOptions Option
     public const string EnvironmentVersion = "0";
 
     /// <summary>
+    /// Versión de la instantánea deshabilitada de la compañía de plataforma cuando ya no usa los valores del entorno
+    /// (<c>uses_platform_assistant</c> falso) y no tiene fila: distinta de la del entorno para que el sondeo la reconozca.
+    /// </summary>
+    public const string DisabledVersion = "disabled";
+
+    /// <summary>
     /// Copia defensiva: el motor solo necesita modelo, plazo, tokens y esfuerzo, así que ni la clave del proveedor ni las
     /// claves maestras se conservan en la instantánea.
     /// </summary>

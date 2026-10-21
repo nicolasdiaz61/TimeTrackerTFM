@@ -124,9 +124,12 @@ internal sealed class FakeReloader : IAssistantRuntimeReloader
 
     public bool Fails { get; set; }
 
-    public Task ReloadAsync(CancellationToken cancellationToken)
+    public List<Guid> Companies { get; } = [];
+
+    public Task ReloadAsync(Guid companyId, CancellationToken cancellationToken)
     {
         Calls++;
+        Companies.Add(companyId);
         return Fails ? Task.FromException(new InvalidOperationException("recarga fallida")) : Task.CompletedTask;
     }
 }

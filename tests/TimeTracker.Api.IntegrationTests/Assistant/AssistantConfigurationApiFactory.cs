@@ -4,7 +4,10 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 
 using TimeTracker.Application.Assistant.Configuration;
+using TimeTracker.Application.Companies;
+using TimeTracker.Application.Tests.Fakes;
 using TimeTracker.Application.Users;
+using TimeTracker.Domain.Companies;
 using TimeTracker.Domain.Users;
 using TimeTracker.Infrastructure.Assistant;
 using TimeTracker.Infrastructure.Tests.Fakes;
@@ -70,6 +73,10 @@ internal sealed class AssistantConfigurationApiFactory(
             if (store is not null)
             {
                 services.Replace(ServiceDescriptor.Singleton(store));
+                // Sin base de datos: la compañía del token (la por defecto) es la de plataforma, como en la demo.
+                var companies = new InMemoryCompanyRepository();
+                companies.Seed(Company.DefaultId, "Demo", usesPlatformAssistant: true);
+                services.Replace(ServiceDescriptor.Scoped<ICompanyRepository>(_ => companies));
             }
         });
     }

@@ -4,6 +4,7 @@ using Microsoft.Extensions.AI;
 
 using TimeTracker.Application.Assistant;
 using TimeTracker.Application.Tests.Fakes;
+using TimeTracker.Domain.Companies;
 using TimeTracker.Domain.Users;
 using TimeTracker.Infrastructure.Assistant;
 using TimeTracker.Infrastructure.Tests.Fakes;
@@ -32,14 +33,14 @@ public sealed class ChatAssistantEngineTests
 
     private sealed class Rig
     {
-        public Rig(IChatClient? inner, UserRole role = UserRole.Employee, AiOptions? options = null)
+        public Rig(IChatClient? inner, UserRole role = UserRole.Employee, AiOptions? options = null, Guid? companyId = null)
         {
             UserId = role == UserRole.Manager ? ToolHarness.Marta : ToolHarness.Luis;
             Harness = new ToolHarness(UserId, role);
             Engine = new ChatAssistantEngine(
                 new AssistantChatClient(inner, options ?? DefaultOptions()),
                 Harness.Toolset,
-                new FixedCurrentUser(UserId, role),
+                new FixedCurrentUser(UserId, role, companyId),
                 Harness.Clock,
                 Logger);
         }
@@ -67,6 +68,39 @@ public sealed class ChatAssistantEngineTests
         var rig = new Rig(new FakeChatClient());
 
         Assert.True(rig.Engine.IsEnabled);
+    }
+
+    // Puente transitorio (PR 4a): el runtime singleton solo sirve a la compañía de plataforma (la por defecto); a cualquier otra
+    // nunca le llega su instantánea ni su clave, tenga o no configuración propia (DD-14, AE «Asistente deshabilitado por compañía»).
+
+    private static readonly Guid OtherCompany = Guid.Parse("22222222-2222-7222-8222-222222222222");
+
+    [Fact]
+    public void IsEnabled_ForACompanyOtherThanThePlatformOne_IsFalseEvenWithAClient()
+    {
+        var rig = new Rig(new FakeChatClient(), companyId: OtherCompany);
+
+        Assert.False(rig.Engine.IsEnabled);
+    }
+
+    [Fact]
+    public async Task ReplyAsync_ForACompanyOtherThanThePlatformOne_ReturnsNullWithoutCallingTheModel()
+    {
+        var model = new FakeChatClient(_ => Text("no debería llegar"));
+        var rig = new Rig(model, companyId: OtherCompany);
+
+        Assert.Null(await rig.Engine.ReplyAsync(Question, CancellationToken.None));
+        Assert.Empty(model.Calls);
+    }
+
+    [Fact]
+    public async Task ReplyAsync_ForThePlatformCompany_StillAnswers()
+    {
+        var model = new FakeChatClient(_ => Text("Trabajó 8 horas."));
+        var rig = new Rig(model, companyId: Company.DefaultId);
+
+        Assert.True(rig.Engine.IsEnabled);
+        Assert.Equal("Trabajó 8 horas.", await rig.Engine.ReplyAsync(Question, CancellationToken.None));
     }
 
     [Fact]

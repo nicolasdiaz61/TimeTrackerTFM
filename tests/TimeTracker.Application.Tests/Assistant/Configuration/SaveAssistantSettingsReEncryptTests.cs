@@ -26,7 +26,8 @@ public class SaveAssistantSettingsReEncryptTests
                 new FakeEnvironment(Env(allowedProviders: "Anthropic,OpenAI")),
                 new FakeReloader(),
                 new FixedCurrentUser(Ana, UserRole.Manager, companyId),
-                _time)
+                _time,
+                PlatformCompanies())
             .ExecuteAsync(new SaveAssistantSettingsCommand(input, token), CancellationToken.None);
 
     [Fact]
@@ -93,7 +94,7 @@ public class SaveAssistantSettingsReEncryptTests
         var legacy = _protector.ProtectAsLegacyV1(new AssistantCredential(SecretKey), AssistantProvider.OpenAI);
         _store.Row = Stored(AssistantProvider.OpenAI, credential: legacy, version: "7");
 
-        var view = await new GetAssistantSettingsUseCase(_store, _protector, new FakeEnvironment(Env(allowedProviders: "OpenAI")), new FixedCurrentUser(Ana, UserRole.Manager, Company.DefaultId))
+        var view = await new GetAssistantSettingsUseCase(_store, _protector, new FakeEnvironment(Env(allowedProviders: "OpenAI")), new FixedCurrentUser(Ana, UserRole.Manager, Company.DefaultId), PlatformCompanies())
             .ExecuteAsync(CancellationToken.None);
 
         Assert.True(view.Effective.CredentialConfigured);

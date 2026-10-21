@@ -14,7 +14,7 @@ public class GetAssistantSettingsUseCaseTests
     private AssistantEnvironmentDefaults _env = Env();
 
     private Task<AssistantSettingsView> Get()
-        => new GetAssistantSettingsUseCase(_store, _protector, new FakeEnvironment(_env), new FixedCurrentUser(Guid.NewGuid(), UserRole.Manager)).ExecuteAsync(CancellationToken.None);
+        => new GetAssistantSettingsUseCase(_store, _protector, new FakeEnvironment(_env), new FixedCurrentUser(Guid.NewGuid(), UserRole.Manager), PlatformCompanies()).ExecuteAsync(CancellationToken.None);
 
     [Fact]
     public async Task WithoutARow_EveryValueComesFromTheEnvironmentAndTheTokenMeansNoRow()

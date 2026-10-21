@@ -1,3 +1,4 @@
+using TimeTracker.Application.Companies;
 using TimeTracker.Application.Identity;
 
 namespace TimeTracker.Application.Assistant.Configuration;
@@ -24,7 +25,8 @@ public sealed class SaveAssistantSettingsUseCase(
     IAssistantEnvironment environment,
     IAssistantRuntimeReloader reloader,
     ICurrentUser currentUser,
-    TimeProvider timeProvider)
+    TimeProvider timeProvider,
+    ICompanyRepository companies)
 {
     private static readonly FieldError StorageUnavailable = new(
         "credential",
@@ -32,7 +34,8 @@ public sealed class SaveAssistantSettingsUseCase(
 
     public async Task<SaveAssistantSettingsResult> ExecuteAsync(SaveAssistantSettingsCommand command, CancellationToken cancellationToken)
     {
-        var env = environment.Current;
+        var company = await AssistantCompany.ResolveAsync(companies, currentUser, cancellationToken);
+        var env = company.EnvironmentOf(environment);
         var stored = await store.GetAsync(cancellationToken);
 
         var errors = new List<FieldError>();
@@ -41,7 +44,7 @@ public sealed class SaveAssistantSettingsUseCase(
             errors.Add(tokenError);
         }
 
-        var validation = AssistantSettingsRules.Validate(command.Input, env, stored, protector, currentUser.CompanyId);
+        var validation = AssistantSettingsRules.Validate(command.Input, env, stored, protector, company.Id);
         errors.AddRange(validation.Errors);
         if (validation.Value is not { } value || errors.Count > 0)
         {
@@ -64,8 +67,8 @@ public sealed class SaveAssistantSettingsUseCase(
             return new SaveAssistantSettingsResult.Conflict();
         }
 
-        await reloader.ReloadAfterCommitAsync(cancellationToken);
-        return new SaveAssistantSettingsResult.Saved(AssistantSettingsView.Build(env, protector, next with { Version = saved.Token }, currentUser.CompanyId));
+        await reloader.ReloadAfterCommitAsync(company.Id, cancellationToken);
+        return new SaveAssistantSettingsResult.Saved(AssistantSettingsView.Build(env, protector, next with { Version = saved.Token }, company));
     }
 
     // PostgreSQL guarda microsegundos: sin truncar, el PUT mostraría un instante que el GET siguiente no repite.

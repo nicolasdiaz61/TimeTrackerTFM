@@ -1,3 +1,4 @@
+using TimeTracker.Application.Companies;
 using TimeTracker.Application.Identity;
 
 namespace TimeTracker.Application.Assistant.Configuration;
@@ -20,17 +21,19 @@ public sealed class TestAssistantConnectionUseCase(
     IAssistantCredentialProtector protector,
     IAssistantEnvironment environment,
     IAssistantConnectionTester tester,
-    ICurrentUser currentUser)
+    ICurrentUser currentUser,
+    ICompanyRepository companies)
 {
     private static readonly FieldError NothingToTest = new("provider", "El campo provider debe indicar un proveedor: con el asistente deshabilitado no hay conexión que probar.");
 
     public async Task<TestAssistantConnectionResult> ExecuteAsync(AssistantSettingsInput input, CancellationToken cancellationToken)
     {
-        var env = environment.Current;
+        var company = await AssistantCompany.ResolveAsync(companies, currentUser, cancellationToken);
+        var env = company.EnvironmentOf(environment);
         var stored = await store.GetAsync(cancellationToken);
-        var effective = AssistantSettingsView.Build(env, protector, stored, currentUser.CompanyId).Effective;
+        var effective = AssistantSettingsView.Build(env, protector, stored, company).Effective;
 
-        var validation = AssistantSettingsRules.Validate(Complete(input, effective), env with { Model = effective.Model }, stored, protector, currentUser.CompanyId);
+        var validation = AssistantSettingsRules.Validate(Complete(input, effective), env with { Model = effective.Model }, stored, protector, company.Id);
         if (validation.Value is not { } value)
         {
             return new TestAssistantConnectionResult.Invalid(validation.Errors);
@@ -50,7 +53,7 @@ public sealed class TestAssistantConnectionUseCase(
             value.TimeoutSeconds ?? effective.TimeoutSeconds,
             value.MaxOutputTokens ?? effective.MaxOutputTokens,
             value.Effort ?? InheritedEffort(value.Provider, effective),
-            value.Credential ?? FindCredential(value.Provider, env, stored));
+            value.Credential ?? FindCredential(value.Provider, env, stored, company));
         return new TestAssistantConnectionResult.Completed(await tester.TestAsync(candidate, cancellationToken));
     }
 
@@ -64,6 +67,6 @@ public sealed class TestAssistantConnectionUseCase(
     private static AssistantEffort? InheritedEffort(AssistantProvider provider, EffectiveAssistantSettings effective)
         => provider == effective.Provider && AssistantProviderTraits.For(provider).SupportsEffort ? effective.Effort : null;
 
-    private AssistantCredential? FindCredential(AssistantProvider provider, AssistantEnvironmentDefaults env, AssistantSettings? stored)
-        => UsableCredential.FromStored(stored, provider, protector, currentUser.CompanyId) ?? UsableCredential.FromEnvironment(env, provider);
+    private AssistantCredential? FindCredential(AssistantProvider provider, AssistantEnvironmentDefaults env, AssistantSettings? stored, AssistantCompany company)
+        => UsableCredential.FromStored(stored, provider, protector, company.Id) ?? UsableCredential.FromEnvironment(env, provider);
 }

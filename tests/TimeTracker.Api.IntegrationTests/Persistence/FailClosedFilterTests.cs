@@ -100,8 +100,8 @@ public class FailClosedFilterTests(PostgresFixture postgres)
 
         await MigrationDatabase.ExecuteAsync(connectionString, $"INSERT INTO assistant_settings (company_id, provider, model, updated_by, updated_at) VALUES ('{Company.DefaultId}', 'Ollama', 'modelo-puente', gen_random_uuid(), now())");
 
-        var withDefaultCompany = await new AssistantSettingsStore(postgres.CreateContext(connectionString, Company.DefaultId)).GetAsync(CancellationToken.None);
-        var withoutCompany = await new AssistantSettingsStore(ContextFor(connectionString, null)).GetAsync(CancellationToken.None);
+        var withDefaultCompany = await postgres.CreateAssistantStore(connectionString, Company.DefaultId).GetAsync(CancellationToken.None);
+        var withoutCompany = await postgres.CreateAssistantStoreWithoutCompany(connectionString).GetAsync(CancellationToken.None);
 
         Assert.Equal("modelo-puente", withDefaultCompany?.Model);
         Assert.Null(withoutCompany);

@@ -43,10 +43,10 @@ public sealed class AssistantBridgeTests(PostgresFixture postgres)
         var audit = new AuditEntry(Guid.NewGuid(), DateTimeOffset.UtcNow, AuditAction.Saved, CredentialChanged: false, Previous: null, Current: null);
         var next = new AssistantSettings(AssistantProvider.Ollama, "modelo-puente", 25, 800, AssistantEffort.Low, Credential: null, audit.ActorId, audit.OccurredAt, "0");
 
-        var saved = await new AssistantSettingsStore(postgres.CreateContext(connectionString)).SaveAsync(next, "0", audit, CancellationToken.None);
+        var saved = await postgres.CreateAssistantStore(connectionString).SaveAsync(next, "0", audit, CancellationToken.None);
 
         Assert.IsType<SaveOutcome.Saved>(saved);
-        var read = await new AssistantSettingsStore(postgres.CreateContext(connectionString)).GetAsync(CancellationToken.None);
+        var read = await postgres.CreateAssistantStore(connectionString).GetAsync(CancellationToken.None);
         Assert.Equal("modelo-puente", read!.Model);
         Assert.Equal([$"{Company.DefaultId}|modelo-puente"], await MigrationDatabase.QueryAsync(connectionString, "SELECT company_id || '|' || model FROM assistant_settings"));
         Assert.Equal(["company_id"], await MigrationDatabase.QueryAsync(connectionString, "SELECT a.attname FROM pg_constraint c JOIN pg_attribute a ON a.attrelid = c.conrelid AND a.attnum = ANY (c.conkey) WHERE c.conrelid = 'assistant_settings'::regclass AND c.contype = 'p'"));
@@ -59,14 +59,14 @@ public sealed class AssistantBridgeTests(PostgresFixture postgres)
         var connectionString = await MigratedDatabaseAsync();
         var other = await CompanySeed.InsertAsync(connectionString);
         await MigrationDatabase.ExecuteAsync(connectionString, $"INSERT INTO assistant_settings (company_id, provider, model, updated_by, updated_at) VALUES ('{other}', 'Ollama', 'modelo-ajeno', gen_random_uuid(), now())");
-        var store = new AssistantSettingsStore(postgres.CreateContext(connectionString));
+        var store = postgres.CreateAssistantStore(connectionString);
 
         Assert.Null(await store.GetAsync(CancellationToken.None));
         Assert.Equal("0", await store.GetVersionAsync(CancellationToken.None));
 
         var audit = new AuditEntry(Guid.NewGuid(), DateTimeOffset.UtcNow, AuditAction.Saved, CredentialChanged: false, Previous: null, Current: null);
         var next = new AssistantSettings(AssistantProvider.Ollama, "modelo-propio", 25, 800, AssistantEffort.Low, Credential: null, audit.ActorId, audit.OccurredAt, "0");
-        Assert.IsType<SaveOutcome.Saved>(await new AssistantSettingsStore(postgres.CreateContext(connectionString)).SaveAsync(next, "0", audit, CancellationToken.None));
+        Assert.IsType<SaveOutcome.Saved>(await postgres.CreateAssistantStore(connectionString).SaveAsync(next, "0", audit, CancellationToken.None));
 
         Assert.Equal([$"{Company.DefaultId}|modelo-propio", $"{other}|modelo-ajeno"], await MigrationDatabase.QueryAsync(connectionString, "SELECT company_id || '|' || model FROM assistant_settings ORDER BY model DESC"));
         Assert.Equal([Company.DefaultId.ToString()], await MigrationDatabase.QueryAsync(connectionString, "SELECT company_id::text FROM assistant_settings_audit"));

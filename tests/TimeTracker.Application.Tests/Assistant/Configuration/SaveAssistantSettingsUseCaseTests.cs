@@ -22,7 +22,7 @@ public class SaveAssistantSettingsUseCaseTests
     private AssistantEnvironmentDefaults _env = Env(allowedProviders: "Anthropic,OpenAI,Gemini");
 
     private async Task<SaveAssistantSettingsResult> Save(AssistantSettingsInput input, string token = "0")
-        => await new SaveAssistantSettingsUseCase(_store, _protector, new FakeEnvironment(_env), _reloader, new FixedCurrentUser(Ana, UserRole.Manager), _time)
+        => await new SaveAssistantSettingsUseCase(_store, _protector, new FakeEnvironment(_env), _reloader, new FixedCurrentUser(Ana, UserRole.Manager), _time, PlatformCompanies())
             .ExecuteAsync(new SaveAssistantSettingsCommand(input, token), CancellationToken.None);
 
     private static AssistantSettingsView Saved(SaveAssistantSettingsResult result) => Assert.IsType<SaveAssistantSettingsResult.Saved>(result).View;

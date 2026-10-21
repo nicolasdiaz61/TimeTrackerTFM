@@ -4,6 +4,7 @@ using Microsoft.Extensions.Logging;
 using TimeTracker.Application.Assistant;
 using TimeTracker.Application.Identity;
 using TimeTracker.Application.Time;
+using TimeTracker.Domain.Companies;
 
 namespace TimeTracker.Infrastructure.Assistant;
 
@@ -26,10 +27,20 @@ public sealed class ChatAssistantEngine(
     private const string TimeoutOutcome = "timeout";
     private const string ToolErrorOutcome = "tool-error";
 
-    public bool IsEnabled => client.IsEnabled;
+    // Puente transitorio (PR 1b a 4b, DD-14): el cliente singleton lleva la instantánea de la compañía de plataforma (la por defecto,
+    // con uses_platform_assistant). Cualquier otra compañía recibe el asistente deshabilitado: nunca su instantánea ni su clave,
+    // tenga o no fila propia. La 4b sustituye el singleton por el registro de instantáneas por compañía y retira esta guarda.
+    private bool ServesCompany => currentUser.CompanyId == Company.DefaultId;
+
+    public bool IsEnabled => ServesCompany && client.IsEnabled;
 
     public async Task<string?> ReplyAsync(AssistantConversation conversation, CancellationToken cancellationToken)
     {
+        if (!ServesCompany)
+        {
+            return null;
+        }
+
         // Una sola lectura: un cambio de configuración a mitad de la petición no la afecta (DD-10).
         var snapshot = client.Current;
         if (snapshot.Pipeline is not { } pipeline)
