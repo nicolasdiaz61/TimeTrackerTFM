@@ -10,7 +10,8 @@ Fase: sdd-apply · Modo: openspec · **Strict TDD** · Rama de la PR 1: `feat/mu
 | PR 1 | 1.2 (V-1), 1.3 (V-4, parte Railway), 1.4 (V-6), 1.4b (V-3) | **Pendientes del responsable** (puertas previas al despliegue; apply no accede a producción ni a Railway) |
 | PR 1b | 1b.1, 1b.4 a 1b.10 | **Hechas** (10 de 12; ver la sección «PR 1b» al final) |
 | PR 1b | 1b.2 (puertas previas de despliegue), 1b.3 (reconfirmación de V-3 con el responsable; la parte local está hecha) | **Pendientes del responsable** (apply no accede a producción ni a Railway) |
-| PR 2 a PR 8, tarea 9 | todas | Sin empezar (fuera del alcance de este lote) |
+| PR 2 | 2.1 a 2.11 (con 2.9b) | **Hechas** (12 de 12; ver la sección PR 2 al final; sin tareas de producción) |
+| PR 3 a PR 8, tarea 9 | todas | Sin empezar (fuera del alcance de este lote) |
 
 ## Lo que queda al responsable (puertas previas, sin marcar en `tasks.md`)
 
@@ -187,3 +188,79 @@ Detalle en `design.md`, sección 9, «Desviaciones y aclaraciones del diseño su
 - Despliegue de la PR 1b: ver «Lo que queda al responsable». Hasta que la V-1 esté resuelta no se sabe si hay huérfanos; B los detecta y aborta (fusionar es seguro, desplegar no).
 - El rollback de un clic de Railway contra el esquema B no es válido (los `INSERT` de `time_entries` fallan por `company_id NOT NULL` y el almacén antiguo lee `assistant_settings.id`): ejecutar `Down` antes de redesplegar el código anterior.
 - Las tareas 1.2, 1.3, 1.4, 1.4b, 1b.2 y 1b.3 siguen sin marcar a propósito.
+
+---
+
+# PR 2 — Claim de compañía en el token
+
+Rama `feat/multi-compania-pr2-claim` (apilada sobre `feat/multi-compania-pr1b-contraer`, PR #37; cadena `stacked-to-main`) · Strict TDD · Copia previa en `..\TimeTracker.rollback\pr-mc2\` (63 archivos).
+
+## Lo que queda al responsable
+
+Nada de producción en esta PR. Efecto a comunicar al desplegar: los tokens vigentes no llevan `cid` y devuelven `401`; las personas vuelven a iniciar sesión (caducan como mucho a los 30 minutos). Un rollback de código no revierte el esquema (ejecutar `Down` antes de redesplegar; ver DD-4).
+
+## Commits de esta entrega
+
+| Commit | Mensaje | Contenido |
+|---|---|---|
+| `879e4c3` | `test(multi-compania): TestTokens fabrica tokens con cid, cname y mcp` | Tarea 2.4: `TestTokens` (+ `TestTokensTests`), sin cambiar aserciones |
+| `2c0ede8` | `feat(multi-compania): claims cid, cname y mcp y compañía en la sesión` | 2.5 a 2.8 (claims e identidad): `JwtDefaults`, `RejectInvalidClaims`, emisor, `SessionIssuer`, `FindLoginInfoAsync`, `ICurrentUser.CompanyId`, `me`, DTO y contrato |
+| `62633ed` | `feat(multi-compania): contexto de compañía desde el token y ámbitos por compañía` | 2.9, 2.10: `AmbientCompanyContext`, middleware, `ICompanyScopeFactory`, puente y siembras por `CreateScope(Company.DefaultId)` |
+| `51ac1db` | `test(multi-compania): pruebas de arquitectura del contexto de compañía y de CreateScope` | 2.8 (arquitectura), 2.9b |
+| (este) | `docs(openspec): progreso de apply de la PR 2 de multi-compania` | `tasks.md`, `design.md` (V-10, V-15, V-16 y desviaciones), este archivo |
+
+Tamaño (`git diff ab215ef HEAD` de los commits de código): 52 archivos, +1 550 / -127 líneas; el código de producción es una fracción pequeña (≈ +330 / -50 sin el contrato OpenAPI) y el resto son pruebas. El volumen de pruebas supera la previsión de 400-600 líneas.
+
+## Evidencia de Strict TDD (ciclo por tarea)
+
+| Tarea | Archivo de prueba | Capa | Safety net | RED | GREEN | TRIANGULATE | REFACTOR |
+|---|---|---|---|---|---|---|---|
+| 2.1 | — | — | N/A (copia) | N/A | `..\TimeTracker.rollback\pr-mc2\` | N/A | N/A |
+| 2.2, 2.3 | — (decisiones V-15 y V-16) | — | N/A | N/A | Anotadas en `design.md` | N/A | N/A |
+| 2.4 | `IT/TestTokensTests.cs` | Integración (sin Docker) | 90/90 de autenticación | Infraestructura de pruebas: los parámetros `companyId`/`companyName` no existían; las pruebas existentes siguen en verde con el emisor antiguo | 4/4 | Por defecto, explícito, omitido (`null`) y sin firma | Limpio |
+| 2.5 | `IT/Authentication/CompanyClaimTests` | Integración (sin Docker) | 87 de autenticación | 4 de 11 en rojo: «esperado 401» sin `cid`, con `cid` vacío o mal formado (`200`/`500`) | 11/11 | Sin cid, tres valores inválidos, payload alterado (verde a la primera: ya lo impedía la firma), `mcp` no `true`, sin `sub`/rol | Limpio |
+| 2.6 | `AT/LoginUseCaseTests`, `AT/SessionIssuerTests` | Unitaria | 331/331 | CS0246 (`CompanyLoginInfo`, `SessionIssuer`) y CS0535 (`Issue(user, companyName)`) | 337/337 | Compañía activa, suspendida (contraseña verificada una vez), inexistente, con cambio pendiente | Limpio |
+| 2.6 (repositorio) | `IT/Persistence/CompanyLoginInfoTests` | Integración | N/A (nuevo) | Error de compilación (`FindLoginInfoAsync` inexistente) | 4/4 | Por defecto (`Demo`, plataforma), nueva, suspendida, desconocida | Nombres de compañía únicos por el índice del nombre normalizado |
+| 2.7 | `IT/Authentication/TokenContentTests`, `JwtAccessTokenIssuerTests` | Integración | 90/90 | Error de compilación y pruebas de login con token sin `cid` en rojo | 7/7 + 3 del emisor | Compañía no por defecto, `mcp`, sin `companyId` en el cuerpo, login suspendido idéntico al de credenciales erróneas, `me` sin base de datos | Limpio |
+| 2.8 | `IT/Authentication/HttpContextCurrentUserTests`, `AR/CompanyContextPlacementTests` | Integración / arquitectura | 8/8 | CS0535 «`HttpContextCurrentUser` no implementa `ICurrentUser.CompanyId`» (con el archivo de producción revertido temporalmente) | 9 nuevas en verde | Válido, anónimo, sin contexto, tres inválidos, sin claim, cabecera/consulta/cuerpo ignorados | Las pruebas de arquitectura pasan a la primera (la estructura ya existía); su validez la respalda la mutación de la 2.9b |
+| 2.9 | `IT/Pipeline/MiddlewareOrderTests`, `IT/Security/AmbientCompanyContextTests`, `CompanyContextMiddlewareTests`, `IT/Persistence/CompanyContextHostTests`, `IFT/Persistence/CompanyScopeFactoryTests`, `IFT/.../AssistantSettingsLoaderTests` | Integración / unitaria | 399 de infraestructura y 645 de integración | CS0246 (`AmbientCompanyContext`, `ICompanyScopeFactory`, `ICompanyContextSetter`) | 402 de infraestructura y 659 de integración | Token válido, sin cid/vacío/mal formado, anónimo; escritura única; fichaje con compañía distinta de la por defecto y con la por defecto | Se elimina `FixedCompanyContext` y su prueba |
+| 2.9b | `AR/CreateScopeClosedListTests` | Arquitectura | 156/156 | «Verde a la primera» (la estructura ya cumplía la lista). Mutación comprobada una vez: una llamada temporal en `TimeEntryRepository` hace fallar la prueba indicando el archivo; al retirarla vuelve a pasar | 11/11 | Lista de llamadores, entradas sin uso y 9 casos del escáner | Limpio |
+| 2.10 | `IT/Seeding/DemoSeedingCompanyTests` | Integración | 6/6 | Error de compilación (`ICompanyScopeFactory` sin registrar que observar) | 7/7 | Dos sembradores, siempre con la compañía por defecto | Limpio |
+| 2.11 | — | — | Suite completa | — | Puerta de la PR (abajo) | — | Sin literales de `cid`, `cname` ni `mcp` fuera de `JwtDefaults`; `dotnet format` aplicado |
+
+### Resumen de pruebas
+
+- Total tras la PR: 95 + 337 + 402 + 175 + 288 + 659 = **1 956 pruebas** (antes 1 877), todas en verde. Nuevas: aplicación +6, infraestructura +3, arquitectura +19, integración +51.
+- Ninguna llamada a un proveedor real de IA.
+
+### Evidencia de unidad de trabajo
+
+| Evidencia | Valor |
+|---|---|
+| Prueba focalizada | `dotnet test tests/TimeTracker.Api.IntegrationTests -c Release --no-build --filter "FullyQualifiedName~Authentication\|FullyQualifiedName~MiddlewareOrder\|FullyQualifiedName~CompanyContext\|FullyQualifiedName~CompanyLoginInfo"` más `T-AT` y `T-AR` (todo en verde) |
+| Arnés de ejecución | `CompanyContextHostTests` y `TokenContentTests`: la API real con PostgreSQL (Testcontainers) emite el token en el login, lo valida y escribe el fichaje con la compañía del token; `AssistantBridgeTests` sigue en verde con el puente por `CreateScope(Company.DefaultId)`. Nada contra producción |
+| Límite de reversión | Revertir los cuatro commits de código y restaurar `..\TimeTracker.rollback\pr-mc2\`; los tokens nuevos con `cid` los acepta el código anterior (ignora claims desconocidos) |
+
+## Puerta de la PR
+
+| Paso | Resultado |
+|---|---|
+| DOCKER-CHECK | `docker info` responde (29.7.2); solo lectura |
+| Entorno limpio | Sin variables `Cors__`, `ConnectionStrings__`, `Database__`, `Jwt__`, `Seed__`, `Ai__`, `Registration__`, `Company__`, `ForwardedHeaders__`, `ASPNETCORE_`, `DOTNET_ENVIRONMENT` |
+| RESTORE | Correcto |
+| BUILD | `-warnaserror`: 0 advertencias, 0 errores |
+| TEST | Domain 95, Application 337, Web 288, Infrastructure 402, Architecture 175, Api.Integration 659: 0 fallos (con `ASPNETCORE_URLS=http://127.0.0.1:0` solo en ese comando, por el puerto 5000 reservado) |
+| COV-A | Application: líneas 99,9 %, ramas 96,6 % (mínimo 80 %) |
+| COV-D | Domain: líneas 100,0 %, ramas 100,0 % (mínimo 100 %) |
+| FORMAT | `--verify-no-changes`: sin cambios |
+| VULN | Sin `has the following vulnerable packages` |
+| EF-PENDING | «No changes have been made to the model since the last migration» (`--startup-project src/TimeTracker.Infrastructure`) |
+
+## Desviaciones
+
+Detalle en `design.md`, sección 9, «Desviaciones y aclaraciones del diseño surgidas en la PR 2»: `mcp` distinto de `true` no invalida el token (prevalece la tarea y la spec sobre DD-6); `SessionIssuer` como emisor único; `me` devuelve `companyName` vacío si falta `cname`; la lista cerrada de `CreateScope` no incluye al sondeo (no abre ámbitos); `SkipCompanyContext` se difiere a la PR 5.
+
+## Riesgos abiertos
+
+- 401 masivo en el despliegue (los tokens vigentes caducan como mucho a los 30 minutos): comunicarlo en la descripción de la PR.
+- Sin filtro de consulta todavía (PR 3): el aislamiento de lectura aún no está activo; el contexto ya es el del token.

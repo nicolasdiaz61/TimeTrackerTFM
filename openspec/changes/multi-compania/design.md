@@ -629,6 +629,23 @@ Cada verificación anota aquí su resultado, según tasks.md.
 6. **`DO` anidado en scripts idempotentes.** La comprobación de huérfanos y la de compañías del `Down` son bloques `DO $$ ... RAISE EXCEPTION ... $$`. Se comprobó que `dotnet ef migrations script --idempotent`, que envuelve cada sentencia en su propio bloque `DO`, admite el `DO` anidado (probado con `psql` y con el arnés).
 
 
+**PR 2 (apply, 2026-10-21; entorno local con Testcontainers, imagen `postgres:18-alpine`; sin acceso a producción ni a Railway).**
+
+| V | Estado | Resultado |
+|---|---|---|
+| V-10 | Hecha | `CompanyContextMiddleware` va entre `UseAuthentication` y `UseAuthorization`. Un manejador de autorización de prueba (se ejecuta dentro de `UseAuthorization`) ve la compañía del token con un token válido, y `null` con token sin `cid`, con `cid` vacío o mal formado y sin token (siempre 401, sin excepción ni compañía por defecto). `/health` responde 200 sin compañía. El limitador de tasa va después de la autorización y no se toca. Pruebas: `MiddlewareOrderTests`, `CompanyContextMiddlewareTests`. |
+| V-15 | Hecha | `ICompanyContext` (`Guid? CompanyId`) en `Application/Identity`; `ICompanyContextSetter`, `ICompanyScopeFactory` y `CompanyScopeFactory` en `Infrastructure/Persistence` (sin `HttpContext`); `AmbientCompanyContext`, `CompanyContextMiddleware` y el registro en `Api/Security`. `DependencyRuleTests` lo permite sin cambios (Api referencia Application e Infrastructure) y `DocumentGeneration` arranca el host sin tocar la base de datos. Se añadió `CompanyContextPlacementTests` (puerto en Application, único adaptador en Api, Infrastructure sin referencias a `Microsoft.AspNetCore*`, Application sin paquetes). |
+| V-16 | Hecha (decisión confirmada) | `cname` viaja en el token al emitirlo y `GET /api/auth/me` lo lee del claim, sin consultar la base de datos (la prueba usa una cadena de conexión inexistente). Límite aceptado: nombre obsoleto hasta 30 minutos. |
+
+**Desviaciones y aclaraciones del diseño surgidas en la PR 2:**
+
+1. **`mcp` distinto de `true` no invalida el token.** DD-6 decía «si existe `mcp`, que valga `true`»; la tarea 2.5 y la spec fijan lo contrario y prevalecen: se trata como sin cambio pendiente (`CompanyClaimTests`). `RejectInvalidClaims` solo exige `sub`, `role` y `cid` válidos.
+2. **Emisor único de sesiones.** Nace `SessionIssuer` (Application): lee `ICompanyRepository.FindLoginInfoAsync` y emite solo con la compañía `Active`; `LoginUseCase` lo usa tras verificar siempre la contraseña. El cambio de contraseña (PR 6) y el registro (PR 5) lo reutilizarán. `IAccessTokenIssuer.Issue(user, companyName)` recibe el nombre; `UserSummary` y `UserResponse` ganan `CompanyName` y `MustChangePassword` (el contrato `openapi.json` se regenera con ambos campos).
+3. **`me` sin `cname`.** Si un token válido no trae `cname`, `companyName` es la cadena vacía (la spec no exige `cname` para validar).
+4. **Lista cerrada de `CreateScope`.** Declara `AssistantSettingsLoader`, `DemoUsersSeeder` y `DemoDataSeeder`, no `AssistantSettingsPoller`: el sondeo no abre ámbitos propios, lee a través del cargador (que es quien llama a `CreateScope(Company.DefaultId)`). La prueba exige además que no haya entradas sin uso.
+5. **`FixedCompanyContext` (Infrastructure) se elimina**; `AddPersistence` ya no registra `ICompanyContext`: lo registra `AddCompanyContext()` en Api. El marcador `SkipCompanyContext` (solo `register-company`) llega con la PR 5, que es la primera en necesitarlo.
+6. **Entorno de pruebas.** Las cinco pruebas que levantan Kestrel real (puerto 5000 reservado en esta máquina) se ejecutan con `ASPNETCORE_URLS=http://127.0.0.1:0` solo en el comando de `TEST`, sin modificar las pruebas.
+
 ## 10. Preguntas abiertas residuales
 
 - [ ] **Q-1** Producción (decisión previa del responsable, la única pendiente de contenido): ¿se migran los datos existentes a la compañía por defecto o se reinicia la base? Depende de V-1. Si la compañía Demo contiene usuarios reales, hay que renombrarla y decidir si conserva la clave de plataforma antes de abrir el registro.
