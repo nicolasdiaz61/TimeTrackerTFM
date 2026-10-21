@@ -309,14 +309,14 @@ public partial class DeliveryArtifactsTests
     // --- ADR (SA-20, SA-21, SA-22) ---
 
     [Fact]
-    public void Adr_Directory_HasNineteenAdrsWithFourSections()
+    public void Adr_Directory_HasTwentyOneAdrsWithFourSections()
     {
         string[] sections = ["## Contexto", "## Decisión", "## Consecuencias", "## Alternativas"];
         var adrs = Directory.GetFiles(Path.Combine(RepositoryRoot.Path, "docs", "adr"), "0*.md")
             .Order(StringComparer.Ordinal)
             .ToList();
 
-        Assert.Equal(19, adrs.Count);
+        Assert.Equal(21, adrs.Count);
         for (var index = 0; index < adrs.Count; index++)
         {
             var name = Path.GetFileName(adrs[index]);
@@ -469,6 +469,81 @@ public partial class DeliveryArtifactsTests
         Assert.Contains("Disparador de inmutabilidad en la base de datos para la auditoría:", adr, StringComparison.Ordinal);
     }
 
+
+    // --- ADR 0020 y 0021 (multi-compania, PR 4a; SA «Decisiones y límites documentados») ---
+
+    // Huellas SHA-256 (con saltos de línea normalizados a LF) de los ADR ya fusionados: no se reescriben (ADR 0001, AGENTS §8).
+    // El 0021 los sustituye parcialmente sin editarlos; si una huella cambia, alguien ha editado un ADR aceptado.
+    private static readonly Dictionary<string, string> MergedAdrFingerprints = new()
+    {
+        ["docs/adr/0017-asistente-ia-con-herramientas-de-solo-lectura.md"] = "43ee578236edf120db2c0d0d2a50d162f99bf2bee9b4541fe55b26e45690c132",
+        ["docs/adr/0018-configuracion-del-asistente-por-el-responsable.md"] = "a6634dfb393ab5588885111ab6c8044ec933532432f09c66a626af7ee3829576",
+        ["docs/adr/0019-auditoria-inmutable-y-despliegue-de-la-configuracion-del-asistente.md"] = "834f1135d89b1d93617f26fbc79ed4a835cece101210e0530bb796149b0ffe1e",
+    };
+
+    [Fact]
+    public void Adr0020_RecordsTheMultiCompanyIsolationDecisionAndItsLimits()
+    {
+        var adr = ReadRepositoryFile("docs/adr/0020-aislamiento-multiempresa.md");
+
+        string[] required =
+        [
+            "NO ACTION", "RESTRICT", "23503", "23001", "compañía por defecto", "00000000-0000-7000-8000-000000000001", "uses_platform_assistant",
+            "cid", "cname", "30 minutos", "RLS", "propietario", "dos roles", "FORCE ROW LEVEL SECURITY", "app.company_id", "interceptor", "pool",
+            "enumeración de correos", "cualquier Manager", "localizadores de servicios", "AGENTS §3", "ICompanyScopeFactory.CreateScope",
+            "contexto ambiental", "lista cerrada", "CreateScopeClosedListTests", "IgnoreQueryFilters", "UserRepository.FindByEmailAsync",
+            "AssistantSettingsStore.ListVersionsAsync", "un rollback de código no revierte el esquema", "rollback de un clic", "Railway", "Down",
+            "fix-forward", "baja de usuarios", "RGPD", "v1", "recifra", "ADR 0011", "expandir", "contraer", "404",
+        ];
+        var missing = required.Where(text => !adr.Contains(text, StringComparison.OrdinalIgnoreCase)).ToList();
+        Assert.True(missing.Count == 0, $"El ADR 0020 no menciona: {string.Join(", ", missing)}");
+        Assert.DoesNotMatch(@"Ai__MasterKeys__\d+\s*=\s*[^\s`|]", adr);
+    }
+
+    [Fact]
+    public void Adr0021_PartiallySupersedesAdr0018And0019OnlyOnTheSingleRowScope_AndRecordsThePerCompanyDecisions()
+    {
+        var adr = ReadRepositoryFile("docs/adr/0021-configuracion-del-asistente-por-compania.md");
+
+        string[] required =
+        [
+            "ADR 0018", "ADR 0019", "sustituye parcialmente", "fila única", "toda la instancia", "cualquier Manager de cualquier equipo",
+            "fila por compañía", "instantáneas por compañía", "sondeo global", "company_id", "deshabilitado", "uses_platform_assistant",
+            "Ai__ApiKey", "AAD v2", "sin guardar", "mejora no bloqueante", "Ai__AllowedProviders", "lista de plataforma", "Ollama",
+            "puente transitorio", "revertir", "volver a introducir la clave", "ADR 0001",
+        ];
+        var missing = required.Where(text => !adr.Contains(text, StringComparison.OrdinalIgnoreCase)).ToList();
+        Assert.True(missing.Count == 0, $"El ADR 0021 no menciona: {string.Join(", ", missing)}");
+        Assert.DoesNotMatch(@"Ai__MasterKeys__\d+\s*=\s*[^\s`|]", adr);
+        Assert.Matches(@"(?m)^- Sustituye parcialmente a: ", adr);
+    }
+
+    [Fact]
+    public void MergedAdrs_AreNotEdited_BecauseTheNewAdrsAmendThemWithoutRewritingThem()
+    {
+        foreach (var (path, expected) in MergedAdrFingerprints)
+        {
+            var normalized = ReadRepositoryFile(path).Replace("\r\n", "\n", StringComparison.Ordinal);
+            var actual = Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(normalized)));
+
+            Assert.True(expected == actual, $"{path} se ha editado: los ADR aceptados no se reescriben, se sustituyen por otro nuevo (ADR 0001).");
+        }
+    }
+
+    [Fact]
+    public void Readme_IndexesAdr0020And0021_AndMarksTheAdrsThat0021PartiallySupersedes()
+    {
+        var readme = ReadRepositoryFile("README.md");
+
+        Assert.Contains("(docs/adr/0020-aislamiento-multiempresa.md)", readme, StringComparison.Ordinal);
+        Assert.Contains("(docs/adr/0021-configuracion-del-asistente-por-compania.md)", readme, StringComparison.Ordinal);
+        var lines = readme.Replace("\r\n", "\n", StringComparison.Ordinal).Split('\n');
+        foreach (var adr in new[] { "0018-configuracion-del-asistente-por-el-responsable", "0019-auditoria-inmutable-y-despliegue" })
+        {
+            var line = lines.Single(candidate => candidate.Contains($"docs/adr/{adr}", StringComparison.Ordinal) && candidate.TrimStart().Length > 0 && char.IsDigit(candidate.TrimStart()[0]));
+            Assert.Contains("sustituido parcialmente por el 0021", line, StringComparison.Ordinal);
+        }
+    }
     [Fact]
     public void Readme_ExplainsTheAssistant()
     {

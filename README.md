@@ -369,8 +369,10 @@ openspec/                     Especificaciones y cambios (Spec Driven Developmen
 15. [Datos de demostración de un mes](docs/adr/0015-datos-de-demostracion-de-un-mes.md)
 16. [Vista mensual de fichajes y hora local en la Web](docs/adr/0016-vista-mensual-y-hora-local.md)
 17. [Asistente de IA con herramientas de solo lectura](docs/adr/0017-asistente-ia-con-herramientas-de-solo-lectura.md)
-18. [Configuración del asistente por el responsable](docs/adr/0018-configuracion-del-asistente-por-el-responsable.md)
-19. [Auditoría inmutable y despliegue de la configuración del asistente](docs/adr/0019-auditoria-inmutable-y-despliegue-de-la-configuracion-del-asistente.md)
+18. [Configuración del asistente por el responsable](docs/adr/0018-configuracion-del-asistente-por-el-responsable.md) (sustituido parcialmente por el 0021)
+19. [Auditoría inmutable y despliegue de la configuración del asistente](docs/adr/0019-auditoria-inmutable-y-despliegue-de-la-configuracion-del-asistente.md) (sustituido parcialmente por el 0021)
+20. [Aislamiento multiempresa en una base de datos compartida](docs/adr/0020-aislamiento-multiempresa.md)
+21. [Configuración del asistente por compañía](docs/adr/0021-configuracion-del-asistente-por-compania.md) (sustituye parcialmente al 0018 y al 0019)
 
 ## Integración continua
 
