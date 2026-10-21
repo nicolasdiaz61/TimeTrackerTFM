@@ -342,3 +342,88 @@ Detalle en `design.md`, sección 9, «Desviaciones y aclaraciones del diseño su
 
 - La tolerancia `TransitionallyUnused` de `IgnoreQueryFiltersClosedListTests` debe retirarse en la 4b.7 (sitio 2, `ListVersionsAsync`).
 - Cada consulta fuera de contexto falla cerrado (devuelve vacío): un olvido se nota como «no veo datos».
+
+---
+
+# PR 4a — Configuración del asistente por compañía: datos y casos de uso
+
+Rama `feat/multi-compania-pr4a-datos` (apilada sobre `feat/multi-compania-pr3-aislamiento`, PR #39; cadena `stacked-to-main`) · Strict TDD · Copia previa en `..\TimeTracker.rollback\pr-mc4a\` (473 archivos, incluye restos de `bin`/`obj` de las pruebas de arquitectura).
+
+## Lo que queda al responsable
+
+Nada de producción en esta PR (sin migración ni cambio de esquema; no se accede a Railway). Al desplegarla: la clave del asistente que se guarde desde ahora se cifra en formato v2 (vinculada a la compañía); **revertir el código tras un guardado v2 exige volver a introducir la clave** (ADR 0021). El asistente de cualquier compañía distinta de la demo queda deshabilitado (`503`) hasta la PR 4b, aunque guarde su configuración. Si el operador cambia `uses_platform_assistant` de la compañía por defecto a falso (Q-1), el cargador deja de usar el entorno para ella tras la siguiente carga (arranque o guardado).
+
+## Commits de esta entrega
+
+| Commit | Mensaje | Contenido |
+|---|---|---|
+| `941b6fe` | `feat(multi-compania): texto cifrado v2 vinculado a la compañía` | 4a.5, 4a.6: protector con AAD v2 (v1 solo en la compañía por defecto), puerto con `companyId`, casos de uso con `ICurrentUser.CompanyId` |
+| `0761b99` | `feat(multi-compania): configuración del asistente por compañía` | 4a.3, 4a.4, 4a.7, 4a.9 (código): resolver con `platformDefaults`, `AssistantCompany`, casos de uso, almacén generalizado, recargador, cargador y guarda del motor, dobles de pruebas |
+| `57bc6fd` | `test(multi-compania): la tolerancia de la lista cerrada de IgnoreQueryFilters caduca sola` | Prueba autoexpirable de `TransitionallyUnused` |
+| `e02a6e7` | `test(multi-compania): pruebas A/B de la configuración, el restablecimiento y las herramientas del asistente` | 4a.8, 4a.8b, 4a.9, 4a.10 |
+| `096fdf4` | `docs(adr): ADR 0020 de aislamiento multiempresa y ADR 0021 de configuración del asistente por compañía` | 4a.12, 4a.13, `DeliveryArtifactsTests`, índice del README |
+| (este) | `docs(openspec): progreso de apply de la PR 4a de multi-compania` | `tasks.md`, `design.md` (V-18, DD-13, DD-14 y desviaciones), este archivo |
+
+Tamaño (`git diff 3d004fe HEAD` de los cinco commits de código y ADR): 51 archivos, **+1 982 / -151**; producción (`src`) **+223 / -81**, pruebas **+1 666 / -68**, documentación (ADR y README) **+93 / -2**. La previsión era de 600-900 líneas; el volumen de pruebas A/B y de dobles es lo que pesa.
+
+## Evidencia de Strict TDD (ciclo por tarea)
+
+| Tarea | Archivo de prueba | Capa | Safety net | RED | GREEN | TRIANGULATE | REFACTOR |
+|---|---|---|---|---|---|---|---|
+| 4a.1 | — | — | 156/156 de configuración del asistente (Application) y 33/33 del protector | N/A | `..\TimeTracker.rollback\pr-mc4a\` | N/A | N/A |
+| 4a.2 | — (decisión V-18) | — | N/A | N/A | Anotada en `design.md` | N/A | N/A |
+| 4a.3 | `AT/Assistant/Configuration/AssistantSettingsResolverTests` | Unitaria | 156/156 | CS7036 «falta el argumento `platformDefaults`» (las 9 pruebas existentes adaptadas) y `SettingSource.Default` inexistente | 15/15 | Sin fila con/sin plataforma, fila con clave de entorno del mismo proveedor, modelo solo de la fila, «sin fila» frente a `None` guardado | Limpio |
+| 4a.4 | `AT/.../AssistantUseCasesCompanyTests` | Unitaria | 156/156 | CS7036 (los casos de uso no recibían `ICompanyRepository`) | 12/12 | Demo y otra compañía en `Get`, prueba con clave de entorno / guardada propia / ajena / candidata, `Save`/`Reset` recargan la compañía del contexto, fallo de recarga, firmas sin compañía por reflexión | `FindCredential` sin `Guid companyId` (la guarda `CompanyGuardsTests` lo detectó) |
+| 4a.5 | `IFT/Assistant/AesGcmCredentialProtectorV2Tests` | Unitaria | 33/33 | CS1501 «`Protect` no toma 3 argumentos» | 7 nuevas + 33 existentes en verde | v2 ida y vuelta con AAD escrito a mano, otra compañía, otro proveedor, v1 solo en la compañía por defecto, `Protect` siempre v2, manipulación | Limpio |
+| 4a.6 | `AT/.../SaveAssistantSettingsReEncryptTests` | Unitaria | 156/156 | «Verde a la primera» tras cambiar la firma (el recifrado ya existía); mutación comprobada: sin `Protect` en `ReEncryptOrKeep` falla el recifrado v1 → v2 | 5/5 | v1 en la compañía por defecto, v2 en otra, v1 en otra (no legible: rechazo), sin protector, lectura sin escritura | Limpio |
+| 4a.7 | `IT/Assistant/AssistantSettingsStorePerCompanyTests` | Integración (Testcontainers) | 41/41 (almacén, puente, filtro) | CS7036 (`AssistantSettingsStore` sin `ICompanyContext`) tras adaptar los constructores; mutación comprobada con `IgnoreQueryFilters` temporal | 9/9 | Tres compañías, sin fila, `xmin` de B intacto, auditoría con la compañía, `23505` → `Conflict`, `xmin` obsoleto, token ajeno, sin compañía | Limpio |
+| 4a.8 | `IT/.../AssistantConfigurationEndpointsCompanyTests` | Integración | 177/177 de asistente | «Verde a la primera» (la generalización de 4a.3 y 4a.7 ya lo cubría); mutación: `UsesPlatformAssistant` fijado a verdadero hace fallar 3 de 11 | 11/11 | Sin fila, demo con entorno, A/B, segundo Manager, clave ajena en la prueba, sin identificador de compañía (cuerpo, consulta, cabecera), Employee 403 | Limpio |
+| 4a.8b | `IT/.../AssistantResetAndPriorityTests` | Integración | 177/177 | «Verde a la primera»; mutación de la guarda del motor hace fallar 2 de 7 | 7/7 | Restablecer en otra compañía y en la demo, solo la propia, token obsoleto (almacén), tabla ausente, guardado gana al entorno, `None`, sin fila | Limpio |
+| 4a.9 | `IT/.../AssistantEndpointDisabledTests` + `IFT/.../ChatAssistantEngineTests` | Integración / unitaria | 177/177 y 33/33 | Motor: pruebas de `IsEnabled`/`ReplyAsync` para otra compañía en rojo (el singleton servía a todas); mutación de la guarda: 5 de 11 de integración fallan | 4/4 + 3 de motor | Otra compañía sin fila, con fila propia (sin instantánea ni clave de plataforma), demo conserva el comportamiento | Limpio |
+| 4a.9 (puente) | `IFT/.../AssistantSettingsLoaderTests`, `AssistantRuntimeReloaderTests` | Unitaria | 33/33 | CS0246/errores de compilación (`AssistantSnapshot.DisabledVersion`, `Companies`) | 418/418 de infraestructura | No plataforma sin fila, con fila (sin clave ni modelo del entorno), versión del sondeo, `42P01` de `companies`, otro fallo, recarga solo de la compañía por defecto | Limpio |
+| 4a.10 | `IT/.../AssistantToolsIsolationTests` | Integración | 7/7 de herramientas (Infrastructure) | «Verde a la primera» (el filtro y el alcance por responsable ya aislaban); controles positivos: el propio miembro devuelve 60 min | 7/7 | Esquemas sin compañía, equipo, mis fichajes, GUID de B idéntico al inexistente y sin consulta a `time_entries`, argumentos extra, fechas antes que miembro, registro sin `memberId` ni nombres de B | Limpio |
+| 4a.11 | — | — | Suite completa | — | `AssistantAuditAppendOnlyTests` y auditoría con `company_id` en verde | — | Sin duplicación |
+| 4a.12, 4a.13 | `AR/DeliveryArtifactsTests` | Arquitectura | 36/36 | 4 de 40 en rojo: faltaban los ADR 0020 y 0021, el recuento de 21 y el índice del README | 40/40 | Contenido de cada ADR, huella SHA-256 de 0017, 0018 y 0019 (no se editan), marcas en el índice | Limpio |
+| 4a.14 | — | — | Suite completa | — | Puerta de la PR (abajo) | — | — |
+
+Además, `IgnoreQueryFiltersClosedListTests.TheTransitionalTolerance_ExpiresAsSoonAsAnEntryGetsAUse` (arquitectura, 25/25): verde a la primera; mutación comprobada una vez (un `IgnoreQueryFilters` temporal en `AssistantSettingsStore` la hace fallar con el mensaje esperado).
+
+### Resumen de pruebas
+
+- Total tras la PR: 95 + 360 + 418 + 219 + 288 + 736 = **2 116 pruebas** (antes 2 034), todas en verde. Nuevas: aplicación +23, infraestructura +16, arquitectura +4, integración +38 (más la prueba autoexpirable en arquitectura).
+- Ninguna llamada a un proveedor real de IA; valores de prueba inventados (`clave-prueba-123456`).
+
+### Evidencia de unidad de trabajo
+
+| Evidencia | Valor |
+|---|---|
+| Prueba focalizada | `T-AT --filter "FullyQualifiedName~Assistant"` (en verde), `T-IFT --filter "FullyQualifiedName~AesGcm"` (40) y `ASPNETCORE_URLS=http://127.0.0.1:0 T-IT --filter "FullyQualifiedName~Assistant"` (177 en verde, Docker) |
+| Arnés de ejecución | La API real con PostgreSQL (Testcontainers) y dos compañías: `GET`/`PUT`/`DELETE`/prueba de `/api/asistente/configuracion` con tokens de A, de B y de la demo, el chat con el puente y el almacén con `xmin`; fábrica y probador falsos. Nada contra producción |
+| Límite de reversión | Revertir los cinco commits de código y ADR y restaurar `..\TimeTracker.rollback\pr-mc4a\`; sin migración. Tras un guardado v2, volver a introducir la clave (ADR 0021) |
+
+## Puerta de la PR (todo en verde)
+
+| Paso | Resultado |
+|---|---|
+| DOCKER-CHECK | `docker info` responde (29.7.2); solo lectura |
+| Entorno limpio | Sin variables `Cors__`, `ConnectionStrings__`, `Database__`, `Jwt__`, `Seed__`, `Ai__`, `Registration__`, `Company__`, `ForwardedHeaders__`, `ASPNETCORE_`, `DOTNET_ENVIRONMENT` |
+| RESTORE | Correcto |
+| BUILD | `-warnaserror`: 0 advertencias, 0 errores |
+| TEST | Domain 95, Application 360, Web 288, Infrastructure 418, Architecture 219, Api.Integration 736: 0 fallos (con `ASPNETCORE_URLS=http://127.0.0.1:0` solo en ese comando, por el puerto 5000 reservado) |
+| COV-A | Application: líneas 99,9 %, ramas 96,9 % (mínimo 80 %) |
+| COV-D | Domain: líneas 100,0 %, ramas 100,0 % (mínimo 100 %) |
+| FORMAT | `--verify-no-changes`: sin cambios |
+| VULN | Sin `has the following vulnerable packages` |
+| EF-PENDING | «No changes have been made to the model since the last migration» (`--startup-project src/TimeTracker.Infrastructure`); sin modelo ni migración nuevos |
+
+## Desviaciones
+
+Detalle en `design.md`, sección 9, «Desviaciones y aclaraciones del diseño surgidas en la PR 4a»: la spec manda sobre DD-13 (el modelo y el esfuerzo del entorno solo valen para la compañía de plataforma), origen `default`, lectura de la compañía en los casos de uso, guarda del puente por identificador (el indicador lo respeta el cargador), recarga solo de la compañía por defecto, `TransitionallyUnused` mantenida con prueba autoexpirable, herramientas probadas sobre el conjunto de herramientas con repositorios reales (el chat de B llega con la 4b), «restablecer con token obsoleto» a nivel de almacén y dobles enlazados.
+
+## Riesgos abiertos
+
+- La tolerancia `TransitionallyUnused` se retira en la 4b.7 (la prueba autoexpirable falla en cuanto `ListVersionsAsync` use `IgnoreQueryFilters`).
+- La Web muestra el origen `default` sin traducir hasta la PR 7.
+- El puente solo sirve a la compañía por defecto: una compañía registrada que guarde su configuración no tendrá asistente hasta la PR 4b (esperado; el registro sigue cerrado).
+- Revertir tras un guardado v2 obliga a volver a introducir la clave (ADR 0021).
+- Q-8 (custodia de la clave maestra) sigue abierta y gana importancia: protege a todas las compañías.
