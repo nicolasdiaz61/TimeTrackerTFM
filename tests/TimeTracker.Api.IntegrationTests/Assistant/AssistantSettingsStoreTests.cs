@@ -146,14 +146,14 @@ public sealed class AssistantSettingsStoreTests(PostgresFixture postgres) : IAsy
     public async Task TheStoredCredential_DoesNotContainThePlainKeyAndDecryptsBack()
     {
         var protector = CreateProtector();
-        var encrypted = protector.Protect(new AssistantCredential(Secret), AssistantProvider.Anthropic);
+        var encrypted = protector.Protect(new AssistantCredential(Secret), AssistantProvider.Anthropic, Company.DefaultId);
 
         await SaveAsync(Settings("m", encrypted), NoRow);
 
         var column = (byte[])(await ScalarAsync("SELECT credential_ciphertext FROM assistant_settings"))!;
         Assert.DoesNotContain(Secret, Encoding.UTF8.GetString(column), StringComparison.Ordinal);
         var stored = (await GetAsync())!.Credential!;
-        Assert.True(protector.TryUnprotect(stored, AssistantProvider.Anthropic, out var plaintext));
+        Assert.True(protector.TryUnprotect(stored, AssistantProvider.Anthropic, Company.DefaultId, out var plaintext));
         Assert.Equal(Secret, plaintext!.Value);
     }
 

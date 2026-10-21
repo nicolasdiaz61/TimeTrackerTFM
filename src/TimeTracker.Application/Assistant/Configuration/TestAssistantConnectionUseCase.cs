@@ -1,3 +1,5 @@
+using TimeTracker.Application.Identity;
+
 namespace TimeTracker.Application.Assistant.Configuration;
 
 public abstract record TestAssistantConnectionResult
@@ -17,7 +19,8 @@ public sealed class TestAssistantConnectionUseCase(
     IAssistantSettingsStore store,
     IAssistantCredentialProtector protector,
     IAssistantEnvironment environment,
-    IAssistantConnectionTester tester)
+    IAssistantConnectionTester tester,
+    ICurrentUser currentUser)
 {
     private static readonly FieldError NothingToTest = new("provider", "El campo provider debe indicar un proveedor: con el asistente deshabilitado no hay conexión que probar.");
 
@@ -25,9 +28,9 @@ public sealed class TestAssistantConnectionUseCase(
     {
         var env = environment.Current;
         var stored = await store.GetAsync(cancellationToken);
-        var effective = AssistantSettingsView.Build(env, protector, stored).Effective;
+        var effective = AssistantSettingsView.Build(env, protector, stored, currentUser.CompanyId).Effective;
 
-        var validation = AssistantSettingsRules.Validate(Complete(input, effective), env with { Model = effective.Model }, stored, protector);
+        var validation = AssistantSettingsRules.Validate(Complete(input, effective), env with { Model = effective.Model }, stored, protector, currentUser.CompanyId);
         if (validation.Value is not { } value)
         {
             return new TestAssistantConnectionResult.Invalid(validation.Errors);
@@ -62,5 +65,5 @@ public sealed class TestAssistantConnectionUseCase(
         => provider == effective.Provider && AssistantProviderTraits.For(provider).SupportsEffort ? effective.Effort : null;
 
     private AssistantCredential? FindCredential(AssistantProvider provider, AssistantEnvironmentDefaults env, AssistantSettings? stored)
-        => UsableCredential.FromStored(stored, provider, protector) ?? UsableCredential.FromEnvironment(env, provider);
+        => UsableCredential.FromStored(stored, provider, protector, currentUser.CompanyId) ?? UsableCredential.FromEnvironment(env, provider);
 }

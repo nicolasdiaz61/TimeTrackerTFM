@@ -55,7 +55,7 @@ public sealed class AssistantSettingsLoaderTests : IDisposable
         => new(provider, model, timeoutSeconds, null, effort, credential, Guid.NewGuid(), DateTimeOffset.UnixEpoch, version);
 
     private static EncryptedCredential Encrypt(AesGcmCredentialProtector protector, AssistantProvider provider)
-        => protector.Protect(new AssistantCredential(Secret), provider);
+        => protector.Protect(new AssistantCredential(Secret), provider, Company.DefaultId);
 
     private Rig NewRig(AiOptions? environment = null, AesGcmCredentialProtector? protector = null, AssistantSettings? stored = null)
     {

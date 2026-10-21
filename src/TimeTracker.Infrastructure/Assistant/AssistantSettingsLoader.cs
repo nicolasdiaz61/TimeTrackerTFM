@@ -84,12 +84,12 @@ internal sealed class AssistantSettingsLoader(
         }
 
         AssistantCredential? plain = null;
-        if (stored.Provider != AssistantProvider.None && stored.Credential is { } encrypted && !protector.TryUnprotect(encrypted, stored.Provider, out plain))
+        if (stored.Provider != AssistantProvider.None && stored.Credential is { } encrypted && !protector.TryUnprotect(encrypted, stored.Provider, Company.DefaultId, out plain))
         {
             return (null, UndecryptableCategory);
         }
 
-        if (!AssistantSettingsRules.Validate(ToInput(stored), env, stored, protector).IsValid)
+        if (!AssistantSettingsRules.Validate(ToInput(stored), env, stored, protector, Company.DefaultId).IsValid)
         {
             return (null, InvalidCategory);
         }

@@ -13,8 +13,13 @@ public interface IAssistantCredentialProtector
     /// <summary>Por qué no está disponible (<c>None</c> si lo está); categórico, sin valores ni versiones.</summary>
     ProtectionUnavailableReason UnavailableReason { get; }
 
+    /// <summary>Cifra siempre en formato v2: el texto cifrado queda vinculado a la compañía y al proveedor (DD-17).</summary>
     /// <exception cref="CredentialProtectionUnavailableException">No hay clave maestra activa utilizable.</exception>
-    EncryptedCredential Protect(AssistantCredential plaintext, AssistantProvider provider);
+    EncryptedCredential Protect(AssistantCredential plaintext, AssistantProvider provider, Guid companyId);
 
-    bool TryUnprotect(EncryptedCredential stored, AssistantProvider provider, [NotNullWhen(true)] out AssistantCredential? plaintext);
+    /// <summary>
+    /// Descifra probando v2 y, solo para la compañía por defecto, el formato v1 anterior (el formato no se guarda). Un texto cifrado
+    /// de otra compañía, de otro proveedor o manipulado no se descifra.
+    /// </summary>
+    bool TryUnprotect(EncryptedCredential stored, AssistantProvider provider, Guid companyId, [NotNullWhen(true)] out AssistantCredential? plaintext);
 }

@@ -41,7 +41,7 @@ public sealed class SaveAssistantSettingsUseCase(
             errors.Add(tokenError);
         }
 
-        var validation = AssistantSettingsRules.Validate(command.Input, env, stored, protector);
+        var validation = AssistantSettingsRules.Validate(command.Input, env, stored, protector, currentUser.CompanyId);
         errors.AddRange(validation.Errors);
         if (validation.Value is not { } value || errors.Count > 0)
         {
@@ -65,7 +65,7 @@ public sealed class SaveAssistantSettingsUseCase(
         }
 
         await reloader.ReloadAfterCommitAsync(cancellationToken);
-        return new SaveAssistantSettingsResult.Saved(AssistantSettingsView.Build(env, protector, next with { Version = saved.Token }));
+        return new SaveAssistantSettingsResult.Saved(AssistantSettingsView.Build(env, protector, next with { Version = saved.Token }, currentUser.CompanyId));
     }
 
     // PostgreSQL guarda microsegundos: sin truncar, el PUT mostraría un instante que el GET siguiente no repite.
@@ -82,7 +82,7 @@ public sealed class SaveAssistantSettingsUseCase(
 
         if (value.Credential is not null)
         {
-            return (protector.Protect(value.Credential, value.Provider), true);
+            return (protector.Protect(value.Credential, value.Provider, currentUser.CompanyId), true);
         }
 
         if (stored?.Credential is not { } existing || stored.Provider != value.Provider)
@@ -98,7 +98,7 @@ public sealed class SaveAssistantSettingsUseCase(
     {
         try
         {
-            return protector.IsAvailable && protector.TryUnprotect(existing, provider, out var plain) ? protector.Protect(plain, provider) : existing;
+            return protector.IsAvailable && protector.TryUnprotect(existing, provider, currentUser.CompanyId, out var plain) ? protector.Protect(plain, provider, currentUser.CompanyId) : existing;
         }
         catch (CredentialProtectionUnavailableException)
         {

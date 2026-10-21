@@ -1,4 +1,7 @@
 using TimeTracker.Application.Assistant.Configuration;
+using TimeTracker.Application.Tests.Fakes;
+using TimeTracker.Domain.Companies;
+using TimeTracker.Domain.Users;
 
 using static TimeTracker.Application.Tests.Assistant.Configuration.ConfigurationTestData;
 
@@ -11,7 +14,7 @@ public class GetAssistantSettingsUseCaseTests
     private AssistantEnvironmentDefaults _env = Env();
 
     private Task<AssistantSettingsView> Get()
-        => new GetAssistantSettingsUseCase(_store, _protector, new FakeEnvironment(_env)).ExecuteAsync(CancellationToken.None);
+        => new GetAssistantSettingsUseCase(_store, _protector, new FakeEnvironment(_env), new FixedCurrentUser(Guid.NewGuid(), UserRole.Manager)).ExecuteAsync(CancellationToken.None);
 
     [Fact]
     public async Task WithoutARow_EveryValueComesFromTheEnvironmentAndTheTokenMeansNoRow()
@@ -85,7 +88,7 @@ public class GetAssistantSettingsUseCaseTests
     public async Task AStoredKey_ReportsItAsConfiguredWithoutExposingIt()
     {
         _env = Env(apiKey: null);
-        _store.Row = Stored(credential: _protector.Protect(new AssistantCredential(SecretKey), AssistantProvider.Anthropic));
+        _store.Row = Stored(credential: _protector.Protect(new AssistantCredential(SecretKey), AssistantProvider.Anthropic, Company.DefaultId));
 
         var view = await Get();
 
@@ -110,7 +113,7 @@ public class GetAssistantSettingsUseCaseTests
     public async Task AStoredKeyThatCannotBeDecrypted_DoesNotCountAsConfigured()
     {
         _env = Env(apiKey: null);
-        _store.Row = Stored(credential: _protector.Protect(new AssistantCredential(SecretKey), AssistantProvider.Anthropic));
+        _store.Row = Stored(credential: _protector.Protect(new AssistantCredential(SecretKey), AssistantProvider.Anthropic, Company.DefaultId));
         _protector.RetiredVersions.Add(1);
 
         Assert.False((await Get()).Effective.CredentialConfigured);
