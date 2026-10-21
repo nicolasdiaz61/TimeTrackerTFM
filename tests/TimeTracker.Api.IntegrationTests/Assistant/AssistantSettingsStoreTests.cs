@@ -6,6 +6,8 @@ using Microsoft.Extensions.Options;
 using Npgsql;
 
 using TimeTracker.Api.IntegrationTests.Postgres;
+using TimeTracker.Api.IntegrationTests.Support;
+using TimeTracker.Domain.Companies;
 using TimeTracker.Application.Assistant.Configuration;
 using TimeTracker.Infrastructure.Assistant;
 using TimeTracker.Infrastructure.Persistence;
@@ -284,7 +286,7 @@ public sealed class AssistantSettingsStoreTests(PostgresFixture postgres) : IAsy
         => new(new TimeTrackerDbContext(new DbContextOptionsBuilder<TimeTrackerDbContext>()
             .UseNpgsql(_connectionString)
             .AddInterceptors(new RacingSqlInterceptor(_connectionString, sql))
-            .Options));
+            .Options, new TestCompanyContext(Company.DefaultId)));
 
     private AssistantSettingsStore NewStore() => new(postgres.CreateContext(_connectionString));
 

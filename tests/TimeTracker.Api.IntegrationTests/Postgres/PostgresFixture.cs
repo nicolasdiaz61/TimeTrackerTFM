@@ -4,6 +4,8 @@ using Npgsql;
 
 using Testcontainers.PostgreSql;
 
+using TimeTracker.Api.IntegrationTests.Support;
+using TimeTracker.Domain.Companies;
 using TimeTracker.Infrastructure.Persistence;
 
 namespace TimeTracker.Api.IntegrationTests.Postgres;
@@ -41,8 +43,11 @@ public sealed class PostgresFixture : IAsyncLifetime
 
     public async Task DisposeAsync() => await _container.DisposeAsync();
 
-    public TimeTrackerDbContext CreateContext(string connectionString)
-        => new(new DbContextOptionsBuilder<TimeTrackerDbContext>().UseNpgsql(connectionString).Options);
+    /// <summary>Contexto con la compañía indicada (por defecto la compañía por defecto, a la que pertenecen los datos de las fábricas).</summary>
+    public TimeTrackerDbContext CreateContext(string connectionString, Guid? companyId = null)
+        => new(
+            new DbContextOptionsBuilder<TimeTrackerDbContext>().UseNpgsql(connectionString).Options,
+            new TestCompanyContext(companyId ?? Company.DefaultId));
 
     /// <summary>Crea una base vacía (sin migrar) en el mismo servidor y devuelve su cadena de conexión.</summary>
     public async Task<string> CreateEmptyDatabaseAsync()

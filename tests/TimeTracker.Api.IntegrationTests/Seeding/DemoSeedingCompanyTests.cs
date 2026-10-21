@@ -101,7 +101,7 @@ public class DemoSeedingCompanyTests(PostgresFixture postgres)
             .UseNpgsql(connectionString)
             .AddInterceptors(new RacingSqlInterceptor(connectionString, race))
             .Options;
-        await using var context = new TimeTrackerDbContext(options);
+        await using var context = new TimeTrackerDbContext(options, new TestCompanyContext(null));
 
         await new CompanyRepository(context, TimeProvider.System).EnsureDefaultAsync(CancellationToken.None);
 
