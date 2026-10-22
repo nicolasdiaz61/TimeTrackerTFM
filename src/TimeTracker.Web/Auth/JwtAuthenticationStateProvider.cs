@@ -9,7 +9,7 @@ namespace TimeTracker.Web.Auth;
 /// Estado de autenticación a partir del payload del JWT. La firma no se valida aquí (no se puede en el navegador):
 /// solo decide qué mostrar; la API valida el token en cada petición (ADR 0012).
 /// </summary>
-public sealed class JwtAuthenticationStateProvider(TokenStore store, TimeProvider timeProvider, SessionNotice notice) : AuthenticationStateProvider
+public sealed class JwtAuthenticationStateProvider(TokenStore store, TimeProvider timeProvider, SessionNotice notice) : AuthenticationStateProvider, ISessionSignIn
 {
     private static readonly AuthenticationState Anonymous = new(new ClaimsPrincipal(new ClaimsIdentity()));
 
