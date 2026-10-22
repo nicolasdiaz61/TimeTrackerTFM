@@ -17,7 +17,9 @@ Fase: sdd-apply · Modo: openspec · **Strict TDD** · Rama de la PR 6: `feat/mu
 | PR 5 | 5.1 a 5.8 (con 5.6b y 5.7b), 5.10, 5.11, 5.11b, 5.12, 5.13, 5.14 | **Hechas** (16 de 17; ver la sección PR 5 al final) |
 | PR 5 | 5.9 (V-7, `ForwardedHeaders` en producción) | **Pendiente del responsable** (puerta previa a la apertura del registro; apply no accede a Railway) |
 | PR 6 | 6.1 a 6.16 (con 6.15b) | **Hechas** (17 de 17; ver la sección PR 6 al final; sin tareas de producción) |
-| PR 7, PR 8, tarea 9 | todas | Sin empezar |
+| PR 7 | 7.1 a 7.8 (con 7.3b y 7.4b) | **Hechas** (ver la sección PR 7) |
+| PR 8 | 8.1 a 8.9 | **Hechas** (ver la sección PR 8 al final; documentación, sin tareas de producción) |
+| Tarea 9 | todas | Sin empezar (despliegue y apertura: responsable) |
 
 ## Lo que queda al responsable (puertas previas, sin marcar en `tasks.md`)
 
@@ -782,3 +784,35 @@ Detalle en `design.md`, sección 9, «Desviaciones y aclaraciones del diseño su
 - **El cambio forzado de la Web es de presentación**: la protección real es el `PasswordChangePendingMiddleware` de la API.
 - **La contraseña temporal no caduca** y **un token `mcp` emitido no se invalida al regenerar** (aceptados, ADR 0022; runbook en la PR 8).
 - V-7, Q-1, Q-8 y Q-10 siguen abiertas.
+
+## PR 8: documentación, runbook y especificaciones vigentes (8.1 a 8.9)
+
+Rama `feat/multi-compania-pr8-docs` (sobre `feat/multi-compania-pr7-web`). Copia previa en `..\TimeTracker.rollback\pr-mc8\` (AGENTS, README, `.env.example`, compose, `docs/adr/`, `config.yaml`, spec de solution-architecture y artefactos de openspec).
+
+### Commits
+
+| Commit | Mensaje | Tareas |
+|---|---|---|
+| `d9d47e1` | `test(docs): pruebas en rojo ...` | 8.2 (RED: 17 de 69 en rojo) |
+| `0a49c7c` | `docs(agents): ...` | 8.3 |
+| `42ddfed` | `docs(runbook): ...` | 8.4, 8.5, 8.7 (señal en README y ADR 0021, 0018/0019 intactos) |
+| `f0aa284` | `docs(specs): ...` | 8.6 |
+| `c260a6e` | `docs(openspec): cierre de V-1 a V-18 ...` | 8.8 |
+| (este) | `docs(openspec): progreso de apply de la PR 8` | tasks.md, este archivo |
+
+### Evidencia de Strict TDD
+
+| Tarea | Prueba | RED | GREEN | Notas |
+|---|---|---|---|---|
+| 8.2 a 8.8 | `AR/DeliveryArtifactsTests` (+17 pruebas, una existente actualizada a ADR 0021) | 17 en rojo | 69/69 | AGENTS §1/§6/§7, runbook (orden de apertura, V-3/V-6/V-7 como pendientes), README, índice de 22 ADR, ausencia de secretos y enlaces de sesión, spec vigente, cierre V-1..V-18, advertencias de archivo. Las huellas de 0017/0018/0019 siguen en verde |
+| 8.9 | — | — | Puerta | Sin refactor adicional |
+
+### Puerta
+
+RESTORE correcto; BUILD `-warnaserror` 0/0; TEST Domain 111, Application 470, Web 420, Infrastructure 473, Architecture 306, Api.Integration 985, todo en verde (`ASPNETCORE_URLS=http://127.0.0.1:0` solo en ese comando); COV-D 100,0 %/100,0 %; COV-A 99,5 %/96,7 %; FORMAT sin cambios; VULN sin vulnerables; `openapi.json` sin cambios (SHA-256 `76489e10...`); EF-PENDING N/A (sin modelo).
+
+### Desviaciones y pendientes
+
+- README: la sección «Activar el autodespliegue» pasa a «Despliegue manual y autodespliegue» (no hay autodespliegue). `config.yaml` no se tocó.
+- Las specs vigentes solo se corrigen en la cifra de ADR; los demás deltas se listan en `design.md` para el informe de archivo.
+- Pendientes del responsable: V-1, V-3, V-4 (Railway), V-6, V-7, Q-1, Q-8; Q-9 queda resuelta por el ADR 0021 y el índice (confirmar con el usuario) y Q-10 descrita en el runbook. Seguimiento abierto: límite IPv6 /64 y `ForwardedHeaders` (PR aparte).
