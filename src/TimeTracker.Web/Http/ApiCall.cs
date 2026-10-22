@@ -45,6 +45,26 @@ public static class ApiCall
         }
     }
 
+    /// <summary>Para respuestas sin cuerpo (204): devuelve el fallo o <see langword="null"/> si salió bien.</summary>
+    public static async Task<ApiFailure?> SendAsync(
+        Func<Task<HttpResponseMessage>> send,
+        IReadOnlySet<HttpStatusCode> detailStatuses,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(send);
+
+        var capture = new Capture();
+        try
+        {
+            await ApiRequest.SendAsync(() => capture.SendAsync(send(), cancellationToken), detailStatuses, cancellationToken);
+            return null;
+        }
+        catch (ApiRequestException exception)
+        {
+            return capture.ToFailure(exception);
+        }
+    }
+
     // ApiRequest solo conserva el detalle: los errores por campo del 400 y el Retry-After se leen aquí, antes de que
     // se traduzca la respuesta (el contenido queda en memoria y puede leerse otra vez).
     private sealed class Capture
