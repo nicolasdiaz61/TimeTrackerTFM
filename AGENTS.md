@@ -9,7 +9,8 @@ Aplicación de control de tiempos y ausencias para empresas: fichajes, ausencias
 - **Frontend:** Blazor WebAssembly (proyecto independiente). Solo presenta y llama a la API.
 - **Backend:** API en .NET con Clean Architecture, desplegada como un único monolito modular.
 - **Datos:** PostgreSQL con EF Core.
-- **IA:** acceso al modelo mediante la abstracción `IChatClient` (Microsoft.Extensions.AI). El proveedor y el modelo se eligen por configuración de entorno o guardada por un Manager (ADR 0018), sin cambiar código.
+- **Multicompañía:** una misma instancia sirve a varias compañías, aisladas por `company_id` en una base de datos compartida (ADR 0020). La configuración del asistente es por compañía: cada compañía tiene la suya y ninguna afecta a otra (ADR 0021).
+- **IA:** acceso al modelo mediante la abstracción `IChatClient` (Microsoft.Extensions.AI). El proveedor y el modelo se eligen por configuración de entorno o guardada por un Manager de su compañía (ADR 0021), sin cambiar código.
 - Todos los datos de ejemplo son inventados. No se incluye código, datos ni nombres de ninguna empresa real.
 
 Idioma: la documentación, los mensajes de commit y los textos de usuario van en español. Los identificadores de código (clases, métodos, variables) van en inglés.
@@ -65,7 +66,11 @@ Idioma: la documentación, los mensajes de commit y los textos de usuario van en
 - **Secretos y configuración:** nunca en el código ni en el repositorio. Variables de entorno en desarrollo y producción; un `.env.example` documenta las claves sin valores reales. Valida la configuración al arrancar y falla rápido si falta algo.
 - **Autenticación y autorización en el servidor.** El identificador del usuario sale siempre del token, nunca de un parámetro que pueda manipular el cliente. Mínimo privilegio y control de acceso por rol y por objeto.
 - **Entradas y salidas:** valida y normaliza toda entrada; usa consultas parametrizadas; trata la salida de un modelo de IA como dato no confiable antes de usarla o mostrarla.
-- **Contraseñas** con hash seguro; sesiones y tokens con expiración y renovación controladas.
+- **Contraseñas** con hash seguro; sesiones y tokens con expiración y renovación controladas. Política de contraseñas de 12 a 128 caracteres, sin reglas de composición. La contraseña temporal de un alta es de un solo uso: se muestra una vez, se guarda solo como hash y obliga a cambiarla en el primer inicio de sesión.
+- **Aislamiento por compañía** (ADR 0020):
+  - `CompanyId` sale siempre del claim `cid` mediante `ICurrentUser.CompanyId`, nunca de la ruta, la consulta, el cuerpo ni una cabecera; ningún caso de uso, herramienta ni endpoint recibe un identificador de compañía.
+  - Toda consulta pasa por el filtro global de compañía. `IgnoreQueryFilters` solo en la lista cerrada vigilada por las pruebas de arquitectura; `CreateScope` solo desde su lista cerrada (`ICompanyScopeFactory`; excepción acotada a «sin localizadores de servicios»).
+  - Cada herramienta del asistente y cada endpoint nuevo se prueban con dos compañías (A y B): B no ve, no cambia y no distingue nada de A.
 - **Cabeceras y transporte:** HTTPS obligatorio, CORS restrictivo, cabeceras de seguridad y límites de tasa (rate limiting).
 - **Errores:** nunca expongas trazas ni información sensible al cliente. Registra lo necesario sin datos personales ni secretos.
 - **Dependencias:** versiones fijadas, análisis automático de vulnerabilidades y actualizaciones revisadas.
@@ -83,13 +88,16 @@ Idioma: la documentación, los mensajes de commit y los textos de usuario van en
 ## 7. Infraestructura y entrega
 
 - **Contenedores:** la API (que puede servir también el frontend) se empaqueta con Docker. Imágenes reproducibles, sin secretos dentro.
-- **Integración y despliegue continuos con GitHub Actions:** en cada cambio compila, formatea, analiza, ejecuta las pruebas y publica. El despliegue es automático desde la rama principal solo si todo está en verde.
+- **Integración y despliegue continuos con GitHub Actions:** en cada cambio compila, formatea, analiza, ejecuta las pruebas y publica. El despliegue automático desde la rama principal solo se admite si todo está en verde; hoy el despliegue en Railway es manual (véase más abajo).
 - **Entornos separados** (desarrollo, producción) con configuración distinta e idéntico código.
 - **Infraestructura como código** siempre que sea posible; nada se configura a mano sin quedar documentado.
 - **Base de datos:** cambios mediante migraciones versionadas. Datos de prueba generados por un script y reproducibles.
+  - Migraciones en dos pasos (expandir/contraer), en despliegues separados. **Atención: un rollback de código no revierte el esquema;** ejecute `Down` antes de redesplegar el código anterior (runbook en `docs/runbook-railway.md`); tras abrir el registro no hay `Down`, se corrige hacia delante.
+  - Toda tabla de negocio nueva lleva `company_id` con clave foránea compuesta y filtro global.
+- **Despliegue en Railway:** hoy es manual con `railway up` porque los servicios no tienen repositorio conectado (sin repositorio conectado, fusionar una PR no despliega). Si se conecta el autodespliegue, el plan de despliegue por fases debe rehacerse antes de fusionar. Los pasos y las puertas previas de cada despliegue están en `docs/runbook-railway.md`.
 - **Observabilidad:** registros estructurados, comprobaciones de salud y seguimiento de errores en producción. Mide con umbrales concretos y alerta de forma accionable.
 - **Costes:** el modelo de IA de producción tiene presupuesto y límite de uso definidos.
-- **Cambio de proveedor de IA:** solo mediante configuración: de entorno (`Ai:Provider`, `Ai:Model`, `Ai:Endpoint`) o configuración guardada por un Manager (ADR 0018). En desarrollo se usa un modelo pequeño local (Ollama).
+- **Cambio de proveedor de IA:** solo mediante configuración: de entorno (`Ai:Provider`, `Ai:Model`, `Ai:Endpoint`) o configuración guardada por un Manager de su compañía (ADR 0021). En desarrollo se usa un modelo pequeño local (Ollama).
 
 ## 8. Documentación
 
