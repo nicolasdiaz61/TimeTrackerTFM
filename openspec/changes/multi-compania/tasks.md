@@ -339,3 +339,16 @@ Rama `fix/multi-compania-pr5-1-registro-limites`. Sin migraciones.
 - [x] 5.1.4 Fallo de emisión de sesión tras crear la cuenta: `409` con detalle claro en lugar de `500` (desviación en `design.md`).
 - [x] 5.1.5 Validador de `ForwardedHeaders`: revisado; lo no verificable en código queda como V-7 del responsable con prueba en el runbook.
 - [x] 5.1.6 Runbook: procedimiento paso a paso de restauración o corrección hacia delante tras abrir el registro y runbook autónomo.
+
+## PR 4b.1: seguimiento de la revisión de la PR 4b y cabo suelto de la PR 5.1
+
+Rama `fix/multi-compania-pr4b-1-runtime` (sobre `fix/multi-compania-pr5-1-registro-limites`). Sin migraciones ni cambio de contrato.
+
+- [x] 4b.1.1 Tope de `Ai__MaxLoadedCompanies` aplicado con la entrada publicada y una vez por carga: cargas simultáneas dejan exactamente el tope.
+- [x] 4b.1.2 Cola de expulsadas acotada por el tope (se libera ya la más antigua al desbordarse).
+- [x] 4b.1.3 Ganar `uses_platform_assistant` con una fila rechazada anota el indicador observado y el sondeo deja de recargar en cada vuelta (indicador observado distinto del indicador de construcción).
+- [x] 4b.1.4 Carrera expulsión/uso: comprobación y lectura de la instantánea atómicas (`TryAcquire`), sin 503 falso.
+- [x] 4b.1.5 Una carga fallida tras abandonar la precarga del arranque se retira sola de las entradas.
+- [x] 4b.1.6 Pruebas: escenarios del antiguo cargador y del ciclo de vida del sondeo recuperados; prueba de cuota no vacua; prueba de tope exacta y determinista; prueba de 500 por HTTP de la guarda de la PR 3 que distingue la guarda de la clave foránea.
+- [x] 4b.1.7 PR 5.1: `CreatedWithoutSession` lleva la causa (solo el nombre del tipo de la excepción) y se registra con el registro de metadatos del alta; cancelación y 409 intactos.
+- [x] 4b.1.8 `StripComments` compartido (`SourceText`) y consciente de literales en las pruebas de arquitectura.

@@ -145,6 +145,20 @@ public sealed class AssistantSettingsPollerTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Poll_AGainedIndicatorWithARejectedRow_IsNotReloadedOnEveryLap()
+    {
+        // Estado que deja el registro tras ganar el indicador con la fila 8 rechazada: indicador anotado y versión rechazada.
+        Loaded(CompanyA, "7", usesPlatform: true, rejected: "8");
+        Stored(CompanyA, "8", usesPlatform: true);
+        await _poller.StartAsync(CancellationToken.None);
+
+        await TickAsync();
+        await TickAsync();
+
+        Assert.Empty(_registry.Reloads);
+    }
+
+    [Fact]
     public async Task Poll_LimitsTheNumberOfParallelReloads()
     {
         var all = Enumerable.Range(1, 12).Select(number => Guid.Parse($"00000000-0000-4000-8000-{number:D12}")).ToList();
@@ -273,6 +287,53 @@ public sealed class AssistantSettingsPollerTests : IAsyncLifetime
         Assert.Equal(2, _registry.Reloads.Count);
         Assert.All(_logger.Entries, entry => Assert.DoesNotContain(Secret, entry.Message, StringComparison.Ordinal));
         Assert.Contains(_logger.Entries, entry => entry.Message.Contains(nameof(InvalidOperationException), StringComparison.Ordinal));
+    }
+
+    // --- Ciclo de vida del sondeo (recuperado del sondeo anterior) ---
+
+    [Fact]
+    public async Task Poll_BeforeTheIntervalElapses_DoesNotReadAnything()
+    {
+        Loaded(CompanyA, "1");
+        Stored(CompanyA, "2");
+        await _poller.StartAsync(CancellationToken.None);
+
+        _time.Advance(TimeSpan.FromSeconds(PollSeconds - 1));
+
+        Assert.Equal(0, _store.ListCalls);
+        Assert.Equal(0, _registry.Expirations);
+        Assert.Empty(_registry.Reloads);
+    }
+
+    [Fact]
+    public async Task Start_WhenTheHostCancelsTheStart_Propagates()
+    {
+        var hanging = new HangingRegistry();
+        var poller = new AssistantSettingsPoller(
+            hanging, _provider.GetRequiredService<IServiceScopeFactory>(), Options.Create(new AiOptions { SettingsPollSeconds = PollSeconds }), _time, _logger);
+        using var cancellation = new CancellationTokenSource();
+
+        var starting = poller.StartAsync(cancellation.Token);
+        await cancellation.CancelAsync();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => starting);
+        poller.Dispose();
+    }
+
+    [Fact]
+    public async Task Stop_StopsPolling()
+    {
+        Loaded(CompanyA, "1");
+        Stored(CompanyA, "1");
+        await _poller.StartAsync(CancellationToken.None);
+        await TickAsync();
+        Assert.Equal(1, _store.ListCalls);
+
+        await _poller.StopAsync(CancellationToken.None);
+        _time.Advance(TimeSpan.FromSeconds(PollSeconds * 3));
+
+        Assert.Equal(1, _store.ListCalls);
+        Assert.Equal(1, _registry.Expirations);
     }
 
     private sealed class HangingRegistry : IAssistantRuntimeRegistry

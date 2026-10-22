@@ -52,7 +52,7 @@ public class RegistrationSessionFailureTests(PostgresFixture postgres)
     }
 
     [Fact]
-    public async Task WhenTheSessionCannotBeIssued_OnlyTheResultAndTheInstantAreLogged()
+    public async Task WhenTheSessionCannotBeIssued_OnlyTheResultTheInstantAndTheCauseTypeAreLogged()
     {
         using var baseFactory = new RegistrationApiFactory(postgres.ConnectionString);
         using var factory = baseFactory.WithWebHostBuilder(builder => builder.ConfigureTestServices(services => services.Replace(ServiceDescriptor.Singleton<IAccessTokenIssuer, FailingIssuer>())));
@@ -63,6 +63,9 @@ public class RegistrationSessionFailureTests(PostgresFixture postgres)
         var logs = baseFactory.Logs.Messages.Where(message => message.StartsWith("Registro de compañía:", StringComparison.Ordinal)).ToList();
         Assert.Single(logs);
         Assert.Contains("CreatedWithoutSession", logs[0], StringComparison.Ordinal);
+        // La causa queda registrada como nombre de tipo; nunca el mensaje de la excepción.
+        Assert.Contains(nameof(InvalidOperationException), logs[0], StringComparison.Ordinal);
+        Assert.DoesNotContain("fallo simulado", string.Join('\n', baseFactory.Logs.Messages), StringComparison.Ordinal);
         Assert.DoesNotContain((string)body["email"]!, string.Join('\n', baseFactory.Logs.Messages), StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain(Password, string.Join('\n', baseFactory.Logs.Messages), StringComparison.Ordinal);
     }

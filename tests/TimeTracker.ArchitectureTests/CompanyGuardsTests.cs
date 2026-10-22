@@ -2,6 +2,8 @@ using System.Reflection;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 
+using static TimeTracker.ArchitectureTests.SourceText;
+
 namespace TimeTracker.ArchitectureTests;
 
 /// <summary>
@@ -225,12 +227,6 @@ public partial class CompanyGuardsTests
                 && !file.Contains($"{separator}bin{separator}", StringComparison.Ordinal));
     }
 
-    private static string StripComments(string source)
-        => string.Join('\n', source.Split('\n').Select(line =>
-        {
-            var comment = line.IndexOf("//", StringComparison.Ordinal);
-            return comment < 0 ? line : line[..comment];
-        }));
 
     [GeneratedRegex("\"cid\"")]
     private static partial Regex CidPattern();
