@@ -5,6 +5,8 @@ internal sealed class AssistantSettingsAuditRecord
 {
     public long Id { get; set; }
 
+    public Guid CompanyId { get; set; }
+
     public DateTimeOffset OccurredAt { get; set; }
 
     public Guid ActorId { get; set; }

@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Identity;
 
 using Npgsql;
 
+using TimeTracker.Domain.Companies;
 using TimeTracker.Domain.Users;
 using TimeTracker.Infrastructure.Persistence;
 
@@ -18,12 +19,32 @@ internal static class UserSeed
     public static string PasswordHash => SharedHash.Value;
 
     public static UserAccount Create(string name = "usuario", UserRole role = UserRole.Employee, Guid? managerId = null, string? displayName = null)
-        => UserAccount.Create(Guid.NewGuid(), $"{name}.{Guid.NewGuid():N}@example.test", displayName ?? name, PasswordHash, role, managerId);
+        => UserAccount.Create(Guid.NewGuid(), Company.DefaultId, $"{name}.{Guid.NewGuid():N}@example.test", displayName ?? name, PasswordHash, role, managerId);
 
     public static async Task AddAsync(TimeTrackerDbContext context, params UserAccount[] users)
     {
         context.Users.AddRange(users);
         await context.SaveChangesAsync(CancellationToken.None);
+    }
+
+    /// <summary>
+    /// Garantiza que existe el usuario del token de la prueba (idempotente por <c>id</c>): con la clave foránea compuesta de
+    /// la migración B un fichaje ya no puede apuntar a un empleado inexistente.
+    /// </summary>
+    public static void EnsureExists(string connectionString, Guid id, string role = "Employee")
+    {
+        using var connection = new NpgsqlConnection(connectionString);
+        connection.Open();
+        using var command = new NpgsqlCommand(
+            "INSERT INTO users (id, company_id, email, display_name, password_hash, role) VALUES (@id, @company, @email, @name, @hash, @role) ON CONFLICT (id) DO NOTHING",
+            connection);
+        command.Parameters.AddWithValue("id", id);
+        command.Parameters.AddWithValue("company", Company.DefaultId);
+        command.Parameters.AddWithValue("email", $"token.{id:N}@example.test");
+        command.Parameters.AddWithValue("name", "Usuario del token");
+        command.Parameters.AddWithValue("hash", PasswordHash);
+        command.Parameters.AddWithValue("role", role);
+        command.ExecuteNonQuery();
     }
 
     /// <summary>Inserta una fila por SQL sin pasar por el dominio (restricciones, hash ilegible).</summary>
@@ -33,14 +54,16 @@ internal static class UserSeed
         string email,
         string role = "Employee",
         Guid? managerId = null,
-        string? passwordHash = null)
+        string? passwordHash = null,
+        Guid? companyId = null)
     {
         await using var connection = new NpgsqlConnection(connectionString);
         await connection.OpenAsync(CancellationToken.None);
         await using var command = new NpgsqlCommand(
-            "INSERT INTO users (id, email, display_name, password_hash, role, manager_id) VALUES (@id, @email, @name, @hash, @role, @manager)",
+            "INSERT INTO users (id, company_id, email, display_name, password_hash, role, manager_id) VALUES (@id, @company, @email, @name, @hash, @role, @manager)",
             connection);
         command.Parameters.AddWithValue("id", id);
+        command.Parameters.AddWithValue("company", companyId ?? Company.DefaultId);
         command.Parameters.AddWithValue("email", email);
         command.Parameters.AddWithValue("name", "Usuario de prueba");
         command.Parameters.AddWithValue("hash", passwordHash ?? PasswordHash);

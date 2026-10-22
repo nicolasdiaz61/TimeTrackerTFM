@@ -1,6 +1,7 @@
 using TimeTracker.Application.Team;
 using TimeTracker.Application.Tests.Fakes;
 using TimeTracker.Application.TimeTracking;
+using TimeTracker.Domain.Companies;
 using TimeTracker.Domain.TimeTracking;
 using TimeTracker.Domain.Users;
 
@@ -19,11 +20,11 @@ public class GetTeamMemberTimeEntriesUseCaseTests
     private GetTeamMemberTimeEntriesUseCase CreateUseCase() => new(_users, _entries, new FixedCurrentUser(MartaId));
 
     private static UserAccount NewUser(Guid id, string name, UserRole role, Guid? managerId)
-        => UserAccount.Create(id, $"{Guid.NewGuid():N}@example.test", name, "hash-de-prueba", role, managerId);
+        => UserAccount.Create(id, Company.DefaultId, $"{Guid.NewGuid():N}@example.test", name, "hash-de-prueba", role, managerId);
 
     private TimeEntry SeedClosed(Guid employeeId, DateTimeOffset clockIn, int minutes)
     {
-        var entry = TimeEntry.Start(employeeId, TimeEntryType.Work, clockIn);
+        var entry = TimeEntry.Start(Company.DefaultId, employeeId, TimeEntryType.Work, clockIn);
         entry.Close(clockIn.AddMinutes(minutes));
         _entries.Seed(entry);
         return entry;
@@ -35,7 +36,7 @@ public class GetTeamMemberTimeEntriesUseCaseTests
         _users.Seed(NewUser(LuisId, "Luis Empleado", UserRole.Employee, MartaId));
         SeedClosed(LuisId, EightAm, 60);
         SeedClosed(LuisId, EightAm.AddHours(2), 30);
-        var open = TimeEntry.Start(LuisId, TimeEntryType.Work, EightAm.AddHours(4));
+        var open = TimeEntry.Start(Company.DefaultId, LuisId, TimeEntryType.Work, EightAm.AddHours(4));
         _entries.Seed(open);
 
         var result = await CreateUseCase().ExecuteAsync(LuisId, null, CancellationToken.None);
@@ -51,10 +52,10 @@ public class GetTeamMemberTimeEntriesUseCaseTests
     {
         _users.Seed(NewUser(LuisId, "Luis Empleado", UserRole.Employee, MartaId));
         SeedClosed(LuisId, EightAm, 60);
-        var pause = TimeEntry.Start(LuisId, TimeEntryType.Break, EightAm.AddHours(1));
+        var pause = TimeEntry.Start(Company.DefaultId, LuisId, TimeEntryType.Break, EightAm.AddHours(1));
         pause.Close(EightAm.AddHours(1).AddMinutes(15));
         _entries.Seed(pause);
-        _entries.Seed(TimeEntry.Start(LuisId, TimeEntryType.MealBreak, EightAm.AddHours(2)));
+        _entries.Seed(TimeEntry.Start(Company.DefaultId, LuisId, TimeEntryType.MealBreak, EightAm.AddHours(2)));
 
         var result = await CreateUseCase().ExecuteAsync(LuisId, null, CancellationToken.None);
 
@@ -157,7 +158,7 @@ public class GetTeamMemberTimeEntriesUseCaseTests
         var inside = SeedClosed(LuisId, EightAm, 60);
         SeedClosed(LuisId, EightAm.AddDays(-30), 60);
         SeedClosed(MartaId, EightAm, 60);
-        var open = TimeEntry.Start(LuisId, TimeEntryType.MealBreak, EightAm.AddDays(-45));
+        var open = TimeEntry.Start(Company.DefaultId, LuisId, TimeEntryType.MealBreak, EightAm.AddDays(-45));
         _entries.Seed(open);
 
         var result = await CreateUseCase().ExecuteAsync(LuisId, WindowOf(EightAm.AddHours(-1), EightAm.AddHours(2)), CancellationToken.None);

@@ -15,7 +15,7 @@
     <strong>Protección de datos.</strong> Al usar el asistente, los datos personales de los fichajes se envían a un tercero (el proveedor elegido) con la clave que usted aporta.
 </div>
 <div class="alert alert-info" role="note" data-testid="company-scope-notice">
-    <strong>Alcance.</strong> Esta configuración es única para toda la empresa: cualquier responsable puede cambiarla y el cambio afecta a todas las personas que usan el asistente.
+    <strong>Alcance.</strong> @AssistantConfigurationNotice.Scope(SessionClaims.CompanyName(sessionUser)) Cualquier responsable de la compañía puede cambiarla.
 </div>
 
 @if (form.ErrorMessage is not null)
@@ -141,7 +141,7 @@ else
     {
         <div class="alert alert-danger mt-3" role="alertdialog" aria-labelledby="reset-title" data-testid="reset-confirmation">
             <p id="reset-title" class="mb-2"><strong>¿Restablecer al entorno?</strong></p>
-            <p>Se borrará la configuración guardada vigente, incluida la clave, aunque otro responsable la haya cambiado después de que usted abriera esta página. El asistente volverá a usar los valores del entorno.</p>
+            <p>@AssistantConfigurationNotice.ResetWarning(SessionClaims.CompanyName(sessionUser))</p>
             <button type="button" class="btn btn-danger" @onclick="ResetAsync" disabled="@(!form.CanConfirmReset)">Sí, restablecer</button>
             <button type="button" class="btn btn-outline-secondary" @onclick="form.CancelReset">Cancelar</button>
         </div>
@@ -151,7 +151,21 @@ else
 @code {
     private readonly AssistantConfigurationForm form = new();
 
-    protected override Task OnInitializedAsync() => LoadAsync();
+    // El nombre de la compañía sale solo de la sesión (claim cname); la página no consulta otra ruta de la API ni guarda nada en el navegador.
+    private System.Security.Claims.ClaimsPrincipal sessionUser = new(new System.Security.Claims.ClaimsIdentity());
+
+    [CascadingParameter]
+    private Task<AuthenticationState>? AuthenticationStateTask { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (AuthenticationStateTask is not null)
+        {
+            sessionUser = (await AuthenticationStateTask).User;
+        }
+
+        await LoadAsync();
+    }
 
     private async Task LoadAsync()
     {

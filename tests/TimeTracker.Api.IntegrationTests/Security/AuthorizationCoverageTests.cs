@@ -59,6 +59,44 @@ public class AuthorizationCoverageTests
     }
 
     [Fact]
+    public void EmployeeEndpoints_RequireTheManagerPolicy_AndEachHasItsOwnRateLimitPolicy()
+    {
+        using var factory = new ApiFactory();
+        _ = factory.CreateClient();
+
+        var employees = factory.Services.GetRequiredService<EndpointDataSource>().Endpoints
+            .OfType<RouteEndpoint>()
+            .Where(endpoint => endpoint.RoutePattern.RawText?.StartsWith("/api/employees", StringComparison.Ordinal) == true)
+            .ToDictionary(endpoint => endpoint.RoutePattern.RawText!.TrimEnd('/'), endpoint => endpoint);
+
+        Assert.Equal(["/api/employees", "/api/employees/{memberId:guid}/temporary-password"], employees.Keys.Order(StringComparer.Ordinal));
+        Assert.All(employees.Values, endpoint =>
+        {
+            Assert.Null(endpoint.Metadata.GetMetadata<IAllowAnonymous>());
+            Assert.Equal(["POST"], endpoint.Metadata.GetMetadata<IHttpMethodMetadata>()!.HttpMethods);
+            Assert.Contains(endpoint.Metadata.GetOrderedMetadata<IAuthorizeData>(), data => data.Policy == AuthorizationPolicies.Manager);
+        });
+        Assert.Equal("employee-create", employees["/api/employees"].Metadata.GetMetadata<Microsoft.AspNetCore.RateLimiting.EnableRateLimitingAttribute>()!.PolicyName);
+        Assert.Equal("temporary-password", employees["/api/employees/{memberId:guid}/temporary-password"].Metadata.GetMetadata<Microsoft.AspNetCore.RateLimiting.EnableRateLimitingAttribute>()!.PolicyName);
+    }
+
+    [Fact]
+    public void ChangePasswordEndpoint_IsProtectedByTheFallbackPolicy_LimitedPerUser_AndAllowedWhilePending()
+    {
+        using var factory = new ApiFactory();
+        _ = factory.CreateClient();
+
+        var endpoint = Assert.Single(
+            factory.Services.GetRequiredService<EndpointDataSource>().Endpoints.OfType<RouteEndpoint>(),
+            candidate => candidate.RoutePattern.RawText == "/api/auth/change-password");
+
+        Assert.Null(endpoint.Metadata.GetMetadata<IAllowAnonymous>());
+        Assert.Equal(["POST"], endpoint.Metadata.GetMetadata<IHttpMethodMetadata>()!.HttpMethods);
+        Assert.Equal("change-password", endpoint.Metadata.GetMetadata<Microsoft.AspNetCore.RateLimiting.EnableRateLimitingAttribute>()!.PolicyName);
+        Assert.NotNull(endpoint.Metadata.GetMetadata<AllowWhilePasswordChangePendingMetadata>());
+    }
+
+    [Fact]
     public async Task ManagerPolicy_IsRegisteredOnceAndRequiresTheManagerRole()
     {
         using var factory = new ApiFactory();

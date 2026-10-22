@@ -7,6 +7,7 @@ using TimeTracker.Application.Team;
 using TimeTracker.Application.Tests.Fakes;
 using TimeTracker.Application.Time;
 using TimeTracker.Application.TimeTracking;
+using TimeTracker.Domain.Companies;
 using TimeTracker.Domain.TimeTracking;
 using TimeTracker.Domain.Users;
 using TimeTracker.Infrastructure.Assistant;
@@ -26,10 +27,10 @@ internal sealed class ToolHarness
     public ToolHarness(Guid userId, UserRole role, ITimeEntryRepository? entries = null)
     {
         Users.Seed(
-            UserAccount.Create(Marta, "marta@example.test", "Marta Responsable", "hash", UserRole.Manager, null),
-            UserAccount.Create(Ana, "ana@example.test", "Ana Empleada", "hash", UserRole.Employee, Marta),
-            UserAccount.Create(Luis, "luis@example.test", "Luis Empleado", "hash", UserRole.Employee, Marta),
-            UserAccount.Create(Pablo, "pablo@example.test", "Pablo Ajeno", "hash", UserRole.Employee, Guid.Parse("00000000-0000-4000-8000-0000000000ff")));
+            UserAccount.Create(Marta, Company.DefaultId, "marta@example.test", "Marta Responsable", "hash", UserRole.Manager, null),
+            UserAccount.Create(Ana, Company.DefaultId, "ana@example.test", "Ana Empleada", "hash", UserRole.Employee, Marta),
+            UserAccount.Create(Luis, Company.DefaultId, "luis@example.test", "Luis Empleado", "hash", UserRole.Employee, Marta),
+            UserAccount.Create(Pablo, Company.DefaultId, "pablo@example.test", "Pablo Ajeno", "hash", UserRole.Employee, Guid.Parse("00000000-0000-4000-8000-0000000000ff")));
         Clock.SetUtcNow(SpainTime.ToUtc(Today, new TimeOnly(12, 0)));
         var currentUser = new FixedCurrentUser(userId, role);
         var repository = entries ?? Entries;
@@ -58,7 +59,7 @@ internal sealed class ToolHarness
     /// <summary>Añade un intervalo cerrado entre dos horas locales de España del mismo día.</summary>
     public void SeedEntry(Guid employeeId, DateOnly date, TimeOnly from, TimeOnly to, TimeEntryType type = TimeEntryType.Work)
     {
-        var entry = TimeEntry.Start(employeeId, type, SpainTime.ToUtc(date, from));
+        var entry = TimeEntry.Start(Company.DefaultId, employeeId, type, SpainTime.ToUtc(date, from));
         entry.Close(SpainTime.ToUtc(date, to));
         Entries.Seed(entry);
     }

@@ -2,6 +2,7 @@ using Microsoft.Extensions.Time.Testing;
 
 using TimeTracker.Application.DemoData;
 using TimeTracker.Application.Time;
+using TimeTracker.Domain.Companies;
 using TimeTracker.Domain.TimeTracking;
 
 namespace TimeTracker.Application.Tests.DemoData;
@@ -13,8 +14,8 @@ public class SeedDemoTimeEntriesUseCaseTests
 
     private static readonly DemoEmployee[] Employees =
     [
-        new(Luis, DemoScheduleProfiles.EarlyBird),
-        new(Pablo, DemoScheduleProfiles.HalfDay),
+        new(Luis, Company.DefaultId, DemoScheduleProfiles.EarlyBird),
+        new(Pablo, Company.DefaultId, DemoScheduleProfiles.HalfDay),
     ];
 
     private readonly InMemoryDemoStore _store = new();
@@ -34,6 +35,19 @@ public class SeedDemoTimeEntriesUseCaseTests
         Assert.DoesNotContain(days, day => day >= new DateOnly(2026, 10, 14));
         Assert.All(_store.Added, entry => Assert.False(entry.IsOpen));
         Assert.Equal(1, _store.AddRangeCalls);
+    }
+
+    [Fact]
+    public async Task Execute_CreatesEachEmployeesIntervalsInTheCompanyOfThatEmployee()
+    {
+        var otherCompany = Guid.Parse("0197a1b2-9c3d-7e4f-8a5b-6c7d8e9f0a9d");
+        DemoEmployee[] mixed = [new(Luis, Company.DefaultId, DemoScheduleProfiles.EarlyBird), new(Pablo, otherCompany, DemoScheduleProfiles.HalfDay)];
+
+        await CreateUseCase().ExecuteAsync(mixed, CancellationToken.None);
+
+        Assert.All(_store.Added.Where(entry => entry.EmployeeId == Luis), entry => Assert.Equal(Company.DefaultId, entry.CompanyId));
+        Assert.All(_store.Added.Where(entry => entry.EmployeeId == Pablo), entry => Assert.Equal(otherCompany, entry.CompanyId));
+        Assert.Contains(_store.Added, entry => entry.EmployeeId == Pablo);
     }
 
     [Fact]
@@ -83,7 +97,7 @@ public class SeedDemoTimeEntriesUseCaseTests
     public async Task Execute_DayWithExistingEntry_IsSkippedAndTheRestAreCreated()
     {
         var someWeekday = new DateOnly(2026, 10, 7);
-        var existing = TimeEntry.Start(Luis, TimeEntryType.Work, SpainTime.ToUtc(someWeekday, new TimeOnly(11, 0)));
+        var existing = TimeEntry.Start(Company.DefaultId, Luis, TimeEntryType.Work, SpainTime.ToUtc(someWeekday, new TimeOnly(11, 0)));
         existing.Close(SpainTime.ToUtc(someWeekday, new TimeOnly(12, 0)));
         _store.Seed(existing);
 
@@ -98,7 +112,7 @@ public class SeedDemoTimeEntriesUseCaseTests
     public async Task Execute_ExistingEntryOfAnotherEmployee_DoesNotSkipDays()
     {
         var someWeekday = new DateOnly(2026, 10, 7);
-        var existing = TimeEntry.Start(Pablo, TimeEntryType.Work, SpainTime.ToUtc(someWeekday, new TimeOnly(11, 0)));
+        var existing = TimeEntry.Start(Company.DefaultId, Pablo, TimeEntryType.Work, SpainTime.ToUtc(someWeekday, new TimeOnly(11, 0)));
         existing.Close(SpainTime.ToUtc(someWeekday, new TimeOnly(12, 0)));
         _store.Seed(existing);
 
@@ -111,7 +125,7 @@ public class SeedDemoTimeEntriesUseCaseTests
     public async Task Execute_EntryAtLocalMidnightBoundary_CountsForItsLocalDay()
     {
         // 23:30 UTC del 6 de octubre son las 01:30 locales del 7: ese día local queda ocupado.
-        var existing = TimeEntry.Start(Luis, TimeEntryType.Work, new DateTimeOffset(2026, 10, 6, 23, 30, 0, TimeSpan.Zero));
+        var existing = TimeEntry.Start(Company.DefaultId, Luis, TimeEntryType.Work, new DateTimeOffset(2026, 10, 6, 23, 30, 0, TimeSpan.Zero));
         existing.Close(new DateTimeOffset(2026, 10, 7, 0, 30, 0, TimeSpan.Zero));
         _store.Seed(existing);
 

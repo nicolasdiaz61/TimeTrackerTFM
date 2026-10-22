@@ -22,6 +22,57 @@ namespace TimeTracker.Infrastructure.Persistence.Migrations
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
+            modelBuilder.Entity("TimeTracker.Domain.Companies.Company", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("name");
+
+                    b.Property<string>("NameNormalized")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("name_normalized");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)")
+                        .HasDefaultValue("Active")
+                        .HasColumnName("status");
+
+                    b.Property<bool>("UsesPlatformAssistant")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(false)
+                        .HasColumnName("uses_platform_assistant");
+
+                    b.HasKey("Id")
+                        .HasName("PK_companies");
+
+                    b.HasIndex("NameNormalized")
+                        .IsUnique()
+                        .HasDatabaseName("ux_companies_name_normalized");
+
+                    b.ToTable("companies", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_companies_name_length", "char_length(btrim(name)) BETWEEN 1 AND 100");
+
+                            t.HasCheckConstraint("ck_companies_status", "status IN ('Active', 'Suspended')");
+                        });
+                });
+
             modelBuilder.Entity("TimeTracker.Domain.TimeTracking.TimeEntry", b =>
                 {
                     b.Property<Guid>("Id")
@@ -35,6 +86,10 @@ namespace TimeTracker.Infrastructure.Persistence.Migrations
                     b.Property<DateTimeOffset?>("ClockOutAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("clock_out_at");
+
+                    b.Property<Guid>("CompanyId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("company_id");
 
                     b.Property<Guid>("EmployeeId")
                         .HasColumnType("uuid")
@@ -59,6 +114,9 @@ namespace TimeTracker.Infrastructure.Persistence.Migrations
                         .HasDatabaseName("ux_time_entries_employee_id_open")
                         .HasFilter("clock_out_at IS NULL");
 
+                    b.HasIndex("CompanyId", "EmployeeId")
+                        .HasDatabaseName("ix_time_entries_company_id_employee_id");
+
                     b.HasIndex("EmployeeId", "ClockInAt")
                         .IsDescending(false, true)
                         .HasDatabaseName("ix_time_entries_employee_id_clock_in_at");
@@ -77,6 +135,10 @@ namespace TimeTracker.Infrastructure.Persistence.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("id");
 
+                    b.Property<Guid>("CompanyId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("company_id");
+
                     b.Property<string>("DisplayName")
                         .IsRequired()
                         .HasMaxLength(100)
@@ -93,6 +155,12 @@ namespace TimeTracker.Infrastructure.Persistence.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("manager_id");
 
+                    b.Property<bool>("MustChangePassword")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(false)
+                        .HasColumnName("must_change_password");
+
                     b.Property<string>("PasswordHash")
                         .IsRequired()
                         .HasColumnType("text")
@@ -104,14 +172,23 @@ namespace TimeTracker.Infrastructure.Persistence.Migrations
                         .HasColumnType("character varying(20)")
                         .HasColumnName("role");
 
+                    b.Property<uint>("xmin")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
+
                     b.HasKey("Id");
+
+                    b.HasAlternateKey("CompanyId", "Id")
+                        .HasName("ux_users_company_id_id");
 
                     b.HasIndex("Email")
                         .IsUnique()
                         .HasDatabaseName("ux_users_email");
 
-                    b.HasIndex("ManagerId")
-                        .HasDatabaseName("ix_users_manager_id");
+                    b.HasIndex("CompanyId", "ManagerId")
+                        .HasDatabaseName("ix_users_company_id_manager_id");
 
                     b.ToTable("users", null, t =>
                         {
@@ -142,6 +219,10 @@ namespace TimeTracker.Infrastructure.Persistence.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("actor_id");
 
+                    b.Property<Guid>("CompanyId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("company_id");
+
                     b.Property<bool>("CredentialChanged")
                         .HasColumnType("boolean")
                         .HasColumnName("credential_changed");
@@ -160,9 +241,9 @@ namespace TimeTracker.Infrastructure.Persistence.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("OccurredAt")
-                        .IsDescending()
-                        .HasDatabaseName("ix_assistant_settings_audit_occurred_at");
+                    b.HasIndex("CompanyId", "OccurredAt")
+                        .IsDescending(false, true)
+                        .HasDatabaseName("ix_assistant_settings_audit_company_id_occurred_at");
 
                     b.ToTable("assistant_settings_audit", null, t =>
                         {
@@ -172,9 +253,9 @@ namespace TimeTracker.Infrastructure.Persistence.Migrations
 
             modelBuilder.Entity("TimeTracker.Infrastructure.Persistence.AssistantSettingsRecord", b =>
                 {
-                    b.Property<short>("Id")
-                        .HasColumnType("smallint")
-                        .HasColumnName("id");
+                    b.Property<Guid>("CompanyId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("company_id");
 
                     b.Property<byte[]>("CredentialCiphertext")
                         .HasColumnType("bytea")
@@ -226,7 +307,7 @@ namespace TimeTracker.Infrastructure.Persistence.Migrations
                         .HasColumnType("xid")
                         .HasColumnName("xmin");
 
-                    b.HasKey("Id");
+                    b.HasKey("CompanyId");
 
                     b.ToTable("assistant_settings", null, t =>
                         {
@@ -242,19 +323,63 @@ namespace TimeTracker.Infrastructure.Persistence.Migrations
 
                             t.HasCheckConstraint("ck_assistant_settings_provider", "provider IN ('None', 'Anthropic', 'OpenAI', 'Gemini', 'Ollama')");
 
-                            t.HasCheckConstraint("ck_assistant_settings_singleton", "id = 1");
-
                             t.HasCheckConstraint("ck_assistant_settings_timeout_seconds", "timeout_seconds BETWEEN 5 AND 55");
                         });
                 });
 
-            modelBuilder.Entity("TimeTracker.Domain.Users.UserAccount", b =>
+            modelBuilder.Entity("TimeTracker.Domain.TimeTracking.TimeEntry", b =>
                 {
+                    b.HasOne("TimeTracker.Domain.Companies.Company", null)
+                        .WithMany()
+                        .HasForeignKey("CompanyId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired()
+                        .HasConstraintName("fk_time_entries_companies_company_id");
+
                     b.HasOne("TimeTracker.Domain.Users.UserAccount", null)
                         .WithMany()
-                        .HasForeignKey("ManagerId")
+                        .HasForeignKey("CompanyId", "EmployeeId")
+                        .HasPrincipalKey("CompanyId", "Id")
                         .OnDelete(DeleteBehavior.NoAction)
-                        .HasConstraintName("fk_users_users_manager_id");
+                        .IsRequired()
+                        .HasConstraintName("fk_time_entries_users_company_id_employee_id");
+                });
+
+            modelBuilder.Entity("TimeTracker.Domain.Users.UserAccount", b =>
+                {
+                    b.HasOne("TimeTracker.Domain.Companies.Company", null)
+                        .WithMany()
+                        .HasForeignKey("CompanyId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired()
+                        .HasConstraintName("fk_users_companies_company_id");
+
+                    b.HasOne("TimeTracker.Domain.Users.UserAccount", null)
+                        .WithMany()
+                        .HasForeignKey("CompanyId", "ManagerId")
+                        .HasPrincipalKey("CompanyId", "Id")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .HasConstraintName("fk_users_users_company_id_manager_id");
+                });
+
+            modelBuilder.Entity("TimeTracker.Infrastructure.Persistence.AssistantSettingsAuditRecord", b =>
+                {
+                    b.HasOne("TimeTracker.Domain.Companies.Company", null)
+                        .WithMany()
+                        .HasForeignKey("CompanyId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired()
+                        .HasConstraintName("fk_assistant_settings_audit_companies_company_id");
+                });
+
+            modelBuilder.Entity("TimeTracker.Infrastructure.Persistence.AssistantSettingsRecord", b =>
+                {
+                    b.HasOne("TimeTracker.Domain.Companies.Company", null)
+                        .WithMany()
+                        .HasForeignKey("CompanyId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired()
+                        .HasConstraintName("fk_assistant_settings_companies_company_id");
                 });
 #pragma warning restore 612, 618
         }

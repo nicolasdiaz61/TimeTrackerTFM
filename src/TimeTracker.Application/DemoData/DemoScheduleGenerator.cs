@@ -31,7 +31,7 @@ public static class DemoScheduleGenerator
     }
 
     /// <summary>Intervalos del día, cerrados y consecutivos; vacío si no es laborable.</summary>
-    public static IReadOnlyList<TimeEntry> GenerateDay(Guid employeeId, DemoScheduleProfile profile, DateOnly date)
+    public static IReadOnlyList<TimeEntry> GenerateDay(Guid companyId, Guid employeeId, DemoScheduleProfile profile, DateOnly date)
     {
         if (!IsWorkday(profile, date))
         {
@@ -43,7 +43,7 @@ public static class DemoScheduleGenerator
         var start = Minutes(plan.Start) + random.Next(-profile.Variation, profile.Variation + 1);
         var end = Minutes(plan.End) + random.Next(-profile.Variation, profile.Variation + 1);
 
-        var current = TimeEntry.Start(employeeId, TimeEntryType.Work, Instant(date, start));
+        var current = TimeEntry.Start(companyId, employeeId, TimeEntryType.Work, Instant(date, start));
         var entries = new List<TimeEntry> { current };
         var cursor = start;
         foreach (var planned in plan.Breaks)

@@ -16,7 +16,7 @@ using TimeTracker.Infrastructure.Tests.Fakes;
 namespace TimeTracker.Infrastructure.Tests.Assistant;
 
 /// <summary>
-/// Fija el ciclo de vida que PR 3 debe registrar: el cliente de chat es singleton y el motor, igual que el conjunto de
+/// Fija el ciclo de vida del motor: el registro de instantáneas es singleton y el motor, igual que el conjunto de
 /// herramientas, es de ámbito de petición (depende de la identidad y de los repositorios del ámbito).
 /// </summary>
 public sealed class EngineLifetimeTests
@@ -27,9 +27,9 @@ public sealed class EngineLifetimeTests
         services.AddSingleton<TimeProvider>(new FakeTimeProvider());
         services.AddLogging();
         services.AddSingleton(Options.Create(new AiOptions { Provider = "Ollama", Model = "m", Endpoint = "http://localhost:11434/" }));
-        services.AddSingleton(provider => new AssistantChatClient(
+        services.AddSingleton<IAssistantRuntimeRegistry>(provider => new FakeRuntimeRegistry(new AssistantChatClient(
             new FakeChatClient(_ => new ChatResponse(new ChatMessage(ChatRole.Assistant, "hola"))),
-            provider.GetRequiredService<IOptions<AiOptions>>().Value));
+            provider.GetRequiredService<IOptions<AiOptions>>().Value)));
         services.AddScoped<ICurrentUser>(_ => new FixedCurrentUser(Guid.NewGuid(), UserRole.Employee));
         services.AddScoped<ITimeEntryRepository, InMemoryTimeEntryRepository>();
         services.AddScoped<IUserRepository, InMemoryUserRepository>();

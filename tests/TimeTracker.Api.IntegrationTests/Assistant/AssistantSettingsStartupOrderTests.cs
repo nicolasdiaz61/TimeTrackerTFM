@@ -15,7 +15,7 @@ namespace TimeTracker.Api.IntegrationTests.Assistant;
 [Collection("Postgres")]
 public sealed class AssistantSettingsStartupOrderTests(PostgresFixture postgres)
 {
-    private const string InsertRow = "INSERT INTO assistant_settings (id, provider, model, updated_by, updated_at) VALUES (1, 'Ollama', 'modelo-db', gen_random_uuid(), now())";
+    private const string InsertRow = "INSERT INTO assistant_settings (company_id, provider, model, updated_by, updated_at) VALUES ('00000000-0000-7000-8000-000000000001', 'Ollama', 'modelo-db', gen_random_uuid(), now())";
 
     [Fact]
     public async Task TheFirstLoad_RunsAfterTheMigrationsAndBeforeTheHostFinishesStarting()

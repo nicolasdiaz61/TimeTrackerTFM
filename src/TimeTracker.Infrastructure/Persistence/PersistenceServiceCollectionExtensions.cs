@@ -3,6 +3,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 
 using TimeTracker.Application.Assistant.Configuration;
+using TimeTracker.Application.Companies;
 using TimeTracker.Application.DemoData;
 using TimeTracker.Application.TimeTracking;
 using TimeTracker.Application.Users;
@@ -16,6 +17,11 @@ public static class PersistenceServiceCollectionExtensions
     {
         services.AddDbContext<TimeTrackerDbContext>((provider, options) =>
             options.UseNpgsql(provider.GetRequiredService<IOptions<ConnectionStringOptions>>().Value.Default));
+        // El contexto de compañía (ICompanyContext e ICompanyContextSetter) lo registra Api: su adaptador toma la compañía del token.
+        services.AddSingleton<ICompanyScopeFactory, CompanyScopeFactory>();
+        services.AddScoped<ICompanyRepository, CompanyRepository>();
+        // Abre su propio ámbito de la compañía nueva (CreateScope): no depende del DbContext de la petición anónima.
+        services.AddSingleton<ICompanyRegistrationStore, CompanyRegistrationStore>();
         services.AddScoped<ITimeEntryRepository, TimeEntryRepository>();
         services.AddScoped<IUserRepository, UserRepository>();
         services.AddScoped<IDemoTimeEntryStore, DemoTimeEntryStore>();

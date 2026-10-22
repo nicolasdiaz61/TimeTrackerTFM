@@ -2,6 +2,7 @@ using Microsoft.Extensions.Time.Testing;
 
 using TimeTracker.Application.Tests.Fakes;
 using TimeTracker.Application.TimeTracking;
+using TimeTracker.Domain.Companies;
 using TimeTracker.Domain.TimeTracking;
 
 namespace TimeTracker.Application.Tests;
@@ -19,7 +20,7 @@ public class ClockOutUseCaseTests
     [Fact]
     public async Task ClockOut_WithOpenEntry_ClosesAtNowAndPersists()
     {
-        var open = TimeEntry.Start(EmployeeId, TimeEntryType.Work, EightAm);
+        var open = TimeEntry.Start(Company.DefaultId, EmployeeId, TimeEntryType.Work, EightAm);
         _repository.Seed(open);
 
         var result = await CreateUseCase().ExecuteAsync(CancellationToken.None);
@@ -42,7 +43,7 @@ public class ClockOutUseCaseTests
     [Fact]
     public async Task ClockOut_WhenClockBeforeClockIn_ThrowsAndEntryStaysOpen()
     {
-        var open = TimeEntry.Start(EmployeeId, TimeEntryType.Work, EightAm);
+        var open = TimeEntry.Start(Company.DefaultId, EmployeeId, TimeEntryType.Work, EightAm);
         _repository.Seed(open);
         var earlyClock = new FakeTimeProvider(EightAm.AddHours(-1));
         var useCase = new ClockOutUseCase(_repository, new FixedCurrentUser(EmployeeId), earlyClock);
@@ -58,8 +59,8 @@ public class ClockOutUseCaseTests
     public async Task ClockOut_DoesNotCloseOtherEmployeeEntry()
     {
         var otherEmployee = Guid.Parse("9a7c1e52-0b3d-4f68-8a14-2e5d7b9c4f10");
-        var others = TimeEntry.Start(otherEmployee, TimeEntryType.Work, EightAm);
-        var mine = TimeEntry.Start(EmployeeId, TimeEntryType.Work, EightAm);
+        var others = TimeEntry.Start(Company.DefaultId, otherEmployee, TimeEntryType.Work, EightAm);
+        var mine = TimeEntry.Start(Company.DefaultId, EmployeeId, TimeEntryType.Work, EightAm);
         _repository.Seed(others);
         _repository.Seed(mine);
 
@@ -72,7 +73,7 @@ public class ClockOutUseCaseTests
     [Fact]
     public async Task ClockOut_WithOnlyOtherEmployeeOpenEntry_Throws()
     {
-        var others = TimeEntry.Start(Guid.Parse("9a7c1e52-0b3d-4f68-8a14-2e5d7b9c4f10"), TimeEntryType.Work, EightAm);
+        var others = TimeEntry.Start(Company.DefaultId, Guid.Parse("9a7c1e52-0b3d-4f68-8a14-2e5d7b9c4f10"), TimeEntryType.Work, EightAm);
         _repository.Seed(others);
 
         await Assert.ThrowsAsync<NoOpenTimeEntryException>(
@@ -86,7 +87,7 @@ public class ClockOutUseCaseTests
     [InlineData(TimeEntryType.MealBreak)]
     public async Task ClockOut_DuringBreak_ClosesItAndOpensNothing(TimeEntryType breakType)
     {
-        var pause = TimeEntry.Start(EmployeeId, breakType, EightAm.AddHours(5));
+        var pause = TimeEntry.Start(Company.DefaultId, EmployeeId, breakType, EightAm.AddHours(5));
         _repository.Seed(pause);
 
         var result = await CreateUseCase().ExecuteAsync(CancellationToken.None);

@@ -5,6 +5,7 @@ using Microsoft.Extensions.Options;
 using Microsoft.Extensions.Time.Testing;
 
 using TimeTracker.Api.Authentication;
+using TimeTracker.Domain.Companies;
 using TimeTracker.Domain.Users;
 
 namespace TimeTracker.Api.IntegrationTests.Authentication;
@@ -12,6 +13,8 @@ namespace TimeTracker.Api.IntegrationTests.Authentication;
 public class JwtAccessTokenIssuerTests
 {
     private const string StoredHash = "hash-almacenado-que-no-debe-salir";
+
+    private const string CompanyName = "Acme Norte";
 
     private static readonly DateTimeOffset Now = new(2026, 10, 12, 8, 0, 0, TimeSpan.Zero);
 
@@ -22,7 +25,7 @@ public class JwtAccessTokenIssuerTests
     {
         var user = NewUser();
 
-        var token = CreateIssuer().Issue(user).Value;
+        var token = CreateIssuer().Issue(user, CompanyName).Value;
 
         var (header, payload) = Decode(token);
         Assert.Equal("HS256", header.GetProperty("alg").GetString());
@@ -42,7 +45,7 @@ public class JwtAccessTokenIssuerTests
     [Fact]
     public void Issue_ExpiresThirtyMinutesAfterNow()
     {
-        var accessToken = CreateIssuer().Issue(NewUser());
+        var accessToken = CreateIssuer().Issue(NewUser(), CompanyName);
 
         var (_, payload) = Decode(accessToken.Value);
         var expected = new DateTimeOffset(2026, 10, 12, 8, 30, 0, TimeSpan.Zero);
@@ -57,7 +60,7 @@ public class JwtAccessTokenIssuerTests
     {
         _clock.Advance(TimeSpan.FromMilliseconds(700));
 
-        var accessToken = CreateIssuer().Issue(NewUser());
+        var accessToken = CreateIssuer().Issue(NewUser(), CompanyName);
 
         // La respuesta del login y el claim exp deben coincidir: el token solo guarda segundos enteros.
         var (_, payload) = Decode(accessToken.Value);
@@ -68,7 +71,7 @@ public class JwtAccessTokenIssuerTests
     [Fact]
     public void Issue_DoesNotContainHashOrPassword()
     {
-        var token = CreateIssuer().Issue(NewUser()).Value;
+        var token = CreateIssuer().Issue(NewUser(), CompanyName).Value;
 
         var (_, payload) = Decode(token);
         var text = payload.GetRawText();
@@ -82,14 +85,42 @@ public class JwtAccessTokenIssuerTests
         var issuer = CreateIssuer();
         var user = NewUser();
 
-        var first = Decode(issuer.Issue(user).Value).Payload.GetProperty("jti").GetString();
-        var second = Decode(issuer.Issue(user).Value).Payload.GetProperty("jti").GetString();
+        var first = Decode(issuer.Issue(user, CompanyName).Value).Payload.GetProperty("jti").GetString();
+        var second = Decode(issuer.Issue(user, CompanyName).Value).Payload.GetProperty("jti").GetString();
 
         Assert.NotEqual(first, second);
     }
 
-    private static UserAccount NewUser()
-        => UserAccount.Create(Guid.NewGuid(), "Marta.Responsable@example.test", "Marta Ejemplo", StoredHash, UserRole.Manager, managerId: null);
+    [Fact]
+    public void Issue_CarriesTheCompanyIdAndNameClaimsAndNoPasswordChangeMarker()
+    {
+        var companyId = Guid.Parse("f3c5a0de-5b6e-4e77-8a3b-2d8c9b1e4a77");
+
+        var (_, payload) = Decode(CreateIssuer().Issue(NewUser(companyId: companyId), CompanyName).Value);
+
+        Assert.Equal(companyId.ToString(), payload.GetProperty("cid").GetString());
+        Assert.Equal(CompanyName, payload.GetProperty("cname").GetString());
+        Assert.False(payload.TryGetProperty("mcp", out _));
+    }
+
+    [Fact]
+    public void Issue_WithAPendingPasswordChange_AddsTheMcpClaimAsTrue()
+    {
+        var (_, payload) = Decode(CreateIssuer().Issue(NewUser(mustChangePassword: true), CompanyName).Value);
+
+        Assert.Equal("true", payload.GetProperty("mcp").GetString());
+    }
+
+    [Fact]
+    public void Issue_NeverWritesACompanyIdPropertyName()
+    {
+        var (_, payload) = Decode(CreateIssuer().Issue(NewUser(), CompanyName).Value);
+
+        Assert.False(payload.TryGetProperty("companyId", out _));
+    }
+
+    private static UserAccount NewUser(bool mustChangePassword = false, Guid? companyId = null)
+        => UserAccount.Create(Guid.NewGuid(), companyId ?? Company.DefaultId, "Marta.Responsable@example.test", "Marta Ejemplo", StoredHash, UserRole.Manager, managerId: null, mustChangePassword);
 
     private JwtAccessTokenIssuer CreateIssuer()
         => new(Options.Create(new JwtOptions { SigningKey = ApiFactory.ValidSigningKey }), _clock);

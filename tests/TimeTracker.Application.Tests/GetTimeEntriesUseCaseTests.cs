@@ -1,5 +1,6 @@
 using TimeTracker.Application.Tests.Fakes;
 using TimeTracker.Application.TimeTracking;
+using TimeTracker.Domain.Companies;
 using TimeTracker.Domain.TimeTracking;
 
 namespace TimeTracker.Application.Tests;
@@ -15,7 +16,7 @@ public class GetTimeEntriesUseCaseTests
 
     private TimeEntry SeedClosed(DateTimeOffset clockIn, int minutes)
     {
-        var entry = TimeEntry.Start(EmployeeId, TimeEntryType.Work, clockIn);
+        var entry = TimeEntry.Start(Company.DefaultId, EmployeeId, TimeEntryType.Work, clockIn);
         entry.Close(clockIn.AddMinutes(minutes));
         _repository.Seed(entry);
         return entry;
@@ -26,7 +27,7 @@ public class GetTimeEntriesUseCaseTests
     {
         SeedClosed(EightAm, 60);
         SeedClosed(EightAm.AddHours(2), 30);
-        var open = TimeEntry.Start(EmployeeId, TimeEntryType.Work, EightAm.AddHours(4));
+        var open = TimeEntry.Start(Company.DefaultId, EmployeeId, TimeEntryType.Work, EightAm.AddHours(4));
         _repository.Seed(open);
 
         var result = await CreateUseCase().ExecuteAsync(null, CancellationToken.None);
@@ -122,7 +123,7 @@ public class GetTimeEntriesUseCaseTests
     public async Task Get_WithAWindow_StatusComesFromTheOpenEntryOutsideIt()
     {
         SeedClosed(EightAm.AddDays(-60), 30);
-        _repository.Seed(TimeEntry.Start(EmployeeId, TimeEntryType.Break, EightAm));
+        _repository.Seed(TimeEntry.Start(Company.DefaultId, EmployeeId, TimeEntryType.Break, EightAm));
 
         var result = await CreateUseCase().ExecuteAsync(WindowOf(EightAm.AddDays(-61), EightAm.AddDays(-59)), CancellationToken.None);
 
@@ -133,7 +134,7 @@ public class GetTimeEntriesUseCaseTests
     [Fact]
     public async Task Get_WithAWindow_IncludesAnOpenEntryStartedBeforeItsEnd()
     {
-        var open = TimeEntry.Start(EmployeeId, TimeEntryType.Work, EightAm);
+        var open = TimeEntry.Start(Company.DefaultId, EmployeeId, TimeEntryType.Work, EightAm);
         _repository.Seed(open);
 
         var result = await CreateUseCase().ExecuteAsync(WindowOf(EightAm.AddDays(1), EightAm.AddDays(2)), CancellationToken.None);

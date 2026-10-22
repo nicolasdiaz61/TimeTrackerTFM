@@ -18,6 +18,8 @@ public static class AssistantEndpoints
     public const string DisabledDetail = "El asistente no está disponible en este entorno.";
     public const string UnavailableDetail = "El asistente no está disponible en este momento. Inténtelo de nuevo más tarde.";
     public const string DailyLimitDetail = "Ha alcanzado el límite diario de consultas al asistente. Inténtelo de nuevo mañana.";
+    public const string CompanyMinuteLimitDetail = "Su compañía ha superado el límite de consultas por minuto. Inténtelo de nuevo en unos segundos.";
+    public const string CompanyDailyLimitDetail = "Su compañía ha alcanzado el tope diario de consultas del asistente.";
 
     // Mismo título en los dos 503: solo cambia el detalle (DD-16).
     private const string UnavailableTitle = "Asistente no disponible";
@@ -60,13 +62,20 @@ public static class AssistantEndpoints
             case AskAssistantResult.QuotaExceeded exceeded:
                 response.Headers.RetryAfter = RateLimitingServiceCollectionExtensions.RetryAfterSeconds(exceeded.RetryAfter)
                     .ToString(CultureInfo.InvariantCulture);
-                return Problem(StatusCodes.Status429TooManyRequests, "Demasiadas solicitudes", DailyLimitDetail);
+                return Problem(StatusCodes.Status429TooManyRequests, "Demasiadas solicitudes", QuotaDetail(exceeded.Scope));
             case AskAssistantResult.Unavailable { Disabled: true }:
                 return Problem(StatusCodes.Status503ServiceUnavailable, UnavailableTitle, DisabledDetail);
             default:
                 return Problem(StatusCodes.Status503ServiceUnavailable, UnavailableTitle, UnavailableDetail);
         }
     }
+
+    private static string QuotaDetail(QuotaScope scope) => scope switch
+    {
+        QuotaScope.CompanyMinute => CompanyMinuteLimitDetail,
+        QuotaScope.CompanyDaily => CompanyDailyLimitDetail,
+        _ => DailyLimitDetail,
+    };
 
     private static ProblemHttpResult Problem(int status, string title, string detail)
         => TypedResults.Problem(detail: detail, statusCode: status, title: title);

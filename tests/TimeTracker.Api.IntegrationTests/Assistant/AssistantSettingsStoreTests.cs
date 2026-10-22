@@ -6,7 +6,9 @@ using Microsoft.Extensions.Options;
 using Npgsql;
 
 using TimeTracker.Api.IntegrationTests.Postgres;
+using TimeTracker.Api.IntegrationTests.Support;
 using TimeTracker.Application.Assistant.Configuration;
+using TimeTracker.Domain.Companies;
 using TimeTracker.Infrastructure.Assistant;
 using TimeTracker.Infrastructure.Persistence;
 
@@ -144,21 +146,21 @@ public sealed class AssistantSettingsStoreTests(PostgresFixture postgres) : IAsy
     public async Task TheStoredCredential_DoesNotContainThePlainKeyAndDecryptsBack()
     {
         var protector = CreateProtector();
-        var encrypted = protector.Protect(new AssistantCredential(Secret), AssistantProvider.Anthropic);
+        var encrypted = protector.Protect(new AssistantCredential(Secret), AssistantProvider.Anthropic, Company.DefaultId);
 
         await SaveAsync(Settings("m", encrypted), NoRow);
 
         var column = (byte[])(await ScalarAsync("SELECT credential_ciphertext FROM assistant_settings"))!;
         Assert.DoesNotContain(Secret, Encoding.UTF8.GetString(column), StringComparison.Ordinal);
         var stored = (await GetAsync())!.Credential!;
-        Assert.True(protector.TryUnprotect(stored, AssistantProvider.Anthropic, out var plaintext));
+        Assert.True(protector.TryUnprotect(stored, AssistantProvider.Anthropic, Company.DefaultId, out var plaintext));
         Assert.Equal(Secret, plaintext!.Value);
     }
 
     [Theory]
-    [InlineData("INSERT INTO assistant_settings (id, provider, updated_by, updated_at) VALUES (2, 'None', gen_random_uuid(), now())", "ck_assistant_settings_singleton")]
-    [InlineData("INSERT INTO assistant_settings (id, provider, updated_by, updated_at, credential_ciphertext) VALUES (1, 'None', gen_random_uuid(), now(), '\\x01')", "ck_assistant_settings_credential_all_or_none")]
-    [InlineData("INSERT INTO assistant_settings (id, provider, updated_by, updated_at, credential_ciphertext, credential_nonce, credential_key_version) VALUES (1, 'None', gen_random_uuid(), now(), '\\x01', '\\x0102', 1)", "ck_assistant_settings_credential_nonce_length")]
+    [InlineData("INSERT INTO assistant_settings (company_id, provider, updated_by, updated_at) VALUES (gen_random_uuid(), 'None', gen_random_uuid(), now())", "fk_assistant_settings_companies_company_id")]
+    [InlineData("INSERT INTO assistant_settings (company_id, provider, updated_by, updated_at, credential_ciphertext) VALUES ('00000000-0000-7000-8000-000000000001', 'None', gen_random_uuid(), now(), '\\x01')", "ck_assistant_settings_credential_all_or_none")]
+    [InlineData("INSERT INTO assistant_settings (company_id, provider, updated_by, updated_at, credential_ciphertext, credential_nonce, credential_key_version) VALUES ('00000000-0000-7000-8000-000000000001', 'None', gen_random_uuid(), now(), '\\x01', '\\x0102', 1)", "ck_assistant_settings_credential_nonce_length")]
     public async Task Check_RejectsInvalidRows(string sql, string constraint)
     {
         var error = await Assert.ThrowsAsync<PostgresException>(() => ExecuteAsync(sql));
@@ -168,7 +170,7 @@ public sealed class AssistantSettingsStoreTests(PostgresFixture postgres) : IAsy
 
     [Fact]
     public async Task Check_AcceptsARowWithTheThreeCredentialColumnsAndAValidNonce()
-        => await ExecuteAsync("INSERT INTO assistant_settings (id, provider, updated_by, updated_at, credential_ciphertext, credential_nonce, credential_key_version) VALUES (1, 'None', gen_random_uuid(), now(), '\\x01', '\\x000102030405060708090a0b', 1)");
+        => await ExecuteAsync("INSERT INTO assistant_settings (company_id, provider, updated_by, updated_at, credential_ciphertext, credential_nonce, credential_key_version) VALUES ('00000000-0000-7000-8000-000000000001', 'None', gen_random_uuid(), now(), '\\x01', '\\x000102030405060708090a0b', 1)");
 
     [Fact]
     public async Task Delete_WithTheCurrentToken_RemovesTheRowAndAuditsTheReset()
@@ -241,7 +243,7 @@ public sealed class AssistantSettingsStoreTests(PostgresFixture postgres) : IAsy
     public async Task WhenTheTableDoesNotExist_ReadsReturnNoRowAndZero()
     {
         var emptyDatabase = await postgres.CreateEmptyDatabaseAsync();
-        var store = new AssistantSettingsStore(postgres.CreateContext(emptyDatabase));
+        var store = postgres.CreateAssistantStore(emptyDatabase);
 
         Assert.Null(await store.GetAsync(CancellationToken.None));
         Assert.Equal(NoRow, await store.GetVersionAsync(CancellationToken.None));
@@ -251,7 +253,7 @@ public sealed class AssistantSettingsStoreTests(PostgresFixture postgres) : IAsy
     public async Task WhenTheDatabaseIsUnreachable_TheExceptionPropagates()
     {
         var unreachable = new NpgsqlConnectionStringBuilder(_connectionString) { Port = 1, Timeout = 2 }.ConnectionString;
-        var store = new AssistantSettingsStore(postgres.CreateContext(unreachable));
+        var store = postgres.CreateAssistantStore(unreachable);
 
         // EF Core envuelve el fallo de conexión: lo que importa es que no se confunde con «sin fila».
         var read = await Assert.ThrowsAnyAsync<Exception>(() => store.GetAsync(CancellationToken.None));
@@ -284,9 +286,9 @@ public sealed class AssistantSettingsStoreTests(PostgresFixture postgres) : IAsy
         => new(new TimeTrackerDbContext(new DbContextOptionsBuilder<TimeTrackerDbContext>()
             .UseNpgsql(_connectionString)
             .AddInterceptors(new RacingSqlInterceptor(_connectionString, sql))
-            .Options));
+            .Options, new TestCompanyContext(Company.DefaultId)), new TestCompanyContext(Company.DefaultId));
 
-    private AssistantSettingsStore NewStore() => new(postgres.CreateContext(_connectionString));
+    private AssistantSettingsStore NewStore() => postgres.CreateAssistantStore(_connectionString);
 
     private Task<SaveOutcome> SaveAsync(AssistantSettings settings, string token)
         => NewStore().SaveAsync(settings, token, Audit(), CancellationToken.None);

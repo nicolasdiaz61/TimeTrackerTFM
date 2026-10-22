@@ -21,7 +21,11 @@ namespace TimeTracker.Api.IntegrationTests.Assistant;
 /// fábrica falsa que responde «respuesta de {modelo}», así que el modelo usado se lee de la respuesta del chat. El reloj de la
 /// aplicación es ficticio (FakeTimeProvider): el sondeo avanza con PollOnceAsync, no con el tiempo real.
 /// </summary>
-internal sealed class ReloadApiFactory(string connectionString, bool applyMigrations = false, string? masterKey = null) : ApiFactory
+internal sealed class ReloadApiFactory(
+    string connectionString,
+    bool applyMigrations = false,
+    string? masterKey = null,
+    IReadOnlyDictionary<string, string?>? settings = null) : ApiFactory
 {
     public const string EnvironmentModel = "modelo-env";
 
@@ -48,6 +52,11 @@ internal sealed class ReloadApiFactory(string connectionString, bool applyMigrat
         {
             builder.UseSetting("Ai:MasterKeys:1", masterKey);
             builder.UseSetting("Ai:ActiveMasterKeyVersion", "1");
+        }
+
+        foreach (var (key, value) in settings ?? new Dictionary<string, string?>())
+        {
+            builder.UseSetting(key, value);
         }
 
         builder.ConfigureLogging(logging => logging.AddProvider(Logs));
@@ -125,6 +134,9 @@ internal sealed class ObservingSettingsStore(IAssistantSettingsStore inner, Stor
 
     public Task<SaveOutcome> SaveAsync(AssistantSettings next, string expectedToken, AuditEntry audit, CancellationToken cancellationToken)
         => inner.SaveAsync(next, expectedToken, audit, cancellationToken);
+
+    public Task<IReadOnlyList<CompanyVersion>> ListVersionsAsync(CancellationToken cancellationToken)
+        => inner.ListVersionsAsync(cancellationToken);
 
     public Task<DeleteOutcome> DeleteAsync(string expectedToken, AuditEntry audit, CancellationToken cancellationToken)
         => inner.DeleteAsync(expectedToken, audit, cancellationToken);

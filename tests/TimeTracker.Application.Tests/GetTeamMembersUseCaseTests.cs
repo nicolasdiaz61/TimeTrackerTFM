@@ -1,5 +1,6 @@
 using TimeTracker.Application.Team;
 using TimeTracker.Application.Tests.Fakes;
+using TimeTracker.Domain.Companies;
 using TimeTracker.Domain.Users;
 
 namespace TimeTracker.Application.Tests;
@@ -13,7 +14,7 @@ public class GetTeamMembersUseCaseTests
     private GetTeamMembersUseCase CreateUseCase(Guid currentUserId) => new(_users, new FixedCurrentUser(currentUserId));
 
     private static UserAccount NewUser(string name, Guid? managerId, Guid? id = null)
-        => UserAccount.Create(id ?? Guid.NewGuid(), $"{Guid.NewGuid():N}@example.test", name, "hash-de-prueba", UserRole.Employee, managerId);
+        => UserAccount.Create(id ?? Guid.NewGuid(), Company.DefaultId, $"{Guid.NewGuid():N}@example.test", name, "hash-de-prueba", UserRole.Employee, managerId);
 
     [Fact]
     public async Task Get_ReturnsOnlyDirectReportsOfTheCurrentUser()

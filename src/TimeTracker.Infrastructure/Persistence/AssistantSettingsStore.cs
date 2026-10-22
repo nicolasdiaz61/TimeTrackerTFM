@@ -6,11 +6,17 @@ using Microsoft.EntityFrameworkCore;
 using Npgsql;
 
 using TimeTracker.Application.Assistant.Configuration;
+using TimeTracker.Application.Identity;
 
 namespace TimeTracker.Infrastructure.Persistence;
 
-/// <summary>Almacén PostgreSQL de la fila única de configuración; la fila y su auditoría se confirman en una sola transacción (DD-8, DD-9).</summary>
-public sealed class AssistantSettingsStore(TimeTrackerDbContext context) : IAssistantSettingsStore
+/// <summary>
+/// Almacén PostgreSQL de la configuración del asistente; la fila y su auditoría se confirman en una sola transacción (DD-8, DD-9).
+/// Actúa solo sobre la fila de la compañía del contexto (DD-13): las lecturas las acota el filtro global de consulta y las
+/// escrituras fijan <c>CompanyId</c> desde <see cref="ICompanyContext"/>, que la guarda de <c>SaveChanges</c> vuelve a comprobar.
+/// La clave primaria es <c>company_id</c>: una fila por compañía y un token de concurrencia (<c>xmin</c>) por fila.
+/// </summary>
+public sealed class AssistantSettingsStore(TimeTrackerDbContext context, ICompanyContext companyContext) : IAssistantSettingsStore
 {
     // Un xmin real nunca es 0 (los identificadores de transacción empiezan en 3): el 0 es el centinela «sin fila» del contrato.
     private const string NoRowToken = "0";
@@ -20,11 +26,17 @@ public sealed class AssistantSettingsStore(TimeTrackerDbContext context) : IAssi
 
     private static readonly JsonSerializerOptions AuditJson = new(JsonSerializerDefaults.Web);
 
+    // El filtro global acota la consulta a la compañía del contexto; sin compañía no devuelve filas.
+    private IQueryable<AssistantSettingsRecord> Rows() => context.Set<AssistantSettingsRecord>();
+
+    // Las escrituras exigen compañía: nunca se inventa una por defecto.
+    private Guid CompanyForWrite => companyContext.CompanyId ?? throw new InvalidOperationException("No hay compañía en el contexto: no se puede escribir la configuración del asistente.");
+
     public async Task<AssistantSettings?> GetAsync(CancellationToken cancellationToken)
     {
         try
         {
-            var read = await context.Set<AssistantSettingsRecord>()
+            var read = await Rows()
                 .AsNoTracking()
                 .Select(row => new { Row = row, Xmin = EF.Property<uint>(row, XminColumn) })
                 .FirstOrDefaultAsync(cancellationToken);
@@ -40,7 +52,7 @@ public sealed class AssistantSettingsStore(TimeTrackerDbContext context) : IAssi
     {
         try
         {
-            var xmin = await context.Set<AssistantSettingsRecord>()
+            var xmin = await Rows()
                 .AsNoTracking()
                 .Select(row => (uint?)EF.Property<uint>(row, XminColumn))
                 .FirstOrDefaultAsync(cancellationToken);
@@ -49,6 +61,25 @@ public sealed class AssistantSettingsStore(TimeTrackerDbContext context) : IAssi
         catch (PostgresException exception) when (IsMissingTable(exception))
         {
             return NoRowToken;
+        }
+    }
+
+    public async Task<IReadOnlyList<CompanyVersion>> ListVersionsAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            // company-filter-bypass: el sondeo global lee la versión de todas las compañías (DD-15); no hay compañía en su contexto y no lee datos de configuración.
+            var rows = await (
+                from company in context.Companies.AsNoTracking()
+                join settings in context.Set<AssistantSettingsRecord>().IgnoreQueryFilters().AsNoTracking() on company.Id equals settings.CompanyId into joined
+                from row in joined.DefaultIfEmpty()
+                select new { company.Id, company.UsesPlatformAssistant, Xmin = row == null ? (uint?)null : EF.Property<uint>(row, XminColumn) })
+                .ToListAsync(cancellationToken);
+            return [.. rows.Select(row => new CompanyVersion(row.Id, row.Xmin is { } xmin ? Token(xmin) : NoRowToken, row.UsesPlatformAssistant))];
+        }
+        catch (PostgresException exception) when (IsMissingTable(exception))
+        {
+            return [];
         }
     }
 
@@ -66,7 +97,7 @@ public sealed class AssistantSettingsStore(TimeTrackerDbContext context) : IAssi
 
     public async Task<DeleteOutcome> DeleteAsync(string expectedToken, AuditEntry audit, CancellationToken cancellationToken)
     {
-        if (await context.Set<AssistantSettingsRecord>().FirstOrDefaultAsync(cancellationToken) is not { } row)
+        if (await Rows().FirstOrDefaultAsync(cancellationToken) is not { } row)
         {
             return DeleteOutcome.NotFound;
         }
@@ -87,7 +118,7 @@ public sealed class AssistantSettingsStore(TimeTrackerDbContext context) : IAssi
         {
             // Cero filas afectadas: o la borró otro Manager (mismo estado final pedido, idempotente) o la cambió (hay que avisar).
             context.ChangeTracker.Clear();
-            return await context.Set<AssistantSettingsRecord>().AnyAsync(cancellationToken) ? DeleteOutcome.Conflict : DeleteOutcome.NotFound;
+            return await Rows().AnyAsync(cancellationToken) ? DeleteOutcome.Conflict : DeleteOutcome.NotFound;
         }
 
         return DeleteOutcome.Deleted;
@@ -101,13 +132,13 @@ public sealed class AssistantSettingsStore(TimeTrackerDbContext context) : IAssi
     {
         if (expectedToken == NoRowToken)
         {
-            var created = new AssistantSettingsRecord();
+            var created = new AssistantSettingsRecord { CompanyId = CompanyForWrite };
             context.Add(created);
             return created;
         }
 
         if (!uint.TryParse(expectedToken, NumberStyles.None, CultureInfo.InvariantCulture, out var expected)
-            || await context.Set<AssistantSettingsRecord>().FirstOrDefaultAsync(cancellationToken) is not { } existing)
+            || await Rows().FirstOrDefaultAsync(cancellationToken) is not { } existing)
         {
             return null;
         }
@@ -164,9 +195,10 @@ public sealed class AssistantSettingsStore(TimeTrackerDbContext context) : IAssi
             row.UpdatedAt,
             Token(xmin));
 
-    private static AssistantSettingsAuditRecord ToAuditRecord(AuditEntry audit)
+    private AssistantSettingsAuditRecord ToAuditRecord(AuditEntry audit)
         => new()
         {
+            CompanyId = CompanyForWrite,
             OccurredAt = audit.OccurredAt.ToUniversalTime(),
             ActorId = audit.ActorId,
             Action = audit.Action.ToString(),

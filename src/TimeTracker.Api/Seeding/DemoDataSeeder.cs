@@ -2,7 +2,9 @@ using Microsoft.Extensions.Options;
 
 using TimeTracker.Application.DemoData;
 using TimeTracker.Application.Users;
+using TimeTracker.Domain.Companies;
 using TimeTracker.Domain.Users;
+using TimeTracker.Infrastructure.Persistence;
 
 namespace TimeTracker.Api.Seeding;
 
@@ -23,14 +25,15 @@ public sealed partial class DemoDataSeeder(
             return;
         }
 
-        await using var scope = services.CreateAsyncScope();
+        // La siembra actúa como la compañía por defecto (DD-22).
+        await using var scope = services.GetRequiredService<ICompanyScopeFactory>().CreateScope(Company.DefaultId);
         var users = scope.ServiceProvider.GetRequiredService<IUserRepository>();
         var employees = new List<DemoEmployee>();
         foreach (var demo in DemoUsers.All)
         {
             var user = await users.FindByEmailAsync(UserAccount.NormalizeEmail(demo.Email), cancellationToken)
                 ?? throw new InvalidOperationException("Seed:DemoData: falta un usuario de demostración; los fichajes demo se siembran tras Seed:DemoUsers.");
-            employees.Add(new DemoEmployee(user.Id, demo.Schedule));
+            employees.Add(new DemoEmployee(user.Id, user.CompanyId, demo.Schedule));
         }
 
         var result = await scope.ServiceProvider.GetRequiredService<SeedDemoTimeEntriesUseCase>().ExecuteAsync(employees, cancellationToken);

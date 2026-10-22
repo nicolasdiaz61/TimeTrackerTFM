@@ -27,7 +27,7 @@ public sealed class SeedDemoTimeEntriesUseCase(IDemoTimeEntryStore store, TimePr
             var occupiedDays = starts.Select(SpainTime.DateOf).ToHashSet();
             for (var day = firstDay; day < today; day = day.AddDays(1))
             {
-                var entries = DemoScheduleGenerator.GenerateDay(employee.Id, employee.Profile, day);
+                var entries = DemoScheduleGenerator.GenerateDay(employee.CompanyId, employee.Id, employee.Profile, day);
                 if (entries.Count == 0)
                 {
                     continue;

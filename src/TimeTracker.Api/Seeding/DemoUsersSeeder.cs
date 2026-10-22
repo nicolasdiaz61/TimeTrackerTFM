@@ -1,8 +1,11 @@
 using Microsoft.Extensions.Options;
 
 using TimeTracker.Application.Authentication;
+using TimeTracker.Application.Companies;
 using TimeTracker.Application.Users;
+using TimeTracker.Domain.Companies;
 using TimeTracker.Domain.Users;
+using TimeTracker.Infrastructure.Persistence;
 
 namespace TimeTracker.Api.Seeding;
 
@@ -24,9 +27,13 @@ public sealed partial class DemoUsersSeeder(
             return;
         }
 
-        await using var scope = services.CreateAsyncScope();
+        // La siembra actúa como la compañía por defecto (DD-22).
+        await using var scope = services.GetRequiredService<ICompanyScopeFactory>().CreateScope(Company.DefaultId);
         var users = scope.ServiceProvider.GetRequiredService<IUserRepository>();
         var hasher = scope.ServiceProvider.GetRequiredService<IPasswordHasher>();
+        var companyId = Company.DefaultId;
+        await scope.ServiceProvider.GetRequiredService<ICompanyRepository>().EnsureDefaultAsync(cancellationToken);
+        var existingByEmail = await FindExistingAsync(companyId);
         var created = 0;
 
         // Idempotente por correo: un usuario existente no se modifica y los vínculos usan el id vigente de Marta.
@@ -42,14 +49,14 @@ public sealed partial class DemoUsersSeeder(
 
         async Task<(UserAccount User, bool Created)> EnsureAsync(DemoUser demo, Guid? managerId)
         {
-            var existing = await users.FindByEmailAsync(UserAccount.NormalizeEmail(demo.Email), cancellationToken);
-            if (existing is not null)
+            if (existingByEmail.TryGetValue(demo.Email, out var existing))
             {
                 return (existing, false);
             }
 
             var user = UserAccount.Create(
                 Guid.CreateVersion7(clock.GetUtcNow()),
+                companyId,
                 demo.Email,
                 demo.DisplayName,
                 hasher.Hash(options.Value.DemoPassword!),
@@ -57,6 +64,30 @@ public sealed partial class DemoUsersSeeder(
                 managerId);
             await users.AddAsync(user, cancellationToken);
             return (user, true);
+        }
+
+        // Se comprueban todos antes de crear ninguno: un correo demo de otra compañía detiene el arranque sin sembrar nada.
+        async Task<Dictionary<string, UserAccount>> FindExistingAsync(Guid expectedCompanyId)
+        {
+            var found = new Dictionary<string, UserAccount>();
+            foreach (var demo in DemoUsers.All)
+            {
+                var user = await users.FindByEmailAsync(UserAccount.NormalizeEmail(demo.Email), cancellationToken);
+                if (user is null)
+                {
+                    continue;
+                }
+
+                if (user.CompanyId != expectedCompanyId)
+                {
+                    throw new InvalidOperationException(
+                        "Seed:DemoUsers: un usuario de demostración ya existe en otra compañía; el arranque se detiene sin modificar nada.");
+                }
+
+                found[demo.Email] = user;
+            }
+
+            return found;
         }
     }
 

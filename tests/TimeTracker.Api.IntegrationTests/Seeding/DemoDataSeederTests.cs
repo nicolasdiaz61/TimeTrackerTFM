@@ -11,6 +11,7 @@ using TimeTracker.Api.IntegrationTests.Postgres;
 using TimeTracker.Api.IntegrationTests.Support;
 using TimeTracker.Application.DemoData;
 using TimeTracker.Application.Time;
+using TimeTracker.Domain.Companies;
 using TimeTracker.Domain.TimeTracking;
 using TimeTracker.Domain.Users;
 
@@ -138,7 +139,7 @@ public class DemoDataSeederTests(PostgresFixture postgres)
 
         var luisId = (await LoadAsync(connectionString)).Users.Single(user => user.Email == LuisEmail).Id;
         var manualDay = new DateOnly(2026, 10, 7);
-        var manual = TimeEntry.Start(luisId, TimeEntryType.Work, SpainTime.ToUtc(manualDay, new TimeOnly(9, 0)));
+        var manual = TimeEntry.Start(Company.DefaultId, luisId, TimeEntryType.Work, SpainTime.ToUtc(manualDay, new TimeOnly(9, 0)));
         manual.Close(SpainTime.ToUtc(manualDay, new TimeOnly(9, 40)));
         await using (var context = postgres.CreateContext(connectionString))
         {

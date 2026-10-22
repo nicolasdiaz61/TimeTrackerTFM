@@ -9,25 +9,27 @@ public sealed class AssistantRuntimeReloaderTests
 {
     private const string Secret = "clave-prueba-123456";
 
+    private static readonly Guid CompanyA = Guid.Parse("00000000-0000-4000-8000-0000000000a1");
+
     [Fact]
-    public async Task ReloadAsync_RunsTheLoaderOnceAndLogsNothingOnSuccess()
+    public async Task ReloadAsync_ReloadsTheGivenCompanyOnceAndLogsNothingOnSuccess()
     {
-        var loader = new FakeSettingsLoader();
+        var registry = new FakeRuntimeRegistry();
         var logger = new CapturingLogger<AssistantRuntimeReloader>();
 
-        await new AssistantRuntimeReloader(loader, logger).ReloadAsync(CancellationToken.None);
+        await new AssistantRuntimeReloader(registry, logger).ReloadAsync(CompanyA, CancellationToken.None);
 
-        Assert.Equal(1, loader.Loads);
+        Assert.Equal([CompanyA], registry.Reloads);
         Assert.Empty(logger.Entries);
     }
 
     [Fact]
-    public async Task ReloadAsync_WhenTheLoaderFails_LogsAWarningWithOnlyTheExceptionTypeAndRethrows()
+    public async Task ReloadAsync_WhenTheRegistryFails_LogsAWarningWithOnlyTheExceptionTypeAndRethrows()
     {
-        var loader = new FakeSettingsLoader { LoadFailure = new InvalidOperationException($"fallo con {Secret}") };
+        var registry = new FakeRuntimeRegistry { OnReload = (_, _) => throw new InvalidOperationException($"fallo con {Secret}") };
         var logger = new CapturingLogger<AssistantRuntimeReloader>();
 
-        await Assert.ThrowsAsync<InvalidOperationException>(() => new AssistantRuntimeReloader(loader, logger).ReloadAsync(CancellationToken.None));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => new AssistantRuntimeReloader(registry, logger).ReloadAsync(CompanyA, CancellationToken.None));
 
         var entry = Assert.Single(logger.Entries);
         Assert.Equal(LogLevel.Warning, entry.Level);
@@ -39,11 +41,12 @@ public sealed class AssistantRuntimeReloaderTests
     [Fact]
     public async Task ReloadAsync_WhenCancelled_RethrowsWithoutLoggingAFailure()
     {
-        var loader = new FakeSettingsLoader { LoadGate = new TaskCompletionSource() };
+        var gate = new TaskCompletionSource();
+        var registry = new FakeRuntimeRegistry { OnReload = (_, token) => gate.Task.WaitAsync(token) };
         var logger = new CapturingLogger<AssistantRuntimeReloader>();
         using var cancellation = new CancellationTokenSource();
 
-        var pending = new AssistantRuntimeReloader(loader, logger).ReloadAsync(cancellation.Token);
+        var pending = new AssistantRuntimeReloader(registry, logger).ReloadAsync(CompanyA, cancellation.Token);
         await cancellation.CancelAsync();
 
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => pending);

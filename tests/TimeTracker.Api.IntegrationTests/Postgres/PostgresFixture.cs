@@ -4,6 +4,8 @@ using Npgsql;
 
 using Testcontainers.PostgreSql;
 
+using TimeTracker.Api.IntegrationTests.Support;
+using TimeTracker.Domain.Companies;
 using TimeTracker.Infrastructure.Persistence;
 
 namespace TimeTracker.Api.IntegrationTests.Postgres;
@@ -41,8 +43,22 @@ public sealed class PostgresFixture : IAsyncLifetime
 
     public async Task DisposeAsync() => await _container.DisposeAsync();
 
-    public TimeTrackerDbContext CreateContext(string connectionString)
-        => new(new DbContextOptionsBuilder<TimeTrackerDbContext>().UseNpgsql(connectionString).Options);
+    /// <summary>Contexto con la compañía indicada (por defecto la compañía por defecto, a la que pertenecen los datos de las fábricas).</summary>
+    public TimeTrackerDbContext CreateContext(string connectionString, Guid? companyId = null)
+        => new(
+            new DbContextOptionsBuilder<TimeTrackerDbContext>().UseNpgsql(connectionString).Options,
+            new TestCompanyContext(companyId ?? Company.DefaultId));
+
+    /// <summary>Almacén de la configuración del asistente con la compañía indicada como contexto (por defecto la compañía por defecto).</summary>
+    public AssistantSettingsStore CreateAssistantStore(string connectionString, Guid? companyId = null)
+        => CreateAssistantStoreFor(connectionString, new TestCompanyContext(companyId ?? Company.DefaultId));
+
+    /// <summary>Almacén cuyo contexto no tiene compañía (petición anónima): las lecturas dan cero filas y las escrituras se rechazan.</summary>
+    public AssistantSettingsStore CreateAssistantStoreWithoutCompany(string connectionString)
+        => CreateAssistantStoreFor(connectionString, new TestCompanyContext(null));
+
+    private static AssistantSettingsStore CreateAssistantStoreFor(string connectionString, TestCompanyContext company)
+        => new(new TimeTrackerDbContext(new DbContextOptionsBuilder<TimeTrackerDbContext>().UseNpgsql(connectionString).Options, company), company);
 
     /// <summary>Crea una base vacía (sin migrar) en el mismo servidor y devuelve su cadena de conexión.</summary>
     public async Task<string> CreateEmptyDatabaseAsync()
@@ -55,6 +71,8 @@ public sealed class PostgresFixture : IAsyncLifetime
             await command.ExecuteNonQueryAsync();
         }
 
-        return new NpgsqlConnectionStringBuilder(ConnectionString) { Database = name }.ConnectionString;
+        // Cada base nueva tiene su propio grupo de conexiones: las inactivas se cierran pronto para que decenas de bases no agoten
+        // max_connections del servidor compartido (el síntoma era un 500 aislado en las pruebas con 10 peticiones en paralelo).
+        return new NpgsqlConnectionStringBuilder(ConnectionString) { Database = name, ConnectionIdleLifetime = 2, ConnectionPruningInterval = 1 }.ConnectionString;
     }
 }

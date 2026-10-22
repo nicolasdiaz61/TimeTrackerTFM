@@ -2,6 +2,7 @@ using Microsoft.Extensions.Time.Testing;
 
 using TimeTracker.Application.Tests.Fakes;
 using TimeTracker.Application.TimeTracking;
+using TimeTracker.Domain.Companies;
 using TimeTracker.Domain.TimeTracking;
 
 namespace TimeTracker.Application.Tests;
@@ -21,7 +22,7 @@ public class EndBreakUseCaseTests
     [InlineData(TimeEntryType.MealBreak)]
     public async Task EndBreak_OnBreak_ClosesItAndOpensWorkAtomically(TimeEntryType breakType)
     {
-        var pause = TimeEntry.Start(EmployeeId, breakType, TenAm);
+        var pause = TimeEntry.Start(Company.DefaultId, EmployeeId, breakType, TenAm);
         _repository.Seed(pause);
 
         var result = await CreateUseCase().ExecuteAsync(CancellationToken.None);
@@ -37,7 +38,7 @@ public class EndBreakUseCaseTests
     [Fact]
     public async Task EndBreak_WhileWorking_ThrowsNoOpenBreakAndPersistsNothing()
     {
-        var work = TimeEntry.Start(EmployeeId, TimeEntryType.Work, TenAm);
+        var work = TimeEntry.Start(Company.DefaultId, EmployeeId, TimeEntryType.Work, TenAm);
         _repository.Seed(work);
 
         await Assert.ThrowsAsync<NoOpenBreakException>(() => CreateUseCase().ExecuteAsync(CancellationToken.None));
@@ -57,7 +58,7 @@ public class EndBreakUseCaseTests
     [Fact]
     public async Task EndBreak_WithOnlyOtherEmployeeOnBreak_ThrowsAndLeavesItUntouched()
     {
-        var others = TimeEntry.Start(Guid.Parse("9a7c1e52-0b3d-4f68-8a14-2e5d7b9c4f10"), TimeEntryType.Break, TenAm);
+        var others = TimeEntry.Start(Company.DefaultId, Guid.Parse("9a7c1e52-0b3d-4f68-8a14-2e5d7b9c4f10"), TimeEntryType.Break, TenAm);
         _repository.Seed(others);
 
         await Assert.ThrowsAsync<NoOpenBreakException>(() => CreateUseCase().ExecuteAsync(CancellationToken.None));

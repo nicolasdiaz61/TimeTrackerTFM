@@ -10,9 +10,10 @@ namespace TimeTracker.Domain.TimeTracking;
 /// </remarks>
 public sealed class TimeEntry
 {
-    private TimeEntry(Guid id, Guid employeeId, TimeEntryType type, DateTimeOffset clockInAt, DateTimeOffset? clockOutAt)
+    private TimeEntry(Guid id, Guid companyId, Guid employeeId, TimeEntryType type, DateTimeOffset clockInAt, DateTimeOffset? clockOutAt)
     {
         Id = id;
+        CompanyId = companyId;
         EmployeeId = employeeId;
         Type = type;
         ClockInAt = clockInAt;
@@ -20,6 +21,8 @@ public sealed class TimeEntry
     }
 
     public Guid Id { get; }
+
+    public Guid CompanyId { get; }
 
     public Guid EmployeeId { get; }
 
@@ -79,8 +82,13 @@ public sealed class TimeEntry
     public WorkedHours? CalculateDuration()
         => IsOpen ? null : WorkedHours.FromMinutes(checked((int)(ClockOutAt!.Value - ClockInAt).TotalMinutes));
 
-    public static TimeEntry Start(Guid employeeId, TimeEntryType type, DateTimeOffset at)
+    public static TimeEntry Start(Guid companyId, Guid employeeId, TimeEntryType type, DateTimeOffset at)
     {
+        if (companyId == Guid.Empty)
+        {
+            throw new ArgumentException("La compañía no puede estar vacía.", nameof(companyId));
+        }
+
         if (employeeId == Guid.Empty)
         {
             throw new ArgumentException("El identificador del empleado no puede estar vacío.", nameof(employeeId));
@@ -92,14 +100,14 @@ public sealed class TimeEntry
         }
 
         var truncated = ToUtcSeconds(at, nameof(at));
-        return new(Guid.CreateVersion7(truncated), employeeId, type, truncated, null);
+        return new(Guid.CreateVersion7(truncated), companyId, employeeId, type, truncated, null);
     }
 
     // El siguiente intervalo empieza justo donde acaba este (ya truncado), sin hueco ni solape.
     private TimeEntry CloseAndStartNext(TimeEntryType nextType, DateTimeOffset at)
     {
         Close(at);
-        return Start(EmployeeId, nextType, ClockOutAt!.Value);
+        return Start(CompanyId, EmployeeId, nextType, ClockOutAt!.Value);
     }
 
     // `timestamptz` guarda microsegundos: truncar a segundos enteros evita que el valor en memoria

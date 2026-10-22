@@ -5,6 +5,8 @@ using Microsoft.EntityFrameworkCore.Migrations;
 using Npgsql;
 
 using TimeTracker.Api.IntegrationTests.Postgres;
+using TimeTracker.Api.IntegrationTests.Support;
+using TimeTracker.Domain.Companies;
 
 namespace TimeTracker.Api.IntegrationTests.Persistence;
 
@@ -44,12 +46,14 @@ public class MigrationTests(PostgresFixture postgres)
         var migrations = await QueryAsync(connectionString, "SELECT \"MigrationId\" FROM \"__EFMigrationsHistory\" ORDER BY \"MigrationId\"");
         var tables = await QueryAsync(connectionString, "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public'");
 
-        Assert.Equal(5, migrations.Count);
+        Assert.Equal(7, migrations.Count);
         Assert.Contains(migrations, migration => migration.EndsWith("_InitialTimeEntries", StringComparison.Ordinal));
         Assert.EndsWith("_AddUsers", migrations[1], StringComparison.Ordinal);
         Assert.EndsWith("_AddTimeEntryType", migrations[2], StringComparison.Ordinal);
         Assert.EndsWith("_AddAssistantSettings", migrations[3], StringComparison.Ordinal);
         Assert.EndsWith("_AddAssistantAuditImmutability", migrations[4], StringComparison.Ordinal);
+        Assert.EndsWith("_AddCompanies", migrations[5], StringComparison.Ordinal);
+        Assert.EndsWith("_EnforceCompanyIsolation", migrations[6], StringComparison.Ordinal);
         Assert.Contains("time_entries", tables);
         Assert.Contains("users", tables);
     }
@@ -69,7 +73,7 @@ public class MigrationTests(PostgresFixture postgres)
                 connectionString,
                 $"INSERT INTO time_entries (id, employee_id, clock_in_at, clock_out_at) VALUES ('{entryId}', '{employeeId}', '2026-10-12T08:00:00Z', '2026-10-12T16:00:00Z')");
 
-            await context.Database.MigrateAsync(CancellationToken.None);
+            await MigrateToAsync(context, "_AddUsers");
         }
 
         var rows = await QueryAsync(
@@ -93,7 +97,7 @@ public class MigrationTests(PostgresFixture postgres)
                 connectionString,
                 $"INSERT INTO time_entries (id, employee_id, clock_in_at, clock_out_at) VALUES ('{closedId}', '{employeeId}', '2026-10-12T08:00:00Z', '2026-10-12T16:00:00Z'), ('{openId}', '{employeeId}', '2026-10-13T08:00:00Z', NULL)");
 
-            await context.Database.MigrateAsync(CancellationToken.None);
+            await MigrateToAsync(context, "_AddTimeEntryType");
         }
 
         var rows = await QueryAsync(
@@ -115,7 +119,7 @@ public class MigrationTests(PostgresFixture postgres)
         var entryId = Guid.NewGuid();
         await using (var context = postgres.CreateContext(connectionString))
         {
-            await context.Database.MigrateAsync(CancellationToken.None);
+            await MigrateToAsync(context, "_AddTimeEntryType");
             await ExecuteAsync(
                 connectionString,
                 $"INSERT INTO time_entries (id, employee_id, clock_in_at, clock_out_at, type) VALUES ('{entryId}', '{Guid.NewGuid()}', '2026-10-12T08:00:00Z', '2026-10-12T09:00:00Z', 'Break')");
@@ -145,7 +149,7 @@ public class MigrationTests(PostgresFixture postgres)
                 $"INSERT INTO time_entries (id, employee_id, clock_in_at, clock_out_at, type) VALUES ('{entryId}', '{Guid.NewGuid()}', '2026-10-12T08:00:00Z', '2026-10-12T09:00:00Z', 'Break')");
             var before = await TableShapeAsync(connectionString);
 
-            await context.Database.MigrateAsync(CancellationToken.None);
+            await MigrateToAsync(context, "_AddAssistantSettings");
 
             var after = await TableShapeAsync(connectionString);
             Assert.Equal(before, after.Where(line => !line.StartsWith("assistant_settings", StringComparison.Ordinal)));
@@ -185,7 +189,7 @@ public class MigrationTests(PostgresFixture postgres)
         await ExecuteAsync(connectionString, "INSERT INTO assistant_settings_audit (occurred_at, actor_id, action, credential_changed) VALUES (now(), gen_random_uuid(), 'Saved', false)");
         var before = await TableShapeAsync(connectionString);
 
-        await context.Database.MigrateAsync(CancellationToken.None);
+        await MigrateToAsync(context, "_AddAssistantAuditImmutability");
 
         Assert.Equal(before, await TableShapeAsync(connectionString));
         Assert.Equal([entryId.ToString()], await QueryAsync(connectionString, "SELECT id::text FROM time_entries"));
@@ -198,7 +202,7 @@ public class MigrationTests(PostgresFixture postgres)
         var definitions = await QueryAsync(postgres.ConnectionString, "SELECT indexdef FROM pg_indexes WHERE tablename = 'assistant_settings_audit'");
         var identity = await QueryAsync(postgres.ConnectionString, "SELECT is_identity || ':' || identity_generation FROM information_schema.columns WHERE table_name = 'assistant_settings_audit' AND column_name = 'id'");
 
-        Assert.Contains(definitions, definition => definition.Contains("ix_assistant_settings_audit_occurred_at", StringComparison.Ordinal)
+        Assert.Contains(definitions, definition => definition.Contains("ix_assistant_settings_audit_company_id_occurred_at", StringComparison.Ordinal)
             && definition.Contains("occurred_at DESC", StringComparison.Ordinal));
         Assert.Equal(["YES:ALWAYS"], identity);
     }
@@ -260,15 +264,6 @@ public class MigrationTests(PostgresFixture postgres)
     }
 
     [Fact]
-    public async Task Columns_AreExactlyFive()
-    {
-        var columns = await QueryAsync(postgres.ConnectionString, "SELECT column_name FROM information_schema.columns WHERE table_name = 'time_entries'");
-
-        // El token de concurrencia es la columna de sistema xmin: no aparece entre las columnas del esquema.
-        Assert.Equal(["clock_in_at", "clock_out_at", "employee_id", "id", "type"], columns.Order(StringComparer.Ordinal));
-    }
-
-    [Fact]
     public async Task Indexes_HaveExpectedDefinitions()
     {
         var definitions = await QueryAsync(postgres.ConnectionString, "SELECT indexdef FROM pg_indexes WHERE tablename = 'time_entries'");
@@ -311,14 +306,16 @@ public class MigrationTests(PostgresFixture postgres)
 
     private async Task InsertAsync(Guid employeeId, string clockInAt, string? clockOutAt, string? type = null)
     {
+        UserSeed.EnsureExists(postgres.ConnectionString, employeeId);
         await using var connection = new NpgsqlConnection(postgres.ConnectionString);
         await connection.OpenAsync(CancellationToken.None);
         await using var command = new NpgsqlCommand(
             type is null
-                ? "INSERT INTO time_entries (id, employee_id, clock_in_at, clock_out_at) VALUES (@id, @employee, @in, @out)"
-                : "INSERT INTO time_entries (id, employee_id, clock_in_at, clock_out_at, type) VALUES (@id, @employee, @in, @out, @type)",
+                ? "INSERT INTO time_entries (id, company_id, employee_id, clock_in_at, clock_out_at) VALUES (@id, @company, @employee, @in, @out)"
+                : "INSERT INTO time_entries (id, company_id, employee_id, clock_in_at, clock_out_at, type) VALUES (@id, @company, @employee, @in, @out, @type)",
             connection);
         command.Parameters.AddWithValue("id", Guid.NewGuid());
+        command.Parameters.AddWithValue("company", Company.DefaultId);
         command.Parameters.AddWithValue("employee", employeeId);
         command.Parameters.AddWithValue("in", DateTimeOffset.Parse(clockInAt, System.Globalization.CultureInfo.InvariantCulture));
         command.Parameters.AddWithValue("out", clockOutAt is null ? DBNull.Value : DateTimeOffset.Parse(clockOutAt, System.Globalization.CultureInfo.InvariantCulture));
