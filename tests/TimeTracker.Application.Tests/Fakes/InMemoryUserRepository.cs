@@ -43,6 +43,9 @@ internal sealed class InMemoryUserRepository : IUserRepository
     public Task<string?> FindDisplayNameAsync(Guid userId, CancellationToken cancellationToken)
         => Task.FromResult(_users.FirstOrDefault(user => user.Id == userId)?.DisplayName);
 
+    public Task<bool> ExistsWithEmailDomainAsync(string domain, CancellationToken cancellationToken)
+        => Task.FromResult(_users.Any(user => user.Email.EndsWith(domain, StringComparison.Ordinal)));
+
     public Task AddAsync(UserAccount user, CancellationToken cancellationToken)
     {
         _users.Add(user);

@@ -29,6 +29,9 @@ public sealed class UserRepository(TimeTrackerDbContext context) : IUserReposito
     public Task<string?> FindDisplayNameAsync(Guid userId, CancellationToken cancellationToken)
         => context.Users.AsNoTracking().Where(user => user.Id == userId).Select(user => user.DisplayName).FirstOrDefaultAsync(cancellationToken);
 
+    public Task<bool> ExistsWithEmailDomainAsync(string domain, CancellationToken cancellationToken)
+        => context.Users.AsNoTracking().AnyAsync(user => user.Email.EndsWith(domain), cancellationToken);
+
     public async Task AddAsync(UserAccount user, CancellationToken cancellationToken)
     {
         context.Users.Add(user);

@@ -9,7 +9,7 @@ namespace TimeTracker.ArchitectureTests;
 /// </summary>
 public partial class CreateScopeClosedListTests
 {
-    // Cada tarea posterior que añada un llamador lo declara aquí: 5.11b (validador de usuarios demo). La 5.5 declaró el almacén de registro
+    // Cada tarea posterior que añada un llamador lo declara aquí. La 5.5 declaró el almacén de registro, la 5.11b el validador de usuarios demo
     // y la 4b retiró el puente y declaró el registro de instantáneas.
     private static readonly Dictionary<string, string> Allowed = new()
     {
@@ -17,6 +17,8 @@ public partial class CreateScopeClosedListTests
             "Registro de instantáneas del asistente (DD-14): lee la configuración de la compañía que pregunta o que el sondeo ha visto cambiar, fuera de una petición HTTP.",
         ["src/TimeTracker.Infrastructure/Persistence/CompanyRegistrationStore.cs"] =
             "Autorregistro (DD-19): la petición es anónima y no tiene compañía; el almacén escribe compañía y Manager dentro del ámbito de la compañía nueva.",
+        ["src/TimeTracker.Api/Registration/DemoUsersStartupGuard.cs"] =
+            "Validador de arranque (DD-22): busca usuarios de demostración en la compañía por defecto, fuera de una petición HTTP y sin IgnoreQueryFilters.",
         ["src/TimeTracker.Api/Seeding/DemoUsersSeeder.cs"] = "La siembra de usuarios de demostración actúa como la compañía por defecto.",
         ["src/TimeTracker.Api/Seeding/DemoDataSeeder.cs"] = "La siembra de fichajes de demostración actúa como la compañía por defecto.",
     };

@@ -3,6 +3,7 @@ using TimeTracker.Api.Authentication;
 using TimeTracker.Api.Configuration;
 using TimeTracker.Api.Errors;
 using TimeTracker.Api.Health;
+using TimeTracker.Api.Registration;
 using TimeTracker.Api.Security;
 using TimeTracker.Api.Seeding;
 using TimeTracker.Api.Team;
@@ -25,6 +26,7 @@ builder.Services.AddTimeEntries();
 builder.Services.AddAuthorizationPolicies();
 builder.Services.AddTeam();
 builder.Services.AddDemoSeeding();
+builder.Services.AddRegistration();
 builder.Services.AddAssistant();
 builder.Services.AddAssistantConfiguration();
 // Va después de la migración (DatabaseMigrationHostedService corre en StartingAsync) y antes de que Kestrel acepte peticiones:
@@ -39,6 +41,9 @@ builder.Services.AddRateLimiting();
 builder.Services.AddOpenApi(options => options.AddBearerSecurity());
 
 var app = builder.Build();
+
+// Leer las opciones del registro valida su configuración ahora, antes de que ningún servicio alojado migre o siembre (DD-23).
+var registrationEnabled = app.Services.GetRequiredService<Microsoft.Extensions.Options.IOptions<RegistrationOptions>>().Value.Enabled;
 
 // Tras un proxy de confianza (opt-in): IP y esquema reales antes que nada, para el limitador por IP (DD-19).
 app.UseForwardedHeadersBehindProxy();
@@ -69,5 +74,6 @@ app.MapTimeEntryEndpoints();
 app.MapTeamEndpoints();
 app.MapAssistantEndpoints();
 app.MapAssistantConfigurationEndpoints();
+_ = registrationEnabled;
 
 app.Run();

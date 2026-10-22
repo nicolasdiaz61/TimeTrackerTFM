@@ -17,4 +17,10 @@ public interface IUserRepository
     Task<string?> FindDisplayNameAsync(Guid userId, CancellationToken cancellationToken);
 
     Task AddAsync(UserAccount user, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Indica si algún usuario de la compañía del contexto tiene un correo que termina en <paramref name="domain"/> (con la arroba, p. ej.
+    /// <c>@example.test</c>). La comparación es literal. Lo usa el validador de arranque de usuarios de demostración (DD-22).
+    /// </summary>
+    Task<bool> ExistsWithEmailDomainAsync(string domain, CancellationToken cancellationToken);
 }
