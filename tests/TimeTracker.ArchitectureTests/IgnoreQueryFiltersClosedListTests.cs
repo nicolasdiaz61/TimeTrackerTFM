@@ -1,5 +1,7 @@
 using System.Text.RegularExpressions;
 
+using static TimeTracker.ArchitectureTests.SourceText;
+
 namespace TimeTracker.ArchitectureTests;
 
 /// <summary>
@@ -132,12 +134,6 @@ public partial class IgnoreQueryFiltersClosedListTests
             .Count(index => !lines[Math.Max(0, index - 4)..(index + 1)].Any(line => BypassPattern().IsMatch(line)));
     }
 
-    private static string StripComments(string source)
-        => string.Join('\n', source.Split('\n').Select(line =>
-        {
-            var comment = line.IndexOf("//", StringComparison.Ordinal);
-            return comment < 0 ? line : line[..comment];
-        }));
 
     private static IEnumerable<string> SourceFiles()
     {

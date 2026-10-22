@@ -18,7 +18,19 @@ internal sealed class FakeCompanySettingsReader : ICompanySettingsReader
     /// <summary>Si se asigna, la lectura espera a que se complete (o se cancele) antes de responder.</summary>
     public TaskCompletionSource? Gate { get; set; }
 
-    public int TotalReads => Reads.Values.Sum();
+    public int TotalReads
+    {
+        get { lock (Reads) { return Reads.Values.Sum(); } }
+    }
+
+    /// <summary>Espera, sin esperas por tiempo real, a que haya al menos <paramref name="count"/> lecturas iniciadas.</summary>
+    public async Task WaitForReadsAsync(int count)
+    {
+        while (TotalReads < count)
+        {
+            await Task.Yield();
+        }
+    }
 
     public void Set(Guid companyId, AssistantSettings? stored, bool usesPlatform)
         => _reads[companyId] = new CompanySettingsRead(stored, usesPlatform);

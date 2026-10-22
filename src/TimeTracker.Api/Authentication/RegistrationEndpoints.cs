@@ -1,3 +1,5 @@
+using System.Globalization;
+
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Options;
 
@@ -20,6 +22,7 @@ public static class RegistrationEndpoints
 
     public const string InviteCodeDetail = "El código de invitación no es válido.";
     public const string DuplicateNameDetail = "Ya existe una compañía con ese nombre.";
+    public const string CreatedWithoutSessionDetail = "La compañía y la cuenta se han creado, pero no se ha podido iniciar la sesión. No repita el registro: inicie sesión con su correo electrónico y su contraseña.";
     public const string DuplicateEmailDetail = "Ya existe una cuenta con ese correo electrónico.";
 
     public static IEndpointRouteBuilder MapRegistrationEndpoint(this IEndpointRouteBuilder endpoints)
@@ -49,6 +52,8 @@ public static class RegistrationEndpoints
     private static async Task<IResult> RegisterAsync(
         RegisterCompanyRequest? request,
         RegisterCompanyUseCase useCase,
+        RegistrationGlobalLimiter globalLimiter,
+        HttpContext httpContext,
         TimeProvider clock,
         ILoggerFactory loggerFactory,
         CancellationToken cancellationToken)
@@ -63,15 +68,45 @@ public static class RegistrationEndpoints
                 detail: "El cuerpo de la solicitud es obligatorio.");
         }
 
-        var result = await useCase.ExecuteAsync(
-            new RegisterCompanyCommand(request.CompanyName, request.ManagerName, request.Email, request.Password, request.InviteCode),
-            cancellationToken);
+        // Tope global de altas (todas las IP): se reserva antes de evaluar el código y se libera si no se crea nada, de modo que solo
+        // cuentan las altas. Con un código filtrado limita cuántas compañías puede crear alguien en una ventana.
+        if (globalLimiter.Reserve(out var retryAfter) is not { } reservation)
+        {
+            RegistrationLog.Rejected(logger, RegistrationAttemptResult.RejectedByRateLimit, clock.GetUtcNow());
+            httpContext.Response.Headers.RetryAfter = RateLimitingServiceCollectionExtensions.RetryAfterSeconds(retryAfter).ToString(CultureInfo.InvariantCulture);
+            return TypedResults.Problem(
+                statusCode: StatusCodes.Status429TooManyRequests,
+                title: "Demasiadas solicitudes",
+                detail: RateLimitingServiceCollectionExtensions.RegisterCompanyDetail);
+        }
+
+        RegisterCompanyResult result;
+        try
+        {
+            result = await useCase.ExecuteAsync(
+                new RegisterCompanyCommand(request.CompanyName, request.ManagerName, request.Email, request.Password, request.InviteCode),
+                cancellationToken);
+        }
+        catch
+        {
+            globalLimiter.Release(reservation);
+            throw;
+        }
+
+        if (result is not (RegisterCompanyResult.Created or RegisterCompanyResult.CreatedWithoutSession))
+        {
+            globalLimiter.Release(reservation);
+        }
 
         switch (result)
         {
             case RegisterCompanyResult.Created created:
                 RegistrationLog.Created(logger, created.CompanyId, clock.GetUtcNow());
                 return TypedResults.Json(LoginResponse.From(created.Session), statusCode: StatusCodes.Status201Created);
+            case RegisterCompanyResult.CreatedWithoutSession withoutSession:
+                // La cuenta existe: 409 con un detalle propio (el contrato no cambia y la Web ya muestra el detalle del 409) en lugar de un 500.
+                RegistrationLog.CreatedWithoutSession(logger, withoutSession.CompanyId, clock.GetUtcNow(), withoutSession.Cause);
+                return TypedResults.Problem(statusCode: StatusCodes.Status409Conflict, title: "Conflicto", detail: CreatedWithoutSessionDetail);
             case RegisterCompanyResult.InvalidInviteCode:
                 RegistrationLog.Rejected(logger, RegistrationAttemptResult.RejectedByInviteCode, clock.GetUtcNow());
                 return TypedResults.Problem(statusCode: StatusCodes.Status403Forbidden, title: "Acceso denegado", detail: InviteCodeDetail);

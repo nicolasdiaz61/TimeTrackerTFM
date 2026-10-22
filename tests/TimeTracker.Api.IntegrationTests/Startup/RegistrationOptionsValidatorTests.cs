@@ -144,4 +144,32 @@ public class RegistrationOptionsValidatorTests
 
         Assert.Equal([ValidCode, string.Empty, string.Empty], options.ParseInviteCodes());
     }
+
+    private const string GlobalLimitKey = "Registration:GlobalHourlyLimit";
+
+    [Theory]
+    [InlineData("0")]
+    [InlineData("-1")]
+    [InlineData("1001")]
+    public void AnOpenRegistrationWithAGlobalLimitOutOfRange_FailsNamingTheKey(string limit)
+    {
+        var exception = StartWith((EnabledKey, "true"), (CodesKey, ValidCode), (GlobalLimitKey, limit));
+
+        DatabaseStartupTests.AssertStartupFailsNamingKey(exception, GlobalLimitKey);
+    }
+
+    [Theory]
+    [InlineData("1")]
+    [InlineData("1000")]
+    public Task AGlobalLimitAtTheEdges_Starts(string limit) => AssertStartsAsync((EnabledKey, "true"), (CodesKey, ValidCode), (GlobalLimitKey, limit));
+
+    [Fact]
+    public void TheGlobalLimitDefaultsTo30PerHour()
+    {
+        Assert.Equal(30, new RegistrationOptions().GlobalHourlyLimit);
+        Assert.Equal(30, RegistrationOptions.DefaultGlobalHourlyLimit);
+    }
+
+    [Fact]
+    public Task AClosedRegistration_IgnoresTheGlobalLimit() => AssertStartsAsync((EnabledKey, "false"), (GlobalLimitKey, "0"));
 }
