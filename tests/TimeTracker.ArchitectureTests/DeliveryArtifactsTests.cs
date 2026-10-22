@@ -610,6 +610,24 @@ public partial class DeliveryArtifactsTests
     }
 
     [Fact]
+    public void Adr0022_RecordsThePr6DecisionsOnTemporaryPasswordsTheCapAndTheAcceptedRisks()
+    {
+        var adr = ReadRepositoryFile("docs/adr/0022-autorregistro-con-codigo-de-invitacion-y-contrasenas.md");
+
+        string[] required =
+        [
+            "POST /api/employees", "temporary-password", "change-password", "no-store", "RandomNumberGenerator", "PasswordChangePendingMiddleware", "mcp",
+            "xmin", "Serializable", "40001", "3", "Company__MaxEmployees", "cerrojo en memoria", "no caduca", "no se invalida", "30 por minuto",
+            "5 por minuto", "responsable directo", "revisar periódicamente",
+        ];
+        var missing = required.Where(text => !adr.Contains(text, StringComparison.OrdinalIgnoreCase)).ToList();
+        Assert.True(missing.Count == 0, $"El ADR 0022 no menciona: {string.Join(", ", missing)}");
+        // La política de contraseñas del ADR ya no dice que el cambio de contraseña «llega» después: está aplicada.
+        Assert.Contains("el cambio de contraseña (`POST /api/auth/change-password`, PR 6", adr, StringComparison.Ordinal);
+        Assert.DoesNotMatch(@"temporaryPassword\s*[:=]\s*""[^""]+""", adr);
+    }
+
+    [Fact]
     public void Readme_IndexesAdr0022()
         => Assert.Contains("(docs/adr/0022-autorregistro-con-codigo-de-invitacion-y-contrasenas.md)", ReadRepositoryFile("README.md"), StringComparison.Ordinal);
 
