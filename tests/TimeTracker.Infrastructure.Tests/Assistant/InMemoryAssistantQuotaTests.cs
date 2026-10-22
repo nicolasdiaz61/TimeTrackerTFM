@@ -168,13 +168,16 @@ public sealed class InMemoryAssistantQuotaTests
         SetLocal(new DateOnly(2026, 10, 18), new TimeOnly(10, 0));
         var quota = CreateQuota(userLimit: 2, companyLimit: 1);
         quota.TryConsumeDaily(Acme, Luis);
-        Assert.False(quota.TryConsumeDaily(Acme, Ana).Allowed);
-        Assert.False(quota.TryConsumeDaily(Acme, Ana).Allowed);
 
-        // Ana no consumió nada: en cuanto cambia el día vuelve a tener sus 2 unidades completas.
-        _clock.Advance(TimeSpan.FromHours(24));
-        Assert.True(quota.TryConsumeDaily(Acme, Ana).Allowed);
-        Assert.False(quota.TryConsumeDaily(Acme, Ana).Allowed);
+        // Mismo día, sin purga: la comprobación de la persona va primero, así que si el rechazo de la compañía consumiera las unidades de
+        // Ana, el tercer rechazo ya sería por su propio tope (alcanzado en 2) y no por el de la compañía.
+        var rejections = Enumerable.Range(0, 3).Select(_ => quota.TryConsumeDaily(Acme, Ana)).ToList();
+
+        Assert.All(rejections, rejected =>
+        {
+            Assert.False(rejected.Allowed);
+            Assert.Equal(QuotaScope.CompanyDaily, rejected.Scope);
+        });
     }
 
     [Fact]

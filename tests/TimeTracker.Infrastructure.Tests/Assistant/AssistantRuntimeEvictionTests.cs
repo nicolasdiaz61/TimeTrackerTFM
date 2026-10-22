@@ -175,7 +175,7 @@ public sealed class AssistantRuntimeEvictionTests : IDisposable
     }
 
     [Fact]
-    public async Task ConcurrentFirstQuestionsOfManyCompanies_NeverLeaveMoreProvidersLoadedThanTheLimit()
+    public async Task ConcurrentFirstQuestionsOfManyCompanies_LeaveExactlyTheLimitOfProvidersLoaded()
     {
         var rig = NewRig(maxLoaded: 3);
         foreach (var number in Enumerable.Range(1, 12))
@@ -183,9 +183,61 @@ public sealed class AssistantRuntimeEvictionTests : IDisposable
             rig.WithProvider(number);
         }
 
-        await Task.WhenAll(Enumerable.Range(1, 12).Select(number => Task.Run(() => rig.Registry.GetAsync(Company(number), CancellationToken.None).AsTask())));
+        // Todas las cargas quedan en vuelo a la vez y se liberan juntas: el tope se aplica con todas publicadas, no carga a carga.
+        rig.Reader.Gate = new TaskCompletionSource();
+        var calls = Enumerable.Range(1, 12).Select(number => Task.Run(() => rig.Registry.GetAsync(Company(number), CancellationToken.None).AsTask())).ToArray();
+        await rig.Reader.WaitForReadsAsync(12);
+        rig.Reader.Gate.SetResult();
+        await Task.WhenAll(calls);
 
-        Assert.True(rig.Registry.Loaded().Count <= 3, $"Cargadas: {rig.Registry.Loaded().Count}");
+        Assert.Equal(3, rig.Registry.Loaded().Count);
+        Assert.Equal(3, rig.Registry.EntryCount);
+    }
+
+    // --- Cola de expulsadas acotada ---
+
+    [Fact]
+    public async Task TheQueueOfExpelledPipelines_IsBoundedByTheLimit_ReleasingTheOldestEarly()
+    {
+        var rig = NewRig(maxLoaded: 2);
+        foreach (var number in Enumerable.Range(1, 6))
+        {
+            rig.WithProvider(number);
+        }
+
+        foreach (var number in Enumerable.Range(1, 6))
+        {
+            await rig.AskAsync(number);
+        }
+
+        // Expulsadas por orden: 1, 2, 3 y 4. Con tope 2 solo quedan en gracia las dos últimas; las más antiguas se liberaron ya.
+        Assert.Equal(2, rig.Registry.ExpelledCount);
+        Assert.True(rig.Factory.Clients[0].DisposeCount > 0);
+        Assert.True(rig.Factory.Clients[1].DisposeCount > 0);
+        Assert.Equal(0, rig.Factory.Clients[2].DisposeCount);
+        Assert.Equal(0, rig.Factory.Clients[3].DisposeCount);
+
+        rig.Time.Advance(AssistantChatClient.ReleaseGracePeriod + TimeSpan.FromSeconds(1));
+
+        Assert.Equal(0, rig.Registry.ExpelledCount);
+        Assert.True(rig.Factory.Clients[3].DisposeCount > 0);
+    }
+
+    [Fact]
+    public async Task AnExpelledPipelineWithinTheBound_KeepsItsFullGracePeriod()
+    {
+        var rig = NewRig(maxLoaded: 2);
+        foreach (var number in new[] { 1, 2, 3 })
+        {
+            rig.WithProvider(number);
+        }
+
+        await rig.AskAsync(1);
+        await rig.AskAsync(2);
+        await rig.AskAsync(3);
+
+        Assert.Equal(1, rig.Registry.ExpelledCount);
+        Assert.Equal(0, rig.Factory.Clients[0].DisposeCount);
     }
 
     // --- Caducidad por inactividad ---
