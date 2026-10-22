@@ -106,6 +106,7 @@ public class RegistrationStartupGuardsTests(PostgresFixture postgres)
 
         var messages = StartupFailure.AllMessages(exception);
         Assert.Contains(HopsKey, messages, StringComparison.Ordinal);
+        Assert.Contains("X-Forwarded-For", messages, StringComparison.Ordinal);
         Assert.DoesNotContain(Code, messages, StringComparison.Ordinal);
         Assert.DoesNotContain(StartupFailure.Flatten(exception), inner => inner is PostgresException or NpgsqlException);
         await AssertNothingWasMigratedAsync(connectionString);
