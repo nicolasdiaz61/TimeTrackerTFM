@@ -13,59 +13,73 @@
 @* Cualquier clic dentro del menú lo cierra en móvil (navegar, cerrar sesión...); en escritorio siempre está visible. *@
 <div class="@NavMenuCssClass nav-scrollable" @onclick="CollapseNavMenu">
     <nav class="nav flex-column">
-        <div class="nav-item px-3">
-            <NavLink class="nav-link" href="" Match="NavLinkMatch.All">
-                <svg class="nav-icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M2 8.5 8 3l6 5.5M3.5 7.5V13.5h3.5V10h2v3.5h3.5V7.5" /></svg> Inicio
-            </NavLink>
-        </div>
         <AuthorizeView>
             <Authorized Context="auth">
-                <div class="nav-item px-3">
-                    <NavLink class="nav-link" href="fichajes">
-                        <svg class="nav-icon" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6" /><path d="M8 4.5V8l2.5 1.5" /></svg> Fichajes
-                    </NavLink>
-                </div>
-                @* Visible para toda sesión y aunque el asistente esté deshabilitado: la API decide y la página muestra el aviso. *@
-                <div class="nav-item px-3">
-                    <NavLink class="nav-link" href="asistente" Match="NavLinkMatch.All">
-                        <svg class="nav-icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 3.5h11v7h-6L4.5 13v-2.5h-2z" /><path d="M5.5 6h5M5.5 8h3" /></svg> Asistente
-                    </NavLink>
-                </div>
-                <AuthorizeView Roles="Manager" Context="manager">
+                @if (SessionClaims.IsPasswordChangePending(auth.User))
+                {
+                    @* Con el cambio de contraseña pendiente solo queda cambiarla o salir (la API deniega el resto). *@
+                    @ChangePasswordLink
+                }
+                else
+                {
+                    @HomeLink
                     <div class="nav-item px-3">
-                        <NavLink class="nav-link" href="equipo">
-                            <svg class="nav-icon" viewBox="0 0 16 16" aria-hidden="true"><circle cx="6" cy="5.5" r="2.2" /><path d="M1.8 13c0-2.3 1.9-4 4.2-4s4.2 1.7 4.2 4" /><path d="M10.6 3.6a2 2 0 0 1 0 3.8M12 9.3c1.5.5 2.4 1.7 2.4 3.7" /></svg> Equipo
+                        <NavLink class="nav-link" href="fichajes">
+                            <svg class="nav-icon" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6" /><path d="M8 4.5V8l2.5 1.5" /></svg> Fichajes
                         </NavLink>
                     </div>
+                    @* Visible para toda sesión y aunque el asistente esté deshabilitado: la API decide y la página muestra el aviso. *@
                     <div class="nav-item px-3">
-                        <NavLink class="nav-link" href="asistente/configuracion">
-                            <svg class="nav-icon" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="2" /><path d="M8 1.8v1.9M8 12.3v1.9M1.8 8h1.9M12.3 8h1.9M3.6 3.6l1.3 1.3M11.1 11.1l1.3 1.3M12.4 3.6l-1.3 1.3M4.9 11.1l-1.3 1.3" /></svg> Config. asistente
+                        <NavLink class="nav-link" href="asistente" Match="NavLinkMatch.All">
+                            <svg class="nav-icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 3.5h11v7h-6L4.5 13v-2.5h-2z" /><path d="M5.5 6h5M5.5 8h3" /></svg> Asistente
                         </NavLink>
                     </div>
-                </AuthorizeView>
-            </Authorized>
-            <NotAuthorized>
-                <div class="nav-item px-3">
-                    <NavLink class="nav-link" href="login">
-                        <svg class="nav-icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M6.5 3H12a1 1 0 0 1 1 1v8a1 1 0 0 1-1 1H6.5M2 8h7M6.5 5.5 9 8l-2.5 2.5" /></svg> Iniciar sesión
-                    </NavLink>
-                </div>
-            </NotAuthorized>
-        </AuthorizeView>
-        <AuthorizeView>
-            <Authorized Context="auth">
-                <div class="nav-item px-3 session-info">
-                    <div class="nav-link session-user-row">
-                        <svg class="nav-icon" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="5.5" r="2.5" /><path d="M3 13.5c0-2.5 2.2-4.2 5-4.2s5 1.7 5 4.2" /></svg>
-                        <span id="session-user">@auth.User.Identity?.Name (@RoleLabel(auth.User))</span>
+                    <AuthorizeView Roles="Manager" Context="manager">
+                        <div class="nav-item px-3">
+                            <NavLink class="nav-link" href="equipo" Match="NavLinkMatch.All">
+                                <svg class="nav-icon" viewBox="0 0 16 16" aria-hidden="true"><circle cx="6" cy="5.5" r="2.2" /><path d="M1.8 13c0-2.3 1.9-4 4.2-4s4.2 1.7 4.2 4" /><path d="M10.6 3.6a2 2 0 0 1 0 3.8M12 9.3c1.5.5 2.4 1.7 2.4 3.7" /></svg> Equipo
+                            </NavLink>
+                        </div>
+                        <div class="nav-item px-3">
+                            <NavLink class="nav-link" href="equipo/alta">
+                                <svg class="nav-icon" viewBox="0 0 16 16" aria-hidden="true"><circle cx="6" cy="5.5" r="2.2" /><path d="M1.8 13c0-2.3 1.9-4 4.2-4s4.2 1.7 4.2 4" /><path d="M12 5v4M10 7h4" /></svg> Alta de personas
+                            </NavLink>
+                        </div>
+                        <div class="nav-item px-3">
+                            <NavLink class="nav-link" href="asistente/configuracion">
+                                <svg class="nav-icon" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="2" /><path d="M8 1.8v1.9M8 12.3v1.9M1.8 8h1.9M12.3 8h1.9M3.6 3.6l1.3 1.3M11.1 11.1l1.3 1.3M12.4 3.6l-1.3 1.3M4.9 11.1l-1.3 1.3" /></svg> Config. asistente
+                            </NavLink>
+                        </div>
+                    </AuthorizeView>
+                    <div class="nav-item px-3 session-info">
+                        <div class="nav-link session-user-row">
+                            <svg class="nav-icon" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="5.5" r="2.5" /><path d="M3 13.5c0-2.5 2.2-4.2 5-4.2s5 1.7 5 4.2" /></svg>
+                            <div class="session-user-text">
+                                <span id="session-user">@auth.User.Identity?.Name (@RoleLabel(auth.User))</span>
+                                @* Texto plano: un nombre con marcado se ve literalmente. *@
+                                @if (SessionClaims.CompanyName(auth.User) is { Length: > 0 } company)
+                                {
+                                    <span id="session-company" class="session-company">@company</span>
+                                }
+                            </div>
+                        </div>
                     </div>
-                </div>
+                    @ChangePasswordLink
+                }
                 <div class="nav-item px-3">
                     <button type="button" class="nav-link" @onclick="SignOutAsync">
                         <svg class="nav-icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M9.5 3H4a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h5.5M7 8h7M11.5 5.5 14 8l-2.5 2.5" /></svg> Cerrar sesión
                     </button>
                 </div>
             </Authorized>
+            <NotAuthorized>
+                @HomeLink
+                <div class="nav-item px-3">
+                    <NavLink class="nav-link" href="login">
+                        <svg class="nav-icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M6.5 3H12a1 1 0 0 1 1 1v8a1 1 0 0 1-1 1H6.5M2 8h7M6.5 5.5 9 8l-2.5 2.5" /></svg> Iniciar sesión
+                    </NavLink>
+                </div>
+            </NotAuthorized>
         </AuthorizeView>
     </nav>
 </div>
@@ -74,6 +88,18 @@
     private bool collapseNavMenu = true;
 
     private string? NavMenuCssClass => collapseNavMenu ? "collapse" : null;
+
+    private RenderFragment HomeLink => @<div class="nav-item px-3">
+        <NavLink class="nav-link" href="" Match="NavLinkMatch.All">
+            <svg class="nav-icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M2 8.5 8 3l6 5.5M3.5 7.5V13.5h3.5V10h2v3.5h3.5V7.5" /></svg> Inicio
+        </NavLink>
+    </div>;
+
+    private RenderFragment ChangePasswordLink => @<div class="nav-item px-3">
+        <NavLink class="nav-link" href="cambiar-contrasena">
+            <svg class="nav-icon" viewBox="0 0 16 16" aria-hidden="true"><rect x="3" y="7" width="10" height="6.5" rx="1" /><path d="M5.5 7V5a2.5 2.5 0 0 1 5 0v2" /></svg> Cambiar contraseña
+        </NavLink>
+    </div>;
 
     private void ToggleNavMenu()
     {

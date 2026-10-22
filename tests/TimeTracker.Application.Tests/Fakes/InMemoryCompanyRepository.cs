@@ -10,6 +10,9 @@ internal sealed class InMemoryCompanyRepository : ICompanyRepository
 
     public List<Guid> LoginInfoRequests { get; } = [];
 
+    /// <summary>Si se asigna, la lectura lanza esta excepción (base de datos caída o tabla ausente).</summary>
+    public Exception? Failure { get; set; }
+
     public void Seed(Guid companyId, string name, CompanyStatus status = CompanyStatus.Active, bool usesPlatformAssistant = false)
         => _companies[companyId] = new CompanyLoginInfo(name, status, usesPlatformAssistant);
 
@@ -18,6 +21,11 @@ internal sealed class InMemoryCompanyRepository : ICompanyRepository
     public Task<CompanyLoginInfo?> FindLoginInfoAsync(Guid companyId, CancellationToken cancellationToken)
     {
         LoginInfoRequests.Add(companyId);
+        if (Failure is { } failure)
+        {
+            throw failure;
+        }
+
         return Task.FromResult(_companies.TryGetValue(companyId, out var info) ? info : null);
     }
 }

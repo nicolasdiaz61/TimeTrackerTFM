@@ -4,6 +4,7 @@ using Microsoft.Extensions.AI;
 
 using TimeTracker.Application.Assistant;
 using TimeTracker.Application.Tests.Fakes;
+using TimeTracker.Domain.Companies;
 using TimeTracker.Domain.Users;
 using TimeTracker.Infrastructure.Assistant;
 using TimeTracker.Infrastructure.Tests.Fakes;
@@ -32,14 +33,16 @@ public sealed class ChatAssistantEngineTests
 
     private sealed class Rig
     {
-        public Rig(IChatClient? inner, UserRole role = UserRole.Employee, AiOptions? options = null)
+        public Rig(IChatClient? inner, UserRole role = UserRole.Employee, AiOptions? options = null, Guid? companyId = null)
         {
             UserId = role == UserRole.Manager ? ToolHarness.Marta : ToolHarness.Luis;
             Harness = new ToolHarness(UserId, role);
+            Client = new AssistantChatClient(inner, options ?? DefaultOptions());
+            Registry = new FakeRuntimeRegistry(Client);
             Engine = new ChatAssistantEngine(
-                new AssistantChatClient(inner, options ?? DefaultOptions()),
+                Registry,
                 Harness.Toolset,
-                new FixedCurrentUser(UserId, role),
+                new FixedCurrentUser(UserId, role, companyId),
                 Harness.Clock,
                 Logger);
         }
@@ -48,25 +51,85 @@ public sealed class ChatAssistantEngineTests
 
         public ToolHarness Harness { get; }
 
+        public AssistantChatClient Client { get; }
+
+        public FakeRuntimeRegistry Registry { get; }
+
         public CapturingLogger<ChatAssistantEngine> Logger { get; } = new();
 
         public ChatAssistantEngine Engine { get; }
     }
 
     [Fact]
-    public void IsEnabled_WithoutAClient_IsFalse()
+    public async Task Availability_WithoutAClient_IsDisabled()
     {
         var rig = new Rig(null, options: new AiOptions());
 
-        Assert.False(rig.Engine.IsEnabled);
+        Assert.Equal(AssistantAvailability.Disabled, await rig.Engine.GetAvailabilityAsync(CancellationToken.None));
     }
 
     [Fact]
-    public void IsEnabled_WithAClient_IsTrue()
+    public async Task Availability_WithAClient_IsEnabled()
     {
         var rig = new Rig(new FakeChatClient());
 
-        Assert.True(rig.Engine.IsEnabled);
+        Assert.Equal(AssistantAvailability.Enabled, await rig.Engine.GetAvailabilityAsync(CancellationToken.None));
+    }
+
+    // DD-14: el motor pide al registro la instantánea de la compañía del token (nunca de un parámetro), una sola vez por petición.
+
+    private static readonly Guid OtherCompany = Guid.Parse("22222222-2222-7222-8222-222222222222");
+
+    [Theory]
+    [InlineData("11111111-1111-7111-8111-111111111111")]
+    [InlineData("22222222-2222-7222-8222-222222222222")]
+    public async Task TheEngine_AsksTheRegistryForTheCompanyOfTheCurrentUser_OnlyOncePerRequest(string company)
+    {
+        var rig = new Rig(new FakeChatClient(_ => Text("Hola.")), companyId: Guid.Parse(company));
+
+        await rig.Engine.GetAvailabilityAsync(CancellationToken.None);
+        await rig.Engine.ReplyAsync(Question, CancellationToken.None);
+
+        Assert.Equal([Guid.Parse(company)], rig.Registry.Gets);
+    }
+
+    [Fact]
+    public async Task WhenTheRegistryFailsToLoad_TheAvailabilityIsUnavailable_AndOnlyTheExceptionTypeIsLogged()
+    {
+        var rig = new Rig(new FakeChatClient(), companyId: OtherCompany);
+        rig.Registry.GetFailure = new TimeoutException($"fallo con {SecretKey}");
+
+        Assert.Equal(AssistantAvailability.Unavailable, await rig.Engine.GetAvailabilityAsync(CancellationToken.None));
+        Assert.Null(await rig.Engine.ReplyAsync(Question, CancellationToken.None));
+
+        Assert.All(rig.Logger.Entries, entry => Assert.DoesNotContain(SecretKey, entry.Message, StringComparison.Ordinal));
+        Assert.Contains(rig.Logger.Entries, entry => entry.Message.Contains(nameof(TimeoutException), StringComparison.Ordinal));
+        // Un fallo no se recuerda dentro de la petición: cada llamada vuelve a preguntar al registro.
+        Assert.Equal(2, rig.Registry.Gets.Count);
+    }
+
+    [Fact]
+    public async Task ReplyAsync_AnswersWithTheSnapshotOfTheCompany()
+    {
+        var model = new FakeChatClient(_ => Text("Trabajó 8 horas."));
+        var rig = new Rig(model, companyId: OtherCompany);
+
+        Assert.Equal(AssistantAvailability.Enabled, await rig.Engine.GetAvailabilityAsync(CancellationToken.None));
+        Assert.Equal("Trabajó 8 horas.", await rig.Engine.ReplyAsync(Question, CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task ReplyAsync_WhenTheSnapshotIsSwappedBetweenAvailabilityAndReply_UsesTheOneReadFirst()
+    {
+        var first = new FakeChatClient(_ => Text("primera"));
+        var second = new FakeChatClient(_ => Text("segunda"));
+        var rig = new Rig(first);
+        await rig.Engine.GetAvailabilityAsync(CancellationToken.None);
+
+        rig.Client.Swap(second, DefaultOptions(), "9");
+
+        Assert.Equal("primera", await rig.Engine.ReplyAsync(Question, CancellationToken.None));
+        Assert.Empty(second.Calls);
     }
 
     [Fact]

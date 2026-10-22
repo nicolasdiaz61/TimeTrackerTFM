@@ -125,7 +125,7 @@ public class TokenContentTests(PostgresFixture postgres)
     private async Task<string> AddUserAsync(Guid companyId, bool mustChangePassword = false)
     {
         var user = UserAccount.Create(Guid.NewGuid(), companyId, $"ana.{Guid.NewGuid():N}@example.test", "Ana Ejemplo", UserSeed.PasswordHash, UserRole.Manager, null, mustChangePassword);
-        await using var context = postgres.CreateContext(postgres.ConnectionString);
+        await using var context = postgres.CreateContext(postgres.ConnectionString, companyId);
         await UserSeed.AddAsync(context, user);
         return user.Email;
     }

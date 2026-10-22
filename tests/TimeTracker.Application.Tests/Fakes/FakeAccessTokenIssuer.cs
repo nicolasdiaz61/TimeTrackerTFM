@@ -12,8 +12,16 @@ internal sealed class FakeAccessTokenIssuer : IAccessTokenIssuer
 
     public List<string> CompanyNames { get; } = [];
 
+    /// <summary>Si se fija, la emisión lanza esta excepción.</summary>
+    public Exception? Failure { get; set; }
+
     public AccessToken Issue(UserAccount user, string companyName)
     {
+        if (Failure is not null)
+        {
+            throw Failure;
+        }
+
         IssuedFor.Add(user);
         CompanyNames.Add(companyName);
         return new AccessToken($"token-de-{user.Id}", ExpiresAt);

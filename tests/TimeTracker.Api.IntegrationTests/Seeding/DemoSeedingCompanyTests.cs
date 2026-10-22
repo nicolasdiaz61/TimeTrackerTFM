@@ -62,6 +62,26 @@ public class DemoSeedingCompanyTests(PostgresFixture postgres)
     }
 
     [Fact]
+    public async Task Seeding_WithTheFilterActiveAndOtherCompaniesPresent_IsIdempotentAndLeavesThemUntouched()
+    {
+        // TC-19: la siembra corre bajo el filtro (CreateScope + FindByEmailAsync); las compañías ajenas ni se ven ni se tocan.
+        var fixture = await TwoCompanyFixture.CreateAsync(postgres, freshDatabase: true);
+        var others = $"SELECT id || '|' || company_id || '|' || email FROM users WHERE company_id <> '{Company.DefaultId}' UNION ALL SELECT id || '|' || company_id || '|' || clock_in_at FROM time_entries WHERE company_id <> '{Company.DefaultId}' ORDER BY 1";
+        var before = await QueryAsync(fixture.ConnectionString, others);
+
+        for (var boot = 0; boot < 2; boot++)
+        {
+            using var factory = CreateFactory(fixture.ConnectionString, demoData: true);
+            _ = factory.CreateClient();
+        }
+
+        Assert.Equal(before, await QueryAsync(fixture.ConnectionString, others));
+        Assert.Equal(["4"], await QueryAsync(fixture.ConnectionString, $"SELECT count(*)::text FROM users WHERE company_id = '{Company.DefaultId}'"));
+        Assert.Equal([Company.DefaultId.ToString()], await QueryAsync(fixture.ConnectionString, $"SELECT DISTINCT company_id::text FROM time_entries WHERE company_id = '{Company.DefaultId}'"));
+        Assert.NotEqual(["0"], await QueryAsync(fixture.ConnectionString, $"SELECT count(*)::text FROM time_entries WHERE company_id = '{Company.DefaultId}'"));
+    }
+
+    [Fact]
     public async Task Seeding_WithADemoEmailInAnotherCompany_FailsStartupWithoutThePasswordAndChangesNothing()
     {
         var connectionString = await MigratedDatabaseAsync();
@@ -101,7 +121,7 @@ public class DemoSeedingCompanyTests(PostgresFixture postgres)
             .UseNpgsql(connectionString)
             .AddInterceptors(new RacingSqlInterceptor(connectionString, race))
             .Options;
-        await using var context = new TimeTrackerDbContext(options);
+        await using var context = new TimeTrackerDbContext(options, new TestCompanyContext(null));
 
         await new CompanyRepository(context, TimeProvider.System).EnsureDefaultAsync(CancellationToken.None);
 

@@ -140,6 +140,21 @@ public class LoginUseCaseTests
     }
 
     [Fact]
+    public async Task Login_WithAShortPasswordFromTheOlderSystem_IsAcceptedBecauseThePasswordPolicyOnlyAppliesToNewPasswords()
+    {
+        // Una contraseña de 8 caracteres incumple la política de 12 (DD-20) pero un usuario previo debe poder entrar con ella.
+        const string ShortPassword = "corta-08";
+        var older = UserAccount.Create(Guid.NewGuid(), Company.DefaultId, "ana@example.test", "Ana", _hasher.Hash(ShortPassword), UserRole.Employee, null);
+        _users.Seed(older);
+
+        var result = await CreateUseCase().ExecuteAsync(new LoginCommand("ana@example.test", ShortPassword), CancellationToken.None);
+
+        Assert.NotNull(result);
+        Assert.Equal($"token-de-{older.Id}", result.Token.Value);
+        Assert.NotNull(PasswordPolicy.Validate(ShortPassword, "password"));
+    }
+
+    [Fact]
     public async Task Login_WithBoundaryLengths_IsAccepted()
     {
         var email = new string('b', UserAccount.MaxEmailLength - "@example.test".Length) + "@example.test";
