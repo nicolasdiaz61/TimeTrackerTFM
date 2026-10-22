@@ -13,6 +13,7 @@ public static class RegistrationServiceCollectionExtensions
             .BindConfiguration(RegistrationOptions.SectionName)
             .ValidateOnStart();
 
+        services.AddScoped<RegisterCompanyUseCase>();
         services.AddHostedService<DemoUsersStartupGuard>();
 
         // Los códigos se resumen una sola vez; con el registro cerrado nadie resuelve el validador y los códigos no se leen.

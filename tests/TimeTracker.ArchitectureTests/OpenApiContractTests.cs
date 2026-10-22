@@ -6,6 +6,10 @@ public class OpenApiContractTests
 {
     private const string TimeEntriesPath = "/api/time-entries";
     private const string ConfigurationPath = "/api/asistente/configuracion";
+    private const string RegisterCompanyPath = "/api/auth/register-company";
+
+    // Código con el que DocumentGeneration abre el registro solo para exportar el contrato (Api/Configuration/DocumentGeneration.cs).
+    private const string FictitiousGenerationCode = "codigo-ficticio-solo-para-exportar-openapi";
 
     [Fact]
     public void ExportedDocument_ContainsHealthGet200()
@@ -247,6 +251,65 @@ public class OpenApiContractTests
         var withKey = schemas.EnumerateObject().Where(schema => PropertyNames(schemas, schema.Name).Contains("credential")).Select(schema => schema.Name).Order(StringComparer.Ordinal);
         Assert.Equal(["AssistantConfigurationRequest", "AssistantConfigurationSources", "AssistantConnectionTestRequest"], withKey);
         Assert.Equal("string", schemas.GetProperty("AssistantConfigurationSources").GetProperty("properties").GetProperty("credential").GetProperty("type").GetString());
+    }
+
+    [Fact]
+    public void ExportedDocument_ContainsOnlyThePostRegisterCompanyOperation_AnonymousWithItsResponses()
+    {
+        using var document = LoadDocument();
+        var paths = document.RootElement.GetProperty("paths");
+
+        var register = paths.GetProperty(RegisterCompanyPath);
+        Assert.Equal(["post"], register.EnumerateObject().Select(operation => operation.Name));
+        Assert.Equal(["201", "400", "403", "409", "429"], ResponseCodes(paths, RegisterCompanyPath, "post"));
+        // Anónima: «security: []» en la operación retira el requisito Bearer global.
+        Assert.False(RequiresBearer(document.RootElement, RegisterCompanyPath, "post"));
+        Assert.Equal(0, register.GetProperty("post").GetProperty("security").GetArrayLength());
+        // El 413 por cuerpo grande lo rechaza el servidor antes de enlazarlo y no se declara.
+        Assert.DoesNotContain("413", ResponseCodes(paths, RegisterCompanyPath, "post"));
+    }
+
+    [Fact]
+    public void ExportedDocument_RegisterCompanyRequestHasExactlyTheFivePropertiesAndNoCompanyId()
+    {
+        using var document = LoadDocument();
+        var schemas = document.RootElement.GetProperty("components").GetProperty("schemas");
+
+        Assert.Equal(
+            ["companyName", "email", "inviteCode", "managerName", "password"],
+            PropertyNames(schemas, "RegisterCompanyRequest").Order(StringComparer.Ordinal));
+        var reference = document.RootElement.GetProperty("paths").GetProperty(RegisterCompanyPath).GetProperty("post")
+            .GetProperty("requestBody").GetProperty("content").GetProperty("application/json").GetProperty("schema").GetProperty("oneOf").EnumerateArray()
+            .Select(option => option.TryGetProperty("$ref", out var value) ? value.GetString() : null).Single(value => value is not null);
+        Assert.EndsWith("/RegisterCompanyRequest", reference, StringComparison.Ordinal);
+        // El cuerpo ignora las propiedades desconocidas (no rechaza): el contrato no declara additionalProperties falso.
+        Assert.False(schemas.GetProperty("RegisterCompanyRequest").TryGetProperty("additionalProperties", out _));
+    }
+
+    [Fact]
+    public void ExportedDocument_RegisterCompanyHasNoInviteCodeExampleAndNoFictitiousGenerationCode()
+    {
+        var text = File.ReadAllText(Path.Combine(RepositoryRoot.Path, "docs", "api", "openapi.json"));
+
+        Assert.DoesNotContain(FictitiousGenerationCode, text, StringComparison.Ordinal);
+        Assert.DoesNotContain("codigo-prueba", text, StringComparison.Ordinal);
+        using var document = LoadDocument();
+        var inviteCode = document.RootElement.GetProperty("components").GetProperty("schemas").GetProperty("RegisterCompanyRequest").GetProperty("properties").GetProperty("inviteCode");
+        Assert.False(inviteCode.TryGetProperty("example", out _));
+        Assert.False(inviteCode.TryGetProperty("default", out _));
+        Assert.False(inviteCode.TryGetProperty("enum", out _));
+    }
+
+    // Tarea 5.7: esta entrega añade solo el registro; el alta, la regeneración y el cambio de contraseña entran en la PR 6 (tarea 6.14,
+    // que sustituye esta comprobación por las de sus propias operaciones).
+    [Fact]
+    public void ExportedDocument_DoesNotYetContainTheOperationsOfThePasswordAndEmployeesEntrega()
+    {
+        using var document = LoadDocument();
+        var paths = document.RootElement.GetProperty("paths").EnumerateObject().Select(path => path.Name).ToList();
+
+        Assert.DoesNotContain("/api/auth/change-password", paths);
+        Assert.DoesNotContain(paths, path => path.StartsWith("/api/employees", StringComparison.Ordinal));
     }
 
     [Fact]

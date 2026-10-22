@@ -9,8 +9,8 @@ public abstract record RegisterCompanyResult
     {
     }
 
-    /// <summary>Compañía y Manager creados; <paramref name="Session"/> es la misma sesión que daría el inicio de sesión.</summary>
-    public sealed record Created(LoginResult Session) : RegisterCompanyResult;
+    /// <summary>Compañía y Manager creados; <paramref name="Session"/> es la misma sesión que daría el inicio de sesión y <paramref name="CompanyId"/> la compañía nueva (solo para el registro de metadatos).</summary>
+    public sealed record Created(LoginResult Session, Guid CompanyId) : RegisterCompanyResult;
 
     /// <summary>Código ausente, en blanco o incorrecto: una sola respuesta que no dice cuál fue la causa.</summary>
     public sealed record InvalidInviteCode : RegisterCompanyResult;

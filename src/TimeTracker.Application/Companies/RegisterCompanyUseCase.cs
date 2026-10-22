@@ -44,19 +44,19 @@ public sealed class RegisterCompanyUseCase(
         var outcome = await store.CreateAsync(company, manager, cancellationToken);
         return outcome switch
         {
-            RegistrationOutcome.Created => await IssueSessionAsync(manager, cancellationToken),
+            RegistrationOutcome.Created => await IssueSessionAsync(manager, company, cancellationToken),
             RegistrationOutcome.DuplicateName => new RegisterCompanyResult.DuplicateName(),
             RegistrationOutcome.DuplicateEmail => new RegisterCompanyResult.DuplicateEmail(),
             _ => throw new InvalidOperationException("Resultado del registro no contemplado."),
         };
     }
 
-    private async Task<RegisterCompanyResult> IssueSessionAsync(UserAccount manager, CancellationToken cancellationToken)
+    private async Task<RegisterCompanyResult> IssueSessionAsync(UserAccount manager, Company created, CancellationToken cancellationToken)
     {
         // La compañía nace Active: si el emisor común la rechaza algo es incoherente y no se entrega ninguna sesión.
         var session = await sessions.IssueAsync(manager, cancellationToken)
             ?? throw new InvalidOperationException("La compañía recién creada no puede iniciar sesión.");
-        return new RegisterCompanyResult.Created(session);
+        return new RegisterCompanyResult.Created(session, created.Id);
     }
 
     private static List<FieldError> Validate(RegisterCompanyCommand command)

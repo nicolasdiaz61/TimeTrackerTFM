@@ -4,6 +4,7 @@ using System.Threading.RateLimiting;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.Extensions.Options;
 
+using TimeTracker.Api.Registration;
 using TimeTracker.Infrastructure.Assistant;
 
 namespace TimeTracker.Api.Security;
@@ -12,11 +13,16 @@ public static class RateLimitingServiceCollectionExtensions
 {
     public const string LoginPolicy = "login";
 
+    public const string RegisterCompanyPolicy = "register-company";
+
     public const string AssistantPolicy = "assistant";
 
     public const string AssistantConfigTestPolicy = "assistant-config-test";
 
     public const int LoginPermitLimit = 10;
+
+    // Constantes de código, como el login: 5 intentos por hora y por IP (DD-19).
+    public const int RegisterCompanyPermitLimit = 5;
 
     // Sin dirección remota (servidor en memoria de las pruebas) todo cae en una partición única.
     private const string NoAddressPartition = "sin-ip";
@@ -28,9 +34,13 @@ public static class RateLimitingServiceCollectionExtensions
 
     private static readonly TimeSpan LoginWindow = TimeSpan.FromMinutes(1);
 
+    private static readonly TimeSpan RegisterCompanyWindow = TimeSpan.FromHours(1);
+
     private static readonly TimeSpan AssistantWindow = TimeSpan.FromMinutes(1);
 
     private const string LoginDetail = "Espere un minuto antes de volver a intentarlo.";
+
+    private const string RegisterCompanyDetail = "Ha realizado demasiados intentos de registro. Inténtelo de nuevo más tarde.";
 
     private const string AssistantDetail = "Ha realizado demasiadas consultas al asistente en poco tiempo. Espere un minuto antes de volver a intentarlo.";
 
@@ -48,6 +58,16 @@ public static class RateLimitingServiceCollectionExtensions
                 {
                     PermitLimit = LoginPermitLimit,
                     Window = LoginWindow,
+                    QueueLimit = 0,
+                }));
+            // Registro de compañías: anónimo, por IP (con ForwardedHeaders la IP real del cliente) y 5 por hora. Cuentan todos los
+            // intentos, también los rechazados por el código, y el sexto se rechaza sin evaluar el código (DD-19).
+            options.AddPolicy(RegisterCompanyPolicy, httpContext => RateLimitPartition.GetFixedWindowLimiter(
+                httpContext.Connection.RemoteIpAddress?.ToString() ?? NoAddressPartition,
+                _ => new FixedWindowRateLimiterOptions
+                {
+                    PermitLimit = RegisterCompanyPermitLimit,
+                    Window = RegisterCompanyWindow,
                     QueueLimit = 0,
                 }));
             // Ventana fija por usuario autenticado (claim sub), no por IP: el limitador corre tras la autorización (DD-1).
@@ -91,6 +111,15 @@ public static class RateLimitingServiceCollectionExtensions
 
         // El texto depende de la política del endpoint rechazado: login, chat y prueba de conexión tienen detalles distintos.
         var policy = context.HttpContext.GetEndpoint()?.Metadata.GetMetadata<EnableRateLimitingAttribute>()?.PolicyName;
+        if (policy == RegisterCompanyPolicy)
+        {
+            // Solo el resultado y el instante, como el resto del registro del autorregistro (sin IP, código ni datos del cuerpo).
+            var services = context.HttpContext.RequestServices;
+            RegistrationLog.Rejected(
+                services.GetRequiredService<ILoggerFactory>().CreateLogger(RegistrationLog.Category),
+                RegistrationAttemptResult.RejectedByRateLimit,
+                services.GetRequiredService<TimeProvider>().GetUtcNow());
+        }
 
         await context.HttpContext.RequestServices.GetRequiredService<IProblemDetailsService>().WriteAsync(new ProblemDetailsContext
         {
@@ -108,6 +137,7 @@ public static class RateLimitingServiceCollectionExtensions
     {
         AssistantPolicy => AssistantDetail,
         AssistantConfigTestPolicy => AssistantConfigTestDetail,
+        RegisterCompanyPolicy => RegisterCompanyDetail,
         _ => LoginDetail,
     };
 }

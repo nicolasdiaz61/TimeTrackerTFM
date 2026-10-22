@@ -42,9 +42,6 @@ builder.Services.AddOpenApi(options => options.AddBearerSecurity());
 
 var app = builder.Build();
 
-// Leer las opciones del registro valida su configuración ahora, antes de que ningún servicio alojado migre o siembre (DD-23).
-var registrationEnabled = app.Services.GetRequiredService<Microsoft.Extensions.Options.IOptions<RegistrationOptions>>().Value.Enabled;
-
 // Tras un proxy de confianza (opt-in): IP y esquema reales antes que nada, para el limitador por IP (DD-19).
 app.UseForwardedHeadersBehindProxy();
 // Después: las cabeceras de seguridad llegan también a los errores (DD-20).
@@ -74,6 +71,6 @@ app.MapTimeEntryEndpoints();
 app.MapTeamEndpoints();
 app.MapAssistantEndpoints();
 app.MapAssistantConfigurationEndpoints();
-_ = registrationEnabled;
+app.MapRegistrationEndpoint();
 
 app.Run();

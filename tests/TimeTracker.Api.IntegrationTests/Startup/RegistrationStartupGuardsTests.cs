@@ -117,7 +117,9 @@ public class RegistrationStartupGuardsTests(PostgresFixture postgres)
     [InlineData("2")]
     public async Task AnOpenRegistrationInProductionWithForwardedHeaders_Starts(string? hops)
     {
-        using var factory = CreateFactory(postgres.ConnectionString, migrate: false, production: true, (RegistrationKey, "true"), (CodesKey, Code), (ForwardedEnabledKey, "true"), (HopsKey, hops));
+        // Base vacía y migrada al arrancar: sin usuarios de demostración (la compartida los tiene de otras pruebas).
+        var connectionString = await postgres.CreateEmptyDatabaseAsync();
+        using var factory = CreateFactory(connectionString, migrate: true, production: true, (RegistrationKey, "true"), (CodesKey, Code), (ForwardedEnabledKey, "true"), (HopsKey, hops));
 
         var response = await factory.CreateAnonymousClient().GetAsync("/health", CancellationToken.None);
 

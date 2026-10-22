@@ -54,6 +54,7 @@ public class RegisterCompanyUseCaseTests
         Assert.False(manager.MustChangePassword);
         Assert.Equal("ana@example.test", manager.Email);
         Assert.Equal("Ana Gómez", manager.DisplayName);
+        Assert.Equal(company.Id, created.CompanyId);
         Assert.Equal($"token-de-{manager.Id}", created.Session.Token.Value);
         Assert.Equal("Acme   Norte", created.Session.User.CompanyName);
         Assert.Equal("Acme   Norte", Assert.Single(_issuer.CompanyNames));
