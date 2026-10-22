@@ -21,7 +21,8 @@ public sealed class UserAccount
         string passwordHash,
         UserRole role,
         Guid? managerId,
-        bool mustChangePassword)
+        bool mustChangePassword,
+        Guid? workScheduleId)
     {
         Id = id;
         CompanyId = companyId;
@@ -31,6 +32,7 @@ public sealed class UserAccount
         Role = role;
         ManagerId = managerId;
         MustChangePassword = mustChangePassword;
+        WorkScheduleId = workScheduleId;
     }
 
     public Guid Id { get; }
@@ -49,6 +51,9 @@ public sealed class UserAccount
 
     /// <summary>Verdadero mientras la persona usa la contraseña temporal que le entregó su responsable.</summary>
     public bool MustChangePassword { get; private set; }
+
+    /// <summary>Jornada asignada (como máximo una); la asigna un Manager y debe ser de la misma compañía (clave foránea compuesta).</summary>
+    public Guid? WorkScheduleId { get; private set; }
 
     public static UserAccount Create(
         Guid id,
@@ -84,7 +89,18 @@ public sealed class UserAccount
             throw new ArgumentException("El responsable debe ser otro usuario.", nameof(managerId));
         }
 
-        return new(id, companyId, normalizedEmail, trimmedName, passwordHash, role, managerId, mustChangePassword);
+        return new(id, companyId, normalizedEmail, trimmedName, passwordHash, role, managerId, mustChangePassword, null);
+    }
+
+    /// <summary>Asigna la jornada o, con <see langword="null"/>, la retira.</summary>
+    public void AssignWorkSchedule(Guid? workScheduleId)
+    {
+        if (workScheduleId == Guid.Empty)
+        {
+            throw new ArgumentException("El identificador de la jornada no puede estar vacío.", nameof(workScheduleId));
+        }
+
+        WorkScheduleId = workScheduleId;
     }
 
     // Una sola regla de normalización (DD-5): la usan Create, el inicio de sesión y el repositorio.
