@@ -699,3 +699,86 @@ Detalle en `design.md`, sección 9, «Desviaciones y aclaraciones del diseño su
 - **Cualquier Manager de la compañía puede crear Managers** y editar la configuración del asistente de su compañía (aceptado en la spec).
 - **Pendiente aparte:** límite por IPv6 y `ForwardedHeaders` del registro (PR de seguimiento); V-7 sigue sin comprobar en Railway (5.9).
 - Q-1, Q-8 y Q-10 (proceso operativo de apertura y rotación) siguen abiertas.
+
+---
+
+# PR 7 — Web: registro, gestión de equipo, cambio de contraseña y aviso
+
+Rama `feat/multi-compania-pr7-web` (apilada sobre `feat/multi-compania-pr6-empleados`; cadena `stacked-to-main`) · Strict TDD · Copia previa en `..\TimeTracker.rollback\pr-mc7\` (34 archivos) · Sin cambios en la API, el esquema ni el contrato (`docs/api/openapi.json` conserva el SHA-256 `76489e10...`) · `Registration__Enabled` **no se activa en ningún entorno** (solo en el proceso local de la verificación manual).
+
+## Lo que queda al responsable
+
+Nada de producción en esta PR (solo Web; no se accede a Railway). Para tener en cuenta:
+
+- Desplegable tras la PR 6: la página `/registro` muestra «El registro no está disponible.» mientras la API la mantenga cerrada, y el menú no enlaza a ella.
+- Una **pasada humana breve con Chrome visible** (registro por URL directa, alta, regeneración, primer inicio) sigue siendo recomendable: la tarea 7.8 se ejecutó con Chrome headless dirigido por CDP (ver `verify-report.md`).
+- Pendiente de seguimiento (ya anotado antes): el límite por IP/IPv6 del registro y `ForwardedHeaders`; V-7 sin comprobar en Railway; Q-1, Q-8 y Q-10.
+
+## Commits de esta entrega
+
+| Commit | Mensaje | Contenido |
+|---|---|---|
+| `7374da4` | `feat(web): formulario de registro de compañía, cliente tipado y base común de formularios` | 7.2: `RegisterForm`, `ApiCall`, `FormFeedback`, `AuthApiClient.RegisterCompanyAsync` |
+| `fff3eb1` | `feat(web): inicio de sesión con cambio pendiente, cambio de contraseña y redirección por claim mcp` | 7.3 y 7.3b: `LoginForm`, `ChangePasswordForm`, `SessionClaims`, `PasswordChangeRedirect`, `JwtPayload`, `AccountApiClient` |
+| `478d927` | `feat(web): alta de personas y regeneración de la contraseña temporal como clases puras` | 7.4 y 7.4b: `TeamMemberCreationForm`, `TeamMemberTemporaryPassword`, `TemporaryPasswordReveal`, `EmployeesApiClient` |
+| `84fd785` | `feat(web): páginas de registro, cambio de contraseña y alta de personas, aviso con el nombre de la compañía y menú` | 7.5 a 7.7: páginas, `PasswordChangeGate`, `AssistantConfigurationNotice`, `NavMenu`, `Program.cs`, `RepositoryConventionsTests` y `CompanyGuardsTests` actualizados |
+| `6f9b58d` | `refactor(web): el cliente de configuración del asistente reutiliza ApiCall` | REFACTOR (7.5/7.6) |
+| (este) | `docs(openspec): progreso de apply de la PR 7 de multi-compania` | `tasks.md`, `design.md` (desviaciones), `verify-report.md`, este archivo |
+
+Tamaño (`git diff 3949002 HEAD` de los cinco commits de código): 50 archivos, **+3 226 / -223**; producción (`src`) **+1 487 / -221** (34 archivos), pruebas **+1 739 / -2** (16 archivos). La previsión era de 600-900 líneas: la Web quedó por encima porque se extrajeron clases puras con sus clientes y pruebas (la lógica de presentación debe vivir fuera de las páginas, sin bUnit) y se rehízo `NavMenu.razor`. Se declara `size:exception` igual que en las PR 5 y 6.
+
+## Evidencia de Strict TDD (ciclo por tarea)
+
+| Tarea | Archivo de prueba | Capa | Safety net | RED | GREEN | TRIANGULATE | REFACTOR |
+|---|---|---|---|---|---|---|---|
+| 7.1 | — | — | N/A (copia) | N/A | `..\TimeTracker.rollback\pr-mc7\` (34 archivos) | N/A | N/A |
+| 7.2 | `WT/Registration/RegisterFormTests`, `RegisterCompanyClientTests` | Unitaria (Web) | 288 de la Web en verde | CS0246/CS0234 (`RegisterForm`, `IRegistrationApi`, `ApiCallResult`, `ISessionSignIn`) | 19/19 | Recorte de campos y contraseña intacta; `201` con sesión y destino `/`; confirmación distinta sin petición; `400` por campo; `403` genérico; `409` con `detail` y datos conservados; `429` con pista; `401`/`404` cerrado sin sesión; `500`/red genérico; doble envío ignorado; cliente: cinco campos exactos, sin `Authorization`, errores por campo, `Retry-After`, red caída. Mutaciones: sin vaciar secretos y `403` con el `detail` de la API hacen fallar 9 y 1 | `FormFeedback` y `ApiCall` compartidos |
+| 7.3 | `WT/Account/ChangePasswordFormTests`, `AccountApiClientTests`, `SessionClaimsTests`, `PasswordChangeRedirectTests` | Unitaria (Web) | 307 en verde | CS0234 (`TimeTracker.Web.Account`), `ILoginApi`, `IPasswordChangeApi` | 67/67 de `Account` | Token nuevo sustituye la sesión; `returnUrl` seguro e inseguro; `400` por campo y campos vaciados; `429`; `409`; `403`; `401` sin mensaje; confirmación; `mcp` solo con el valor exacto `true`; redirección de cualquier ruta salvo `/cambiar-contrasena` y `/login` (sin distinguir mayúsculas, no por prefijo), sin `returnUrl` inseguro. Mutaciones: sin la exención de `/login`, `mcp` por presencia y sin vaciar contraseñas hacen fallar 2, 4 y 7 | `JwtPayload` extraído del proveedor (pruebas del proveedor intactas) |
+| 7.3b | `WT/Account/LoginFormTests` | Unitaria (Web) | idem | CS0246 (`LoginForm`) | idem | Sin cambio pendiente: Inicio, `/equipo`, `//ejemplo.test`, `https://ejemplo.test`, ruta con barra invertida, ruta sin barra; con cambio pendiente: `/cambiar-contrasena` con o sin `returnUrl` seguro; `401` idéntico para contraseña errónea y correo inexistente; `429`; `500`/red genérico; campos vacíos sin petición; contraseña con espacios intacta. Mutación: ignorar el claim `mcp` hace fallar 4 | `LoginForm` sustituye la clase privada de `Login.razor` |
+| 7.4 | `WT/Team/TeamMemberCreationFormTests`, `EmployeesApiClientTests` | Unitaria (Web) | 374 en verde | CS0246 (`TeamMemberCreationForm`, `IEmployeesApi`, `CreateEmployeeRequestDto`) | 36/36 de `Team` | Cuerpo de cuatro campos sin compañía; responsable solo de la lista del equipo; contraseña temporal una vez y desaparece al cerrar o al empezar otra operación; `400` por campo, `409` con `detail` (correo o tope), `403`, `401` sin mensaje, `429`, genérico; Employee sin llamada a la API; sin miembros de baja/edición; doble envío. Mutaciones: aceptar cualquier responsable, no descartar la contraseña previa y quitar la guarda de Employee hacen fallar 1, 1 y 1 | `TemporaryPasswordReveal` compartido |
+| 7.4b | `WT/Team/TemporaryPasswordRegenerationTests` | Unitaria (Web) | idem | CS0246 (`TeamMemberTemporaryPassword`) | idem | Confirmación previa sin llamada; confirmar con el identificador; sin solicitud no hace nada; cancelar; descartar; `409` con `detail` y sin contraseña; `404`, `403`, `401`, `429`, genérico; doble confirmación. Mutaciones: `Dismiss` inerte y confirmar sin solicitud hacen fallar 4 y 2 | — |
+| 7.5 | `WT/Assistant/AssistantConfigurationNoticeTests`, `AssistantConfigurationFormTests` | Unitaria (Web) | 410 en verde | CS0103 (`AssistantConfigurationNotice`) | 420/420 | Texto de la spec con el nombre, nombre como texto literal (`<b>x</b>`), sin nombre «su compañía», nunca «toda la empresa»/«toda la instancia», restablecer nombra la compañía y conserva «aunque otro responsable»; `SourceLabel("default")` | `AssistantConfigurationApiClient` reutiliza `ApiCall` (pruebas del cliente intactas) |
+| 7.6 | `AR/RepositoryConventionsTests` | Arquitectura | 281 de arquitectura en verde | 8 en rojo (páginas, menú, servicios y literales ausentes) | 289/289 | Sin `MarkupString`/almacenamiento/`IJSRuntime` en las páginas nuevas ni en sus clases; contraseñas enmascaradas; sin contraseña/código/temporal en `NavigateTo`; textos en español sin términos técnicos (solo el marcado visible); sin controles de baja o edición; sin identificador de compañía en la Web (verde a la primera, vigila); sin enlace a `/registro`. Mutaciones: `localStorage` en `Register.razor`, `href="registro"` en el menú, sin `PasswordChangeGate`, «toda la empresa», «Editar» y sin `alertdialog` hacen fallar 2, 1, 1, 1, 1 y 1 | — |
+| 7.7 | (convenciones de 7.6) | Arquitectura | idem | idem | idem | `CompanyGuardsTests` pasa a permitir el literal `cname` en `SessionClaims.cs` (RED real: falló al crear el archivo) | — |
+| 7.8 | — | Manual | N/A | N/A | `verify-report.md`: 31/31 y 2/2 con Chrome headless contra la API local | — | — |
+
+### Resumen de pruebas
+
+- Total tras la PR: 111 + 470 + 420 + 473 + 289 + 985 = **2 748 pruebas** (antes 2 608; +140: Web +132, arquitectura +8), todas en verde.
+- Ninguna llamada a un proveedor real de IA ni a producción; valores inventados (`contrasena-prueba-12345`, `codigo-prueba-0123456789`, `ana@example.test`).
+
+### Evidencia de unidad de trabajo
+
+| Evidencia | Valor |
+|---|---|
+| Prueba focalizada | `dotnet test tests/TimeTracker.Web.Tests -c Release` (420 en verde) y `dotnet test tests/TimeTracker.ArchitectureTests --filter FullyQualifiedName~RepositoryConventionsTests` (92 en verde) |
+| Arnés de ejecución | Web y API reales en local (PostgreSQL 18 en Docker) con Chrome headless dirigido por CDP: registro con código (incorrecto y correcto), alta, regeneración, primer inicio con redirección, cambio de contraseña, aviso de configuración, menú por rol y sin sesión, registro cerrado. Nada contra producción |
+| Límite de reversión | Borrar las páginas, clientes y clases nuevas, restaurar `NavMenu`, `Program.cs`, `App.razor`, `Login.razor`, `Team.razor`, `AssistantConfiguration.razor` y `RepositoryConventionsTests` desde `..\TimeTracker.rollback\pr-mc7\`; sin cambios de API, esquema ni datos |
+
+## Puerta de la PR (todo en verde)
+
+| Paso | Resultado |
+|---|---|
+| DOCKER-CHECK | `docker info` responde (29.7.2); solo lectura |
+| Entorno limpio | Sin variables `Cors__`, `ConnectionStrings__`, `Database__`, `Jwt__`, `Seed__`, `Ai__`, `Registration__`, `Company__`, `ForwardedHeaders__`, `ASPNETCORE_`, `DOTNET_ENVIRONMENT` |
+| RESTORE | Correcto |
+| BUILD | `-warnaserror`: 0 advertencias, 0 errores |
+| TEST | Domain 111, Application 470, Web 420, Infrastructure 473, Architecture 289, Api.Integration 985: 0 fallos (con `ASPNETCORE_URLS=http://127.0.0.1:0` solo en ese comando; integración 4 min 42 s) |
+| COV-A | Application: líneas 99,5 %, ramas 96,7 % (mínimo 80 %) |
+| COV-D | Domain: líneas 100,0 %, ramas 100,0 % (mínimo 100 %) |
+| FORMAT | `--verify-no-changes`: sin cambios |
+| VULN | Sin `has the following vulnerable packages` |
+| EF-PENDING | N/A: sin modelo ni migración (PR solo de Web) |
+| Contrato | `dotnet build src/TimeTracker.Api -c Release --no-incremental`: `docs/api/openapi.json` conserva el mismo SHA-256 (`76489e10...`) |
+
+## Desviaciones
+
+Detalle en `design.md`, sección 9, «Desviaciones y aclaraciones del diseño surgidas en la PR 7»: `RepositoryConventionsTests` vive en `ArchitectureTests`, puertos pequeños (`I…Api`, `ISessionSignIn`) para las clases puras, `ApiCall`/`FormFeedback` compartidos, cambio pendiente leído del token, `PasswordChangeGate` que también guarda el Inicio y conserva el `returnUrl`, código de invitación enmascarado, `401` sin mensaje en los formularios autenticados, lista «Personas a su cargo» con la regeneración, aviso de configuración con `AssistantConfigurationNotice`, `Equipo` con `Match=All`, `cname` permitido en `SessionClaims.cs`, `exp` textual aceptado por el lector del payload y la verificación manual automatizada con Chrome headless.
+
+## Riesgos abiertos
+
+- **La verificación 7.8 fue automatizada** (Chrome headless por CDP): falta una pasada visual humana y el flujo con dos compañías en el navegador (cubierto por las pruebas de integración de las PR 1 a 6).
+- **La contraseña temporal está en el DOM** mientras se muestra el aviso (inevitable para entregarla); no se guarda en almacenamiento ni URL y se retira al cerrar o navegar. No hay botón de copiar (sin JS interop): se selecciona de un clic (`user-select: all`).
+- **El cambio forzado de la Web es de presentación**: la protección real es el `PasswordChangePendingMiddleware` de la API.
+- **La contraseña temporal no caduca** y **un token `mcp` emitido no se invalida al regenerar** (aceptados, ADR 0022; runbook en la PR 8).
+- V-7, Q-1, Q-8 y Q-10 siguen abiertas.
