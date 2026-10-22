@@ -1,4 +1,5 @@
 using System.Text.RegularExpressions;
+
 using static TimeTracker.ArchitectureTests.SourceText;
 
 namespace TimeTracker.ArchitectureTests;
