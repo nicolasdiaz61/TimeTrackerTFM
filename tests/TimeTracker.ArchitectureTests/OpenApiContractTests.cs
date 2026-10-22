@@ -300,6 +300,21 @@ public class OpenApiContractTests
         Assert.False(inviteCode.TryGetProperty("enum", out _));
     }
 
+    // V-12: las guardas del contrato prohíben passwordHash y companyId, pero no los nombres legítimos «password» (petición del registro) ni
+    // «companyName» (respuestas de sesión). Si alguien endureciera una guarda por nombre, esta prueba lo delataría.
+    [Fact]
+    public void ExportedDocument_KeepsPasswordAndCompanyNameAsLegitimateNames()
+    {
+        using var document = LoadDocument();
+        var schemas = document.RootElement.GetProperty("components").GetProperty("schemas");
+
+        Assert.Contains("password", PropertyNames(schemas, "RegisterCompanyRequest"));
+        Assert.Contains("companyName", PropertyNames(schemas, "RegisterCompanyRequest"));
+        Assert.Contains("companyName", PropertyNames(schemas, "UserResponse"));
+        Assert.DoesNotContain("passwordHash", CollectNames(document.RootElement), StringComparer.OrdinalIgnoreCase);
+        Assert.DoesNotContain("companyId", CollectNames(document.RootElement), StringComparer.OrdinalIgnoreCase);
+    }
+
     // Tarea 5.7: esta entrega añade solo el registro; el alta, la regeneración y el cambio de contraseña entran en la PR 6 (tarea 6.14,
     // que sustituye esta comprobación por las de sus propias operaciones).
     [Fact]

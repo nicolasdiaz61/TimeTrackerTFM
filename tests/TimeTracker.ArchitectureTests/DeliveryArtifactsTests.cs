@@ -151,6 +151,54 @@ public partial class DeliveryArtifactsTests
         Assert.False(ActiveEnvEntries().ContainsKey(key), $"{key} no debe estar activa en .env.example.");
     }
 
+    // 5.12 (SC «Documentación en .env.example de las claves multi-compañía»): el registro cerrado es la línea activa; los códigos y el tope
+    // de personas, comentados y sin ningún valor secreto.
+    [Fact]
+    public void EnvExample_KeepsTheRegistrationClosedByDefaultAsTheOnlyActiveLine()
+    {
+        var active = ActiveEnvEntries();
+
+        Assert.Equal("false", active["Registration__Enabled"]);
+        Assert.False(active.ContainsKey("Registration__InviteCodes"), "Registration__InviteCodes no debe estar activa en .env.example.");
+        Assert.False(active.ContainsKey("Company__MaxEmployees"), "Company__MaxEmployees no debe estar activa en .env.example.");
+    }
+
+    [Fact]
+    public void EnvExample_DocumentsTheInviteCodesCommentedWithoutAValue_AndTheEmployeeCapWithItsDefault()
+    {
+        var example = ReadRepositoryFile(".env.example");
+
+        Assert.Matches(@"(?m)^# Registration__InviteCodes=\s*$", example);
+        Assert.Matches(@"(?m)^# Company__MaxEmployees=50\s*$", example);
+        // Ninguna línea, activa o comentada, asigna un valor a los códigos ni a las claves maestras.
+        Assert.DoesNotMatch(@"(?m)^#?\s*Registration__InviteCodes=\S", example);
+        Assert.DoesNotMatch(@"(?m)^#?\s*Ai__MasterKeys__\d+=\S", example);
+    }
+
+    [Fact]
+    public void EnvExample_ExplainsTheRegistrationKeys()
+    {
+        var comments = string.Join('\n', ReadRepositoryFile(".env.example").Split('\n').Where(line => line.TrimStart().StartsWith('#')));
+
+        string[] required =
+        [
+            "cerrado por defecto", "aislamiento", "probado y desplegado", "secretos", "únicamente en el entorno del despliegue (Railway)",
+            "nunca en este archivo", "Seed__DemoUsers=true", "se fijan por entorno", "no los edita un Manager", "clave maestra", "solo en Railway",
+        ];
+        var missing = required.Where(text => !comments.Contains(text, StringComparison.Ordinal)).ToList();
+
+        Assert.True(missing.Count == 0, $".env.example no explica: {string.Join(", ", missing)}");
+    }
+
+    [Fact]
+    public void DockerCompose_NeitherOpensTheRegistrationNorDefinesInviteCodes()
+    {
+        var compose = ReadRepositoryFile("docker-compose.yml");
+
+        Assert.DoesNotContain("Registration__", compose, StringComparison.Ordinal);
+        Assert.DoesNotContain("InviteCodes", compose, StringComparison.Ordinal);
+    }
+
     [Fact]
     public void EnvExample_SaysThatAManagerDoesNotEditTheCompanyLimits()
     {
@@ -332,14 +380,14 @@ public partial class DeliveryArtifactsTests
     // --- ADR (SA-20, SA-21, SA-22) ---
 
     [Fact]
-    public void Adr_Directory_HasTwentyOneAdrsWithFourSections()
+    public void Adr_Directory_HasTwentyTwoAdrsWithFourSections()
     {
         string[] sections = ["## Contexto", "## Decisión", "## Consecuencias", "## Alternativas"];
         var adrs = Directory.GetFiles(Path.Combine(RepositoryRoot.Path, "docs", "adr"), "0*.md")
             .Order(StringComparer.Ordinal)
             .ToList();
 
-        Assert.Equal(21, adrs.Count);
+        Assert.Equal(22, adrs.Count);
         for (var index = 0; index < adrs.Count; index++)
         {
             var name = Path.GetFileName(adrs[index]);
@@ -540,6 +588,30 @@ public partial class DeliveryArtifactsTests
         Assert.DoesNotMatch(@"Ai__MasterKeys__\d+\s*=\s*[^\s`|]", adr);
         Assert.Matches(@"(?m)^- Sustituye parcialmente a: ", adr);
     }
+
+    // --- ADR 0022 (multi-compania, PR 5; CR y SC) ---
+
+    [Fact]
+    public void Adr0022_RecordsTheRegistrationAndPasswordDecisionsAndTheirAcceptedRisks()
+    {
+        var adr = ReadRepositoryFile("docs/adr/0022-autorregistro-con-codigo-de-invitacion-y-contrasenas.md");
+
+        string[] required =
+        [
+            "código de invitación", "reutilizable", "rotable", "Registration__Enabled", "cerrado por defecto", "tiempo constante", "SHA-256",
+            "5 por hora", "Hops", "ForwardedHeaders", "enumeración", "409", "12", "128", "reglas de composición", "contraseña temporal", "un solo uso",
+            "cambio forzado", "regenerar", "responsable directo", "correo único", "RGPD", "verificación de correo", "usuarios de demostración",
+            "SkipCompanyContext", "CreateScope", "no se registra", "sustituir la lista completa",
+        ];
+        var missing = required.Where(text => !adr.Contains(text, StringComparison.OrdinalIgnoreCase)).ToList();
+        Assert.True(missing.Count == 0, $"El ADR 0022 no menciona: {string.Join(", ", missing)}");
+        Assert.DoesNotMatch(@"Registration__InviteCodes\s*=\s*[^\s`|]", adr);
+        Assert.DoesNotMatch(@"Ai__MasterKeys__\d+\s*=\s*[^\s`|]", adr);
+    }
+
+    [Fact]
+    public void Readme_IndexesAdr0022()
+        => Assert.Contains("(docs/adr/0022-autorregistro-con-codigo-de-invitacion-y-contrasenas.md)", ReadRepositoryFile("README.md"), StringComparison.Ordinal);
 
     [Fact]
     public void MergedAdrs_AreNotEdited_BecauseTheNewAdrsAmendThemWithoutRewritingThem()
