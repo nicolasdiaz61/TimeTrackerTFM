@@ -15,9 +15,15 @@ public sealed class AskAssistantUseCase(IAssistantEngine engine, IAssistantQuota
     private static readonly string HistoryTooLong = $"El historial no puede superar los {MaxHistoryLength} caracteres en total.";
     private const string InvalidRole = "El historial solo admite mensajes de los roles user y assistant.";
 
-    /// <summary>Valida, comprueba que el asistente está habilitado, consume el tope diario y consulta al motor; en ese orden.</summary>
+    /// <summary>Cuenta el minuto de la compañía, valida, comprueba que el asistente está habilitado, consume el tope diario y consulta al motor; en ese orden.</summary>
     public async Task<AskAssistantResult> ExecuteAsync(AskAssistantCommand command, CancellationToken cancellationToken)
     {
+        var minute = quota.TryConsumeMinute(currentUser.CompanyId);
+        if (!minute.Allowed)
+        {
+            return new AskAssistantResult.QuotaExceeded(minute.RetryAfter, minute.Scope);
+        }
+
         var message = command.Message?.Trim();
         if (string.IsNullOrEmpty(message) || message.Length > MaxMessageLength)
         {
@@ -34,10 +40,10 @@ public sealed class AskAssistantUseCase(IAssistantEngine engine, IAssistantQuota
             return new AskAssistantResult.Unavailable(Disabled: true);
         }
 
-        var decision = quota.TryConsume(currentUser.EmployeeId);
+        var decision = quota.TryConsumeDaily(currentUser.CompanyId, currentUser.EmployeeId);
         if (!decision.Allowed)
         {
-            return new AskAssistantResult.QuotaExceeded(decision.RetryAfter);
+            return new AskAssistantResult.QuotaExceeded(decision.RetryAfter, decision.Scope);
         }
 
         var reply = await engine.ReplyAsync(new AssistantConversation(history, message), cancellationToken);

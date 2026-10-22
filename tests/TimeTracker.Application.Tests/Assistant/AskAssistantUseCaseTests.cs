@@ -1,5 +1,6 @@
 using TimeTracker.Application.Assistant;
 using TimeTracker.Application.Tests.Fakes;
+using TimeTracker.Domain.Companies;
 
 namespace TimeTracker.Application.Tests.Assistant;
 
@@ -211,7 +212,7 @@ public class AskAssistantUseCaseTests
 
         var result = await Ask("Hola");
 
-        Assert.Equal(new AskAssistantResult.QuotaExceeded(TimeSpan.FromHours(2)), result);
+        Assert.Equal(new AskAssistantResult.QuotaExceeded(TimeSpan.FromHours(2), QuotaScope.User), result);
         Assert.Null(_engine.Received);
     }
 
@@ -224,6 +225,58 @@ public class AskAssistantUseCaseTests
 
         Assert.Equal(new AskAssistantResult.Unavailable(Disabled: false), result);
         Assert.Single(_quota.Consumed);
+    }
+
+    [Fact]
+    public async Task Ask_ConsumesTheMinuteOfTheCurrentUsersCompany_AndTheDailyOfCompanyAndUser()
+    {
+        await Ask("Hola");
+
+        Assert.Equal([Company.DefaultId], _quota.MinuteConsumed);
+        Assert.Equal([Company.DefaultId], _quota.DailyCompanies);
+    }
+
+    [Fact]
+    public async Task Ask_WithTheCompanyMinuteExhausted_IsRejectedWithItsScopeAndNothingElseIsTouched()
+    {
+        _quota.MinuteDecision = new QuotaDecision(Allowed: false, TimeSpan.FromSeconds(40), QuotaScope.CompanyMinute);
+
+        var result = await Ask("Hola");
+
+        Assert.Equal(new AskAssistantResult.QuotaExceeded(TimeSpan.FromSeconds(40), QuotaScope.CompanyMinute), result);
+        Assert.Empty(_quota.Consumed);
+        Assert.Null(_engine.Received);
+    }
+
+    // La spec cuenta para el minuto de la compañía también lo rechazado después con 400 o 503 (a diferencia del tope diario).
+    [Fact]
+    public async Task Ask_AnInvalidMessage_StillConsumesTheCompanyMinute_ButNotTheDaily()
+    {
+        AssertRejected(await Ask(""), "El mensaje debe tener entre 1 y 500 caracteres.");
+
+        Assert.Single(_quota.MinuteConsumed);
+        Assert.Empty(_quota.Consumed);
+    }
+
+    [Fact]
+    public async Task Ask_WithTheAssistantDisabled_StillConsumesTheCompanyMinute_ButNotTheDaily()
+    {
+        _engine.IsEnabled = false;
+
+        await Ask("Hola");
+
+        Assert.Single(_quota.MinuteConsumed);
+        Assert.Empty(_quota.Consumed);
+    }
+
+    [Fact]
+    public async Task Ask_WithTheDailyCompanyScopeExhausted_ReportsThatScope()
+    {
+        _quota.Decision = new QuotaDecision(Allowed: false, TimeSpan.FromHours(2), QuotaScope.CompanyDaily);
+
+        var result = await Ask("Hola");
+
+        Assert.Equal(new AskAssistantResult.QuotaExceeded(TimeSpan.FromHours(2), QuotaScope.CompanyDaily), result);
     }
 
     private static AssistantTurnInput Turn(string role, string text) => new(role, text);
@@ -265,10 +318,23 @@ public class AskAssistantUseCaseTests
     {
         public List<Guid> Consumed { get; } = [];
 
+        public List<Guid> MinuteConsumed { get; } = [];
+
+        public List<Guid> DailyCompanies { get; } = [];
+
         public QuotaDecision Decision { get; set; } = new(Allowed: true, TimeSpan.Zero);
 
-        public QuotaDecision TryConsume(Guid employeeId)
+        public QuotaDecision MinuteDecision { get; set; } = new(Allowed: true, TimeSpan.Zero);
+
+        public QuotaDecision TryConsumeMinute(Guid companyId)
         {
+            MinuteConsumed.Add(companyId);
+            return MinuteDecision;
+        }
+
+        public QuotaDecision TryConsumeDaily(Guid companyId, Guid employeeId)
+        {
+            DailyCompanies.Add(companyId);
             Consumed.Add(employeeId);
             return Decision;
         }

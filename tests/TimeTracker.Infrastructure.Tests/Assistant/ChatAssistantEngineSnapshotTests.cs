@@ -126,7 +126,7 @@ public sealed class ChatAssistantEngineSnapshotTests
 
         rig.Client.Swap(new FakeChatClient(), generous, "10");
 
-        Assert.True(quota.TryConsume(ToolHarness.Luis).Allowed);
-        Assert.False(quota.TryConsume(ToolHarness.Luis).Allowed);
+        Assert.True(quota.TryConsumeDaily(Guid.Empty, ToolHarness.Luis).Allowed);
+        Assert.False(quota.TryConsumeDaily(Guid.Empty, ToolHarness.Luis).Allowed);
     }
 }
