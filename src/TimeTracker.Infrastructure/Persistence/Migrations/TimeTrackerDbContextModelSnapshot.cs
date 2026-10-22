@@ -253,10 +253,6 @@ namespace TimeTracker.Infrastructure.Persistence.Migrations
 
             modelBuilder.Entity("TimeTracker.Infrastructure.Persistence.AssistantSettingsRecord", b =>
                 {
-                    b.Property<short>("Id")
-                        .HasColumnType("smallint")
-                        .HasColumnName("id");
-
                     b.Property<Guid>("CompanyId")
                         .HasColumnType("uuid")
                         .HasColumnName("company_id");
@@ -311,10 +307,7 @@ namespace TimeTracker.Infrastructure.Persistence.Migrations
                         .HasColumnType("xid")
                         .HasColumnName("xmin");
 
-                    b.HasKey("Id");
-
-                    b.HasIndex("CompanyId")
-                        .HasDatabaseName("ix_assistant_settings_company_id");
+                    b.HasKey("CompanyId");
 
                     b.ToTable("assistant_settings", null, t =>
                         {
@@ -329,8 +322,6 @@ namespace TimeTracker.Infrastructure.Persistence.Migrations
                             t.HasCheckConstraint("ck_assistant_settings_model", "char_length(model) >= 1");
 
                             t.HasCheckConstraint("ck_assistant_settings_provider", "provider IN ('None', 'Anthropic', 'OpenAI', 'Gemini', 'Ollama')");
-
-                            t.HasCheckConstraint("ck_assistant_settings_singleton", "id = 1");
 
                             t.HasCheckConstraint("ck_assistant_settings_timeout_seconds", "timeout_seconds BETWEEN 5 AND 55");
                         });

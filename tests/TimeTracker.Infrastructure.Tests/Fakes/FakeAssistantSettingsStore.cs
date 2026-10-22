@@ -50,4 +50,15 @@ internal sealed class FakeAssistantSettingsStore : IAssistantSettingsStore
 
     public Task<DeleteOutcome> DeleteAsync(string expectedToken, AuditEntry audit, CancellationToken cancellationToken)
         => throw new NotSupportedException();
+
+    /// <summary>Lo que devuelve el sondeo global; <see cref="Failure"/> también se aplica.</summary>
+    public List<CompanyVersion> Versions { get; } = [];
+
+    public int ListCalls { get; private set; }
+
+    public Task<IReadOnlyList<CompanyVersion>> ListVersionsAsync(CancellationToken cancellationToken)
+    {
+        ListCalls++;
+        return Failure is { } failure ? throw failure : Task.FromResult<IReadOnlyList<CompanyVersion>>([.. Versions]);
+    }
 }

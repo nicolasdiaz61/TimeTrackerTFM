@@ -11,8 +11,8 @@ namespace TimeTracker.Infrastructure.Assistant;
 /// Motor del asistente (DD-11, DD-12): monta los mensajes, ofrece las herramientas del rol del token y acota el tiempo.
 /// Es de ámbito de petición porque <see cref="AssistantToolset"/> depende de la identidad y del <c>DbContext</c> del ámbito.
 /// </summary>
-public sealed class ChatAssistantEngine(
-    AssistantChatClient client,
+internal sealed class ChatAssistantEngine(
+    IAssistantRuntimeRegistry registry,
     AssistantToolset toolset,
     ICurrentUser currentUser,
     TimeProvider timeProvider,
@@ -26,13 +26,24 @@ public sealed class ChatAssistantEngine(
     private const string TimeoutOutcome = "timeout";
     private const string ToolErrorOutcome = "tool-error";
 
-    public bool IsEnabled => client.IsEnabled;
+    // Una sola lectura de la instantánea de la compañía por petición (el motor es de ámbito de petición): un Swap a mitad de la
+    // petición no la afecta (DD-10) y la compañía sale siempre del token, nunca de un parámetro.
+    private AssistantSnapshot? _snapshot;
+
+    public async Task<AssistantAvailability> GetAvailabilityAsync(CancellationToken cancellationToken)
+    {
+        if (await SnapshotAsync(cancellationToken) is not { } snapshot)
+        {
+            return AssistantAvailability.Unavailable;
+        }
+
+        return snapshot.Pipeline is null ? AssistantAvailability.Disabled : AssistantAvailability.Enabled;
+    }
 
     public async Task<string?> ReplyAsync(AssistantConversation conversation, CancellationToken cancellationToken)
     {
-        // Una sola lectura: un cambio de configuración a mitad de la petición no la afecta (DD-10).
-        var snapshot = client.Current;
-        if (snapshot.Pipeline is not { } pipeline)
+        var snapshot = await SnapshotAsync(cancellationToken);
+        if (snapshot?.Pipeline is not { } pipeline)
         {
             return null;
         }
@@ -75,6 +86,26 @@ public sealed class ChatAssistantEngine(
             // un único «no disponible», sin el mensaje de la excepción, que puede traer datos o la clave.
             var outcome = timeout.IsCancellationRequested ? TimeoutOutcome : ErrorOutcome;
             AssistantLog.QueryFailed(logger, currentUser.EmployeeId, provider, settings.Model, outcome, ElapsedMs(started), exception.GetType().Name);
+            return null;
+        }
+    }
+
+    // Un fallo de infraestructura al cargar la compañía (base de datos caída o plazo agotado) no se oculta como «deshabilitado»: es
+    // «no disponible», sin cachear, y la siguiente petición lo reintenta (DD-14). El mensaje de la excepción no se registra.
+    private async Task<AssistantSnapshot?> SnapshotAsync(CancellationToken cancellationToken)
+    {
+        if (_snapshot is not null)
+        {
+            return _snapshot;
+        }
+
+        try
+        {
+            return _snapshot = await registry.GetAsync(currentUser.CompanyId, cancellationToken);
+        }
+        catch (Exception exception) when (!cancellationToken.IsCancellationRequested)
+        {
+            AssistantLog.RuntimeLoadFailed(logger, exception.GetType().Name);
             return null;
         }
     }

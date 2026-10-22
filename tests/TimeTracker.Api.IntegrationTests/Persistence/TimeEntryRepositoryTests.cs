@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using Npgsql;
 
 using TimeTracker.Api.IntegrationTests.Postgres;
+using TimeTracker.Api.IntegrationTests.Support;
 using TimeTracker.Application.TimeTracking;
 using TimeTracker.Domain.Companies;
 using TimeTracker.Domain.TimeTracking;
@@ -308,6 +309,8 @@ public class TimeEntryRepositoryTests(PostgresFixture postgres)
 
     private async Task AddAsync(TimeEntry entry)
     {
+        // La clave foránea compuesta exige que el empleado exista (migración B).
+        UserSeed.EnsureExists(postgres.ConnectionString, entry.EmployeeId);
         await using var context = postgres.CreateContext(postgres.ConnectionString);
         await new TimeEntryRepository(context).AddAsync(entry, CancellationToken.None);
     }

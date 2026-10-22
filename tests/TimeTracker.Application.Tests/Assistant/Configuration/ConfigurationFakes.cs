@@ -2,6 +2,7 @@ using System.Diagnostics.CodeAnalysis;
 using System.Text;
 
 using TimeTracker.Application.Assistant.Configuration;
+using TimeTracker.Domain.Companies;
 
 namespace TimeTracker.Application.Tests.Assistant.Configuration;
 
@@ -58,6 +59,11 @@ internal sealed class InMemorySettingsStore : IAssistantSettingsStore
         Audits.Add(audit);
         return Task.FromResult(DeleteOutcome.Deleted);
     }
+
+    public Task<IReadOnlyList<CompanyVersion>> ListVersionsAsync(CancellationToken cancellationToken)
+    {
+        throw new NotImplementedException();
+    }
 }
 
 /// <summary>Cifrado de juguete reversible (XOR, sin texto legible): el texto cifrado lleva proveedor y versión para poder simular fallos de autenticación.</summary>
@@ -78,23 +84,37 @@ internal sealed class FakeProtector : IAssistantCredentialProtector
 
     private static byte[] Scramble(byte[] data) => [.. data.Select(b => (byte)(b ^ 0x5A))];
 
-    public EncryptedCredential Protect(AssistantCredential plaintext, AssistantProvider provider)
+    /// <summary>Texto cifrado v2: vinculado a la compañía y al proveedor, como el protector real.</summary>
+    public EncryptedCredential Protect(AssistantCredential plaintext, AssistantProvider provider, Guid companyId)
         => Available && !FailProtectAfterAvailabilityCheck
-            ? new EncryptedCredential(Scramble(Encoding.UTF8.GetBytes($"{provider}|{plaintext.Value}")), new byte[12], ActiveVersion)
+            ? new EncryptedCredential(Scramble(Encoding.UTF8.GetBytes($"{companyId:D}|{provider}|{plaintext.Value}")), new byte[12], ActiveVersion)
             : throw new CredentialProtectionUnavailableException();
 
-    public bool TryUnprotect(EncryptedCredential stored, AssistantProvider provider, [NotNullWhen(true)] out AssistantCredential? plaintext)
+    /// <summary>Texto cifrado v1 anterior a este cambio (sin compañía): solo se abre en la compañía por defecto, como el protector real.</summary>
+    public EncryptedCredential ProtectAsLegacyV1(AssistantCredential plaintext, AssistantProvider provider)
+        => new(Scramble(Encoding.UTF8.GetBytes($"{provider}|{plaintext.Value}")), new byte[12], ActiveVersion);
+
+    public bool TryUnprotect(EncryptedCredential stored, AssistantProvider provider, Guid companyId, [NotNullWhen(true)] out AssistantCredential? plaintext)
     {
         plaintext = null;
         var text = Encoding.UTF8.GetString(Scramble(stored.Ciphertext));
-        var prefix = $"{provider}|";
-        if (RetiredVersions.Contains(stored.KeyVersion) || !text.StartsWith(prefix, StringComparison.Ordinal))
+        var v2Prefix = $"{companyId:D}|{provider}|";
+        var v1Prefix = $"{provider}|";
+        if (RetiredVersions.Contains(stored.KeyVersion))
         {
             return false;
         }
 
-        plaintext = new AssistantCredential(text[prefix.Length..]);
-        return true;
+        if (text.StartsWith(v2Prefix, StringComparison.Ordinal))
+        {
+            plaintext = new AssistantCredential(text[v2Prefix.Length..]);
+        }
+        else if (companyId == Company.DefaultId && text.StartsWith(v1Prefix, StringComparison.Ordinal))
+        {
+            plaintext = new AssistantCredential(text[v1Prefix.Length..]);
+        }
+
+        return plaintext is not null;
     }
 }
 
@@ -109,9 +129,12 @@ internal sealed class FakeReloader : IAssistantRuntimeReloader
 
     public bool Fails { get; set; }
 
-    public Task ReloadAsync(CancellationToken cancellationToken)
+    public List<Guid> Companies { get; } = [];
+
+    public Task ReloadAsync(Guid companyId, CancellationToken cancellationToken)
     {
         Calls++;
+        Companies.Add(companyId);
         return Fails ? Task.FromException(new InvalidOperationException("recarga fallida")) : Task.CompletedTask;
     }
 }

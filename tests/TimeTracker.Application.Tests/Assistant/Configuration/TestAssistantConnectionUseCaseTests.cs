@@ -1,4 +1,7 @@
 using TimeTracker.Application.Assistant.Configuration;
+using TimeTracker.Application.Tests.Fakes;
+using TimeTracker.Domain.Companies;
+using TimeTracker.Domain.Users;
 
 using static TimeTracker.Application.Tests.Assistant.Configuration.ConfigurationTestData;
 
@@ -14,7 +17,7 @@ public class TestAssistantConnectionUseCaseTests
     private AssistantEnvironmentDefaults _env = Env(model: "env-m", timeoutSeconds: 30, maxOutputTokens: 1024);
 
     private Task<TestAssistantConnectionResult> Test(AssistantSettingsInput input)
-        => new TestAssistantConnectionUseCase(_store, _protector, new FakeEnvironment(_env), _tester).ExecuteAsync(input, CancellationToken.None);
+        => new TestAssistantConnectionUseCase(_store, _protector, new FakeEnvironment(_env), _tester, new FixedCurrentUser(Guid.NewGuid(), UserRole.Manager), PlatformCompanies()).ExecuteAsync(input, CancellationToken.None);
 
     [Fact]
     public async Task AnEmptyBody_TestsTheEffectiveConfiguration()
@@ -86,7 +89,7 @@ public class TestAssistantConnectionUseCaseTests
     public async Task WithoutACandidateKey_TheStoredKeyIsDecryptedForTheSameProvider()
     {
         _env = Env(apiKey: null);
-        _store.Row = Stored(credential: _protector.Protect(new AssistantCredential(SecretKey), AssistantProvider.Anthropic));
+        _store.Row = Stored(credential: _protector.Protect(new AssistantCredential(SecretKey), AssistantProvider.Anthropic, Company.DefaultId));
 
         await Test(Empty);
 
@@ -97,7 +100,7 @@ public class TestAssistantConnectionUseCaseTests
     public async Task AStoredKeyThatCannotBeDecrypted_IsRejectedOnTheCredentialFieldWithoutCallingTheTester()
     {
         _env = Env(apiKey: null);
-        _store.Row = Stored(credential: _protector.Protect(new AssistantCredential(SecretKey), AssistantProvider.Anthropic));
+        _store.Row = Stored(credential: _protector.Protect(new AssistantCredential(SecretKey), AssistantProvider.Anthropic, Company.DefaultId));
         _protector.RetiredVersions.Add(1);
 
         var result = await Test(Empty);
@@ -188,7 +191,7 @@ public class TestAssistantConnectionUseCaseTests
     {
         var failing = new FakeTester(new ConnectionTestResult("authentication", "El proveedor rechazó la clave."));
 
-        var result = await new TestAssistantConnectionUseCase(_store, _protector, new FakeEnvironment(_env), failing).ExecuteAsync(Empty, CancellationToken.None);
+        var result = await new TestAssistantConnectionUseCase(_store, _protector, new FakeEnvironment(_env), failing, new FixedCurrentUser(Guid.NewGuid(), UserRole.Manager), PlatformCompanies()).ExecuteAsync(Empty, CancellationToken.None);
 
         Assert.Equal("authentication", Assert.IsType<TestAssistantConnectionResult.Completed>(result).Outcome.Result);
     }

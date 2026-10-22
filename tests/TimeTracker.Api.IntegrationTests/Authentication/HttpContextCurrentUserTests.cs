@@ -71,6 +71,53 @@ public class HttpContextCurrentUserTests
         => Assert.Throws<InvalidOperationException>(() => CreateFor(Authenticated(("sub", Guid.NewGuid().ToString()))).Role);
 
     [Fact]
+    public void CompanyId_ReturnsTheCidClaim()
+    {
+        var companyId = Guid.NewGuid();
+
+        var currentUser = CreateFor(Authenticated(("sub", Guid.NewGuid().ToString()), ("cid", companyId.ToString())));
+
+        Assert.Equal(companyId, currentUser.CompanyId);
+    }
+
+    [Fact]
+    public void CompanyId_WithAnonymousIdentity_ThrowsAndReturnsNoDefaultCompany()
+    {
+        var anonymous = new DefaultHttpContext { User = new ClaimsPrincipal(new ClaimsIdentity()) };
+
+        Assert.Throws<InvalidOperationException>(() => CreateFor(anonymous).CompanyId);
+    }
+
+    [Fact]
+    public void CompanyId_WithoutHttpContext_Throws()
+        => Assert.Throws<InvalidOperationException>(() => new HttpContextCurrentUser(new HttpContextAccessor()).CompanyId);
+
+    [Theory]
+    [InlineData("no-es-un-guid")]
+    [InlineData("00000000-0000-0000-0000-000000000000")]
+    [InlineData("")]
+    public void CompanyId_WithInvalidCid_Throws(string cid)
+        => Assert.Throws<InvalidOperationException>(() => CreateFor(Authenticated(("sub", Guid.NewGuid().ToString()), ("cid", cid))).CompanyId);
+
+    [Fact]
+    public void CompanyId_WithoutCidClaim_Throws()
+        => Assert.Throws<InvalidOperationException>(() => CreateFor(Authenticated(("sub", Guid.NewGuid().ToString()), ("role", "Employee"))).CompanyId);
+
+    [Fact]
+    public void CompanyId_IgnoresRequestHeadersQueryAndBody()
+    {
+        var companyId = Guid.NewGuid();
+        var other = Guid.NewGuid();
+        var context = Authenticated(("sub", Guid.NewGuid().ToString()), ("cid", companyId.ToString()));
+        context.Request.Headers["X-Company-Id"] = other.ToString();
+        context.Request.Headers["cid"] = other.ToString();
+        context.Request.QueryString = new QueryString($"?companyId={other}");
+        context.Request.Body = new MemoryStream(System.Text.Encoding.UTF8.GetBytes($"{{\"companyId\":\"{other}\"}}"));
+
+        Assert.Equal(companyId, CreateFor(context).CompanyId);
+    }
+
+    [Fact]
     public void Role_IgnoresRequestHeadersQueryAndBody()
     {
         var context = Authenticated(("sub", Guid.NewGuid().ToString()), ("role", "Employee"));

@@ -1,10 +1,25 @@
 using TimeTracker.Application.Assistant.Configuration;
+using TimeTracker.Application.Tests.Fakes;
+using TimeTracker.Domain.Companies;
 
 namespace TimeTracker.Application.Tests.Assistant.Configuration;
 
 internal static class ConfigurationTestData
 {
     public const string SecretKey = "clave-prueba-123456";
+
+    /// <summary>Compañías de prueba: la compañía por defecto es la de plataforma (demo); cualquier otra no lo es salvo que se siembre.</summary>
+    public static InMemoryCompanyRepository PlatformCompanies(params Guid[] platformCompanies)
+    {
+        var companies = new InMemoryCompanyRepository();
+        companies.Seed(Company.DefaultId, "Demo", usesPlatformAssistant: true);
+        foreach (var id in platformCompanies)
+        {
+            companies.Seed(id, "Plataforma", usesPlatformAssistant: true);
+        }
+
+        return companies;
+    }
 
     public static AssistantEnvironmentDefaults Env(
         AssistantProvider provider = AssistantProvider.Anthropic,

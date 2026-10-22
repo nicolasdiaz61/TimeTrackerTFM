@@ -4,8 +4,10 @@ using Microsoft.AspNetCore.Components.Web;
 using Microsoft.AspNetCore.Components.WebAssembly.Hosting;
 using Microsoft.JSInterop;
 using TimeTracker.Web;
+using TimeTracker.Web.Account;
 using TimeTracker.Web.Assistant;
 using TimeTracker.Web.Auth;
+using TimeTracker.Web.Registration;
 using TimeTracker.Web.Team;
 using TimeTracker.Web.Time;
 using TimeTracker.Web.TimeEntries;
@@ -35,8 +37,16 @@ builder.Services.AddScoped<JwtAuthenticationStateProvider>();
 builder.Services.AddScoped<AuthenticationStateProvider>(sp => sp.GetRequiredService<JwtAuthenticationStateProvider>());
 
 // HttpClient propio de cada cliente tipado (DD-17): no se añade Microsoft.Extensions.Http al WebAssembly.
-// El login no lleva handler: su 401 («credenciales incorrectas») no debe redirigir ni cerrar sesión.
+// El login y el registro no llevan handler: el 401 del login («credenciales incorrectas») no debe redirigir ni cerrar sesión
+// y el registro nunca envía «Authorization».
 builder.Services.AddScoped(sp => new AuthApiClient(new HttpClient { BaseAddress = apiBaseUri }));
+builder.Services.AddScoped<ILoginApi>(sp => sp.GetRequiredService<AuthApiClient>());
+builder.Services.AddScoped<IRegistrationApi>(sp => sp.GetRequiredService<AuthApiClient>());
+builder.Services.AddScoped<ISessionSignIn>(sp => sp.GetRequiredService<JwtAuthenticationStateProvider>());
+builder.Services.AddScoped(sp => new AccountApiClient(CreateAuthorizedClient(sp, apiBaseUri)));
+builder.Services.AddScoped<IPasswordChangeApi>(sp => sp.GetRequiredService<AccountApiClient>());
+builder.Services.AddScoped(sp => new EmployeesApiClient(CreateAuthorizedClient(sp, apiBaseUri)));
+builder.Services.AddScoped<IEmployeesApi>(sp => sp.GetRequiredService<EmployeesApiClient>());
 builder.Services.AddScoped(sp => new TimeEntriesApiClient(CreateAuthorizedClient(sp, apiBaseUri)));
 builder.Services.AddScoped(sp => new TeamApiClient(CreateAuthorizedClient(sp, apiBaseUri)));
 builder.Services.AddScoped(sp => new AssistantApiClient(CreateAuthorizedClient(sp, apiBaseUri)));

@@ -21,7 +21,10 @@ public static class ForwardedHeadersExtensions
 
         if (settings.Hops < 1)
         {
-            throw new InvalidOperationException($"{ForwardedHeadersSettings.SectionName}:{nameof(ForwardedHeadersSettings.Hops)}: debe ser al menos 1.");
+            // Sin saltos de confianza no se puede leer la IP real del cliente: el límite por IP (login y registro) compartiría una sola
+            // partición o se podría falsear con una cabecera X-Forwarded-For del cliente. El mensaje no incluye el valor recibido.
+            throw new InvalidOperationException(
+                $"{ForwardedHeadersSettings.SectionName}:{nameof(ForwardedHeadersSettings.Hops)}: debe ser al menos 1; sin saltos de proxy de confianza el límite por IP comparte una sola partición para todos los clientes o puede falsearse con una cabecera X-Forwarded-For del cliente.");
         }
 
         services.Configure<ForwardedHeadersOptions>(options =>

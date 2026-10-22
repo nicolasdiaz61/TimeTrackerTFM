@@ -17,11 +17,28 @@ public sealed class JwtAccessTokenIssuer(IOptions<JwtOptions> options, TimeProvi
         new SymmetricSecurityKey(Encoding.UTF8.GetBytes(options.Value.SigningKey!)),
         SecurityAlgorithms.HmacSha256);
 
-    public AccessToken Issue(UserAccount user)
+    public AccessToken Issue(UserAccount user, string companyName)
     {
         // Un JWT guarda segundos enteros: se trunca para que expiresAt de la respuesta coincida con exp.
         var issuedAt = DateTimeOffset.FromUnixTimeSeconds(clock.GetUtcNow().ToUnixTimeSeconds());
         var expiresAt = issuedAt + JwtDefaults.TokenLifetime;
+        var claims = new Dictionary<string, object>
+        {
+            [JwtRegisteredClaimNames.Sub] = user.Id.ToString(),
+            [JwtRegisteredClaimNames.Name] = user.DisplayName,
+            [JwtRegisteredClaimNames.Email] = user.Email,
+            ["role"] = user.Role.ToString(),
+            [JwtRegisteredClaimNames.Jti] = Guid.NewGuid().ToString(),
+            [JwtDefaults.CompanyClaim] = user.CompanyId.ToString(),
+            [JwtDefaults.CompanyNameClaim] = companyName,
+        };
+
+        // Solo con el cambio de contraseña pendiente: su ausencia significa que no hay nada pendiente.
+        if (user.MustChangePassword)
+        {
+            claims[JwtDefaults.PasswordChangePendingClaim] = JwtDefaults.PasswordChangePendingValue;
+        }
+
         var descriptor = new SecurityTokenDescriptor
         {
             Issuer = JwtDefaults.Issuer,
@@ -30,14 +47,7 @@ public sealed class JwtAccessTokenIssuer(IOptions<JwtOptions> options, TimeProvi
             NotBefore = issuedAt.UtcDateTime,
             Expires = expiresAt.UtcDateTime,
             SigningCredentials = _credentials,
-            Claims = new Dictionary<string, object>
-            {
-                [JwtRegisteredClaimNames.Sub] = user.Id.ToString(),
-                [JwtRegisteredClaimNames.Name] = user.DisplayName,
-                [JwtRegisteredClaimNames.Email] = user.Email,
-                ["role"] = user.Role.ToString(),
-                [JwtRegisteredClaimNames.Jti] = Guid.NewGuid().ToString(),
-            },
+            Claims = claims,
         };
 
         return new AccessToken(_handler.CreateToken(descriptor), expiresAt);

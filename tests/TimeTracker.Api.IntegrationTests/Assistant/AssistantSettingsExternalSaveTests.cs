@@ -34,7 +34,7 @@ public sealed class AssistantSettingsExternalSaveTests(PostgresFixture postgres)
         var client = factory.CreateClient();
         Assert.Equal("respuesta de modelo-env", await ReplyAsync(client));
 
-        await ReloadApiFactory.ExecuteAsync(connectionString, "INSERT INTO assistant_settings (id, company_id, provider, model, updated_by, updated_at) VALUES (1, '00000000-0000-7000-8000-000000000001', 'Ollama', 'modelo-nuevo', gen_random_uuid(), now())");
+        await ReloadApiFactory.ExecuteAsync(connectionString, "INSERT INTO assistant_settings (company_id, provider, model, updated_by, updated_at) VALUES ('00000000-0000-7000-8000-000000000001', 'Ollama', 'modelo-nuevo', gen_random_uuid(), now())");
         await factory.PollOnceAsync();
         Assert.Equal("respuesta de modelo-nuevo", await ReplyAsync(client));
 
@@ -50,7 +50,7 @@ public sealed class AssistantSettingsExternalSaveTests(PostgresFixture postgres)
         using var factory = new ReloadApiFactory(connectionString, applyMigrations: true);
         var client = factory.CreateClient();
 
-        await ReloadApiFactory.ExecuteAsync(connectionString, "INSERT INTO assistant_settings (id, company_id, provider, updated_by, updated_at) VALUES (1, '00000000-0000-7000-8000-000000000001', 'None', gen_random_uuid(), now())");
+        await ReloadApiFactory.ExecuteAsync(connectionString, "INSERT INTO assistant_settings (company_id, provider, updated_by, updated_at) VALUES ('00000000-0000-7000-8000-000000000001', 'None', gen_random_uuid(), now())");
         await factory.PollOnceAsync();
         var disabled = await client.AskAsync("hola");
         Assert.Equal(HttpStatusCode.ServiceUnavailable, disabled.StatusCode);
@@ -69,7 +69,7 @@ public sealed class AssistantSettingsExternalSaveTests(PostgresFixture postgres)
         var client = factory.CreateClient();
 
         // Anthropic exige clave y el entorno tampoco la tiene: la fila no es utilizable y se conserva el entorno.
-        await ReloadApiFactory.ExecuteAsync(connectionString, "INSERT INTO assistant_settings (id, company_id, provider, model, updated_by, updated_at) VALUES (1, '00000000-0000-7000-8000-000000000001', 'Anthropic', 'modelo-invalido', gen_random_uuid(), now())");
+        await ReloadApiFactory.ExecuteAsync(connectionString, "INSERT INTO assistant_settings (company_id, provider, model, updated_by, updated_at) VALUES ('00000000-0000-7000-8000-000000000001', 'Anthropic', 'modelo-invalido', gen_random_uuid(), now())");
         await factory.PollOnceAsync();
 
         Assert.Equal("respuesta de modelo-env", await ReplyAsync(client));

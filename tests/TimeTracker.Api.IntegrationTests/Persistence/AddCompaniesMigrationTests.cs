@@ -42,7 +42,7 @@ public class AddCompaniesMigrationTests(PostgresFixture postgres)
 
         await using (var context = postgres.CreateContext(database.ConnectionString))
         {
-            await context.Database.MigrateAsync(CancellationToken.None);
+            await MigrateToAsync(context, "_AddCompanies");
         }
 
         Assert.Equal(usersBefore, await QueryAsync(database.ConnectionString, UserRows));
@@ -66,7 +66,7 @@ public class AddCompaniesMigrationTests(PostgresFixture postgres)
 
         await using (var context = postgres.CreateContext(database.ConnectionString))
         {
-            await context.Database.MigrateAsync(CancellationToken.None);
+            await MigrateToAsync(context, "_AddCompanies");
         }
 
         var row = await QueryAsync(
@@ -84,7 +84,7 @@ public class AddCompaniesMigrationTests(PostgresFixture postgres)
 
         await using (var context = postgres.CreateContext(database.ConnectionString))
         {
-            await context.Database.MigrateAsync(CancellationToken.None);
+            await MigrateToAsync(context, "_AddCompanies");
         }
 
         // Una fila actualizada cambiaría de versión (xmin): el relleno viene del DEFAULT, que PostgreSQL guarda como metadato.
@@ -115,7 +115,7 @@ public class AddCompaniesMigrationTests(PostgresFixture postgres)
 
         await using (var context = postgres.CreateContext(database.ConnectionString))
         {
-            await context.Database.MigrateAsync(CancellationToken.None);
+            await MigrateToAsync(context, "_AddCompanies");
         }
 
         // ADD COLUMN con DEFAULT constante es solo metadato desde PostgreSQL 11: el archivo de la tabla no cambia.
@@ -129,7 +129,7 @@ public class AddCompaniesMigrationTests(PostgresFixture postgres)
         var database = await SeedBeforeAsync();
         await using (var context = postgres.CreateContext(database.ConnectionString))
         {
-            await context.Database.MigrateAsync(CancellationToken.None);
+            await MigrateToAsync(context, "_AddCompanies");
         }
 
         var oldUser = Guid.NewGuid();
@@ -153,7 +153,7 @@ public class AddCompaniesMigrationTests(PostgresFixture postgres)
         var auditBefore = await QueryAsync(database.ConnectionString, AuditRows);
         var shapeBefore = await TableShapeAsync(database.ConnectionString);
         await using var context = postgres.CreateContext(database.ConnectionString);
-        await context.Database.MigrateAsync(CancellationToken.None);
+        await MigrateToAsync(context, "_AddCompanies");
 
         await MigrateToAsync(context, PreviousMigration);
 

@@ -4,6 +4,7 @@ using System.Text;
 using Microsoft.Extensions.Options;
 
 using TimeTracker.Application.Assistant.Configuration;
+using TimeTracker.Domain.Companies;
 using TimeTracker.Infrastructure.Assistant;
 
 namespace TimeTracker.Infrastructure.Tests.Assistant;
@@ -27,7 +28,7 @@ public sealed class AesGcmCredentialProtectorTests
     }
 
     private static EncryptedCredential Protect(AesGcmCredentialProtector protector, AssistantProvider provider = AssistantProvider.Anthropic)
-        => protector.Protect(new AssistantCredential(Secret), provider);
+        => protector.Protect(new AssistantCredential(Secret), provider, Company.DefaultId);
 
     [Fact]
     public void RoundTrip_RestoresTheKeyAndTheStoredBytesDoNotContainIt()
@@ -37,7 +38,7 @@ public sealed class AesGcmCredentialProtectorTests
         var stored = Protect(protector);
 
         Assert.True(protector.IsAvailable);
-        Assert.True(protector.TryUnprotect(stored, AssistantProvider.Anthropic, out var plaintext));
+        Assert.True(protector.TryUnprotect(stored, AssistantProvider.Anthropic, Company.DefaultId, out var plaintext));
         Assert.Equal(Secret, plaintext!.Value);
         Assert.Equal((short)1, stored.KeyVersion);
         Assert.Equal(12, stored.Nonce.Length);
@@ -66,7 +67,7 @@ public sealed class AesGcmCredentialProtectorTests
         var altered = stored.Ciphertext.ToArray();
         altered[index] ^= 1;
 
-        Assert.False(protector.TryUnprotect(stored with { Ciphertext = altered }, AssistantProvider.Anthropic, out var plaintext));
+        Assert.False(protector.TryUnprotect(stored with { Ciphertext = altered }, AssistantProvider.Anthropic, Company.DefaultId, out var plaintext));
         Assert.Null(plaintext);
     }
 
@@ -76,8 +77,8 @@ public sealed class AesGcmCredentialProtectorTests
         var protector = Create("1", ("1", KeyOne));
         var stored = Protect(protector);
 
-        Assert.False(protector.TryUnprotect(stored with { Ciphertext = stored.Ciphertext[..8] }, AssistantProvider.Anthropic, out _));
-        Assert.False(protector.TryUnprotect(stored with { Nonce = stored.Nonce[..4] }, AssistantProvider.Anthropic, out _));
+        Assert.False(protector.TryUnprotect(stored with { Ciphertext = stored.Ciphertext[..8] }, AssistantProvider.Anthropic, Company.DefaultId, out _));
+        Assert.False(protector.TryUnprotect(stored with { Nonce = stored.Nonce[..4] }, AssistantProvider.Anthropic, Company.DefaultId, out _));
     }
 
     [Fact]
@@ -86,7 +87,7 @@ public sealed class AesGcmCredentialProtectorTests
         var protector = Create("1", ("1", KeyOne));
         var stored = Protect(protector, AssistantProvider.Anthropic);
 
-        Assert.False(protector.TryUnprotect(stored, AssistantProvider.OpenAI, out var plaintext));
+        Assert.False(protector.TryUnprotect(stored, AssistantProvider.OpenAI, Company.DefaultId, out var plaintext));
         Assert.Null(plaintext);
     }
 
@@ -96,7 +97,7 @@ public sealed class AesGcmCredentialProtectorTests
         var protector = Create("1", ("1", KeyOne), ("2", KeyOne));
         var stored = Protect(protector);
 
-        Assert.False(protector.TryUnprotect(stored with { KeyVersion = 2 }, AssistantProvider.Anthropic, out _));
+        Assert.False(protector.TryUnprotect(stored with { KeyVersion = 2 }, AssistantProvider.Anthropic, Company.DefaultId, out _));
     }
 
     [Theory]
@@ -150,8 +151,8 @@ public sealed class AesGcmCredentialProtectorTests
         var versionTwo = Protect(Create("2", ("2", KeyTwo)));
 
         Assert.True(protector.IsAvailable);
-        Assert.False(protector.TryUnprotect(versionOne, AssistantProvider.Anthropic, out _));
-        Assert.True(protector.TryUnprotect(versionTwo, AssistantProvider.Anthropic, out var plaintext));
+        Assert.False(protector.TryUnprotect(versionOne, AssistantProvider.Anthropic, Company.DefaultId, out _));
+        Assert.True(protector.TryUnprotect(versionTwo, AssistantProvider.Anthropic, Company.DefaultId, out var plaintext));
         Assert.Equal(Secret, plaintext!.Value);
     }
 
@@ -200,7 +201,7 @@ public sealed class AesGcmCredentialProtectorTests
         var without = Create(null);
 
         Assert.False(without.IsAvailable);
-        Assert.False(without.TryUnprotect(stored, AssistantProvider.Anthropic, out var plaintext));
+        Assert.False(without.TryUnprotect(stored, AssistantProvider.Anthropic, Company.DefaultId, out var plaintext));
         Assert.Null(plaintext);
     }
 
@@ -210,7 +211,7 @@ public sealed class AesGcmCredentialProtectorTests
         var old = Protect(Create("1", ("1", KeyOne)));
         var rotated = Create("2", ("1", KeyOne), ("2", KeyTwo));
 
-        Assert.True(rotated.TryUnprotect(old, AssistantProvider.Anthropic, out var plaintext));
+        Assert.True(rotated.TryUnprotect(old, AssistantProvider.Anthropic, Company.DefaultId, out var plaintext));
         Assert.Equal(Secret, plaintext!.Value);
         Assert.Equal((short)2, Protect(rotated).KeyVersion);
     }
@@ -221,7 +222,7 @@ public sealed class AesGcmCredentialProtectorTests
         var old = Protect(Create("1", ("1", KeyOne)));
         var retired = Create("2", ("2", KeyTwo));
 
-        Assert.False(retired.TryUnprotect(old, AssistantProvider.Anthropic, out var plaintext));
+        Assert.False(retired.TryUnprotect(old, AssistantProvider.Anthropic, Company.DefaultId, out var plaintext));
         Assert.Null(plaintext);
     }
 }

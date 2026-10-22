@@ -2,7 +2,9 @@ using Microsoft.Extensions.Options;
 
 using TimeTracker.Application.DemoData;
 using TimeTracker.Application.Users;
+using TimeTracker.Domain.Companies;
 using TimeTracker.Domain.Users;
+using TimeTracker.Infrastructure.Persistence;
 
 namespace TimeTracker.Api.Seeding;
 
@@ -23,7 +25,8 @@ public sealed partial class DemoDataSeeder(
             return;
         }
 
-        await using var scope = services.CreateAsyncScope();
+        // La siembra actúa como la compañía por defecto (DD-22).
+        await using var scope = services.GetRequiredService<ICompanyScopeFactory>().CreateScope(Company.DefaultId);
         var users = scope.ServiceProvider.GetRequiredService<IUserRepository>();
         var employees = new List<DemoEmployee>();
         foreach (var demo in DemoUsers.All)

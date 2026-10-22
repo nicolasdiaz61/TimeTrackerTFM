@@ -12,7 +12,6 @@ internal sealed class AssistantSettingsConfiguration : IEntityTypeConfiguration<
         // Las CHECK repiten los límites de Application como defensa en profundidad (DD-8).
         builder.ToTable("assistant_settings", table =>
         {
-            table.HasCheckConstraint("ck_assistant_settings_singleton", "id = 1");
             table.HasCheckConstraint("ck_assistant_settings_provider", "provider IN ('None', 'Anthropic', 'OpenAI', 'Gemini', 'Ollama')");
             table.HasCheckConstraint("ck_assistant_settings_model", "char_length(model) >= 1");
             table.HasCheckConstraint("ck_assistant_settings_timeout_seconds", "timeout_seconds BETWEEN 5 AND 55");
@@ -25,9 +24,9 @@ internal sealed class AssistantSettingsConfiguration : IEntityTypeConfiguration<
             table.HasCheckConstraint("ck_assistant_settings_credential_nonce_length", "credential_nonce IS NULL OR octet_length(credential_nonce) = 12");
         });
 
-        builder.HasKey(row => row.Id);
-        builder.Property(row => row.Id).HasColumnName("id").ValueGeneratedNever();
-        builder.Property(row => row.CompanyId).HasColumnName("company_id").IsRequired();
+        // Una fila por compañía: la clave primaria es la propia compañía (sustituye al singleton `id = 1`).
+        builder.HasKey(row => row.CompanyId);
+        builder.Property(row => row.CompanyId).HasColumnName("company_id").ValueGeneratedNever();
         builder.Property(row => row.Provider).HasColumnName("provider").HasMaxLength(16).IsRequired();
         builder.Property(row => row.Model).HasColumnName("model").HasMaxLength(100);
         builder.Property(row => row.TimeoutSeconds).HasColumnName("timeout_seconds");
@@ -44,9 +43,6 @@ internal sealed class AssistantSettingsConfiguration : IEntityTypeConfiguration<
             .HasForeignKey(row => row.CompanyId)
             .OnDelete(DeleteBehavior.NoAction)
             .HasConstraintName("fk_assistant_settings_companies_company_id");
-
-        // Índice de apoyo de la clave foránea; la PR 1b lo retira cuando company_id pasa a ser la clave primaria.
-        builder.HasIndex(row => row.CompanyId).HasDatabaseName("ix_assistant_settings_company_id");
 
         // Mismo token que time_entries: la columna de sistema xmin (sin columna propia).
         builder.Property<uint>("xmin").HasColumnName("xmin").HasColumnType("xid").ValueGeneratedOnAddOrUpdate().IsConcurrencyToken();

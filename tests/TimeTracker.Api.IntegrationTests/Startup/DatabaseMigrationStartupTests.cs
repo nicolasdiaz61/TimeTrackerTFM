@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.Mvc.Testing;
 using Npgsql;
 
 using TimeTracker.Api.IntegrationTests.Postgres;
+using TimeTracker.Api.IntegrationTests.Support;
 
 namespace TimeTracker.Api.IntegrationTests.Startup;
 
@@ -21,7 +22,11 @@ public class DatabaseMigrationStartupTests(PostgresFixture postgres)
         var connectionString = await postgres.CreateEmptyDatabaseAsync();
         using var factory = CreateFactory(connectionString, flag: "true");
 
-        var response = await factory.CreateClient().PostAsync("/api/time-entries/clock-in", content: null, CancellationToken.None);
+        var client = factory.CreateClient();
+        // Con las migraciones aplicadas al arrancar, el fichaje exige que exista el usuario del token (clave foránea compuesta).
+        UserSeed.EnsureExists(connectionString, ApiFactory.DefaultUserId);
+
+        var response = await client.PostAsync("/api/time-entries/clock-in", content: null, CancellationToken.None);
 
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);
         Assert.NotNull(await TableNameAsync(connectionString));
