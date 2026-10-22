@@ -310,6 +310,32 @@ public class RegisterCompanyEndpointTests(PostgresFixture postgres)
     }
 
     [Fact]
+    public async Task ABodyOfExactly4KiB_IsAccepted_WhileOneByteMoreReturns413()
+    {
+        // El lado aceptado del límite de diseño de 4 KiB: el tamaño exacto pasa y un byte más no.
+        using var factory = new RegistrationApiFactory(postgres.ConnectionString);
+        factory.UseKestrel();
+        const int Limit = 4 * 1024;
+        var baseBody = Body();
+        baseBody["padding"] = string.Empty;
+        var overhead = System.Text.Encoding.UTF8.GetByteCount(JsonSerializer.Serialize(baseBody));
+        var accepted = Body();
+        accepted["padding"] = new string('a', Limit - overhead);
+        var oneByteMore = Body();
+        oneByteMore["padding"] = new string('a', Limit - overhead + 1);
+        var acceptedJson = JsonSerializer.Serialize(accepted);
+        var oneByteMoreJson = JsonSerializer.Serialize(oneByteMore);
+
+        var okResponse = await PostRawAsync(factory.CreateAnonymousClient(), acceptedJson);
+        var tooLarge = await PostRawAsync(factory.CreateAnonymousClient(), oneByteMoreJson);
+
+        Assert.Equal(Limit, System.Text.Encoding.UTF8.GetByteCount(acceptedJson));
+        Assert.Equal(Limit + 1, System.Text.Encoding.UTF8.GetByteCount(oneByteMoreJson));
+        Assert.Equal(HttpStatusCode.Created, okResponse.StatusCode);
+        Assert.Equal(HttpStatusCode.RequestEntityTooLarge, tooLarge.StatusCode);
+    }
+
+    [Fact]
     public async Task ARegisteredCompany_HasTheAssistantDisabled_EvenWithAPlatformProviderInTheEnvironment()
     {
         var connectionString = await postgres.CreateEmptyDatabaseAsync();

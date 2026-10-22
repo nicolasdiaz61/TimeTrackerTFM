@@ -120,10 +120,11 @@ public sealed class UserRepository(TimeTrackerDbContext context) : IUserReposito
         }
     }
 
-    // PostgreSQL señala el fallo de serialización en la sentencia o en la confirmación: EF lo envuelve o lo deja pasar tal cual.
+    // PostgreSQL señala el fallo de serialización en la sentencia o en la confirmación, y EF lo envuelve (DbUpdateException al guardar,
+    // InvalidOperationException «error al usar una transacción» al confirmar): se recorre toda la cadena de excepciones internas.
     private static bool IsSerializationFailure(Exception exception)
         => exception is PostgresException { SqlState: PostgresErrorCodes.SerializationFailure }
-            || exception.InnerException is PostgresException { SqlState: PostgresErrorCodes.SerializationFailure };
+            || (exception.InnerException is { } inner && IsSerializationFailure(inner));
 
     private static string? ViolatedConstraint(DbUpdateException exception, string sqlState)
         => exception.InnerException is PostgresException violation && violation.SqlState == sqlState ? violation.ConstraintName : null;

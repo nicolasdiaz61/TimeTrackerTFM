@@ -132,6 +132,20 @@ public class UserCapRepositoryTests(PostgresFixture postgres)
         Assert.Equal(2, await CountAsync(companyId));
     }
 
+    [Fact]
+    public async Task ASerializationFailureWrappedInTwoLevelsByEf_IsRetriedToo_NotTurnedIntoAnError()
+    {
+        var (companyId, managerId) = await SeedCompanyAsync(users: 1);
+        var failing = new SerializationFailureInterceptor(failures: 1, wrappedLikeACommitFailure: true);
+        await using var context = ContextWith(companyId, failing);
+
+        var outcome = await new UserRepository(context).AddWithinCapAsync(NewUser(companyId, managerId, "envuelto"), maxUsers: 50, CancellationToken.None);
+
+        Assert.Equal(AddUserOutcome.Created, outcome);
+        Assert.Equal(2, failing.Attempts);
+        Assert.Equal(2, await CountAsync(companyId));
+    }
+
     private async Task<AddUserOutcome> AddAsync(Guid companyId, UserAccount user, int maxUsers)
     {
         await using var context = postgres.CreateContext(postgres.ConnectionString, companyId);
@@ -216,7 +230,7 @@ public class UserCapRepositoryTests(PostgresFixture postgres)
     }
 
     /// <summary>Hace fallar los primeros guardados con un conflicto de serialización (40001); sin límite, todos.</summary>
-    private sealed class SerializationFailureInterceptor(int failures = int.MaxValue) : SaveChangesInterceptor
+    private sealed class SerializationFailureInterceptor(int failures = int.MaxValue, bool wrappedLikeACommitFailure = false) : SaveChangesInterceptor
     {
         public int Attempts { get; private set; }
 
@@ -226,9 +240,13 @@ public class UserCapRepositoryTests(PostgresFixture postgres)
             Attempts++;
             if (Attempts <= failures)
             {
-                throw new DbUpdateException(
-                    "Conflicto de serialización simulado.",
-                    new PostgresException("could not serialize access", "ERROR", "ERROR", PostgresErrorCodes.SerializationFailure));
+                var serialization = new PostgresException("could not serialize access", "ERROR", "ERROR", PostgresErrorCodes.SerializationFailure);
+                var saving = new DbUpdateException("Conflicto de serialización simulado.", serialization);
+                // Con altas simultáneas reales EF entrega el fallo envuelto en dos niveles (InvalidOperationException «fallo transitorio» sobre
+                // DbUpdateException sobre PostgresException), como se observó en la prueba de cinco altas a la vez.
+                throw wrappedLikeACommitFailure
+                    ? new InvalidOperationException("An exception has been raised that is likely due to a transient failure.", saving)
+                    : saving;
             }
 
             return ValueTask.FromResult(result);

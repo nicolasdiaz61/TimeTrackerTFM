@@ -144,6 +144,30 @@ public class DemoUsersSeederTests(PostgresFixture postgres)
     }
 
     [Fact]
+    public async Task SeededUsers_HaveNoPendingPasswordChange_AndTheLoginKeepsItsGeneric401()
+    {
+        var connectionString = await postgres.CreateEmptyDatabaseAsync();
+        using var factory = CreateFactory(connectionString, seed: "true");
+        var client = factory.CreateAnonymousClient();
+
+        var login = await client.PostAsJsonAsync("/api/auth/login", new { email = MartaEmail, password = DemoPassword }, CancellationToken.None);
+        var wrongPassword = await client.PostAsJsonAsync("/api/auth/login", new { email = MartaEmail, password = "contrasena-incorrecta-123" }, CancellationToken.None);
+        var unknownEmail = await client.PostAsJsonAsync("/api/auth/login", new { email = "nadie@example.test", password = DemoPassword }, CancellationToken.None);
+
+        Assert.Equal(System.Net.HttpStatusCode.OK, login.StatusCode);
+        using var body = JsonDocument.Parse(await login.Content.ReadAsStringAsync(CancellationToken.None));
+        Assert.False(body.RootElement.GetProperty("user").GetProperty("mustChangePassword").GetBoolean());
+        Assert.False(RegistrationApiFactory.TokenPayload(body.RootElement.GetProperty("accessToken").GetString()!).TryGetProperty("mcp", out _));
+        Assert.Equal(
+            ["false"],
+            (await MigrationDatabase.QueryAsync(connectionString, "SELECT DISTINCT must_change_password::text FROM users")));
+        // Contraseña errónea y correo desconocido dan la misma respuesta genérica.
+        Assert.Equal(System.Net.HttpStatusCode.Unauthorized, wrongPassword.StatusCode);
+        Assert.Equal(System.Net.HttpStatusCode.Unauthorized, unknownEmail.StatusCode);
+        Assert.Equal(await EmployeesHttp.FingerprintAsync(unknownEmail), await EmployeesHttp.FingerprintAsync(wrongPassword));
+    }
+
+    [Fact]
     public void Seeding_WithUnreachableDatabase_FailsStartup()
     {
         // Sin migraciones: el fallo es del propio sembrador, que no puede conectarse (puerto 1 cerrado, espera corta).
