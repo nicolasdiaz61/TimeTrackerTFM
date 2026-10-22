@@ -28,6 +28,8 @@ public partial class CompanyGuardsTests
         "src/TimeTracker.Api/Authentication/JwtDefaults.cs",
         "src/TimeTracker.Api/Authentication/JwtAccessTokenIssuer.cs",
         "src/TimeTracker.Api/Authentication/AuthEndpoints.cs",
+        // La Web lee «cname» solo para mostrar el nombre de la compañía (WS «Estado de autenticación por claims»); nunca «cid».
+        "src/TimeTracker.Web/Auth/SessionClaims.cs",
     ];
 
     // Repositorio o almacén -> método permitido con un parámetro Guid de compañía. `FindLoginInfoAsync` lee `companies` por clave primaria.
