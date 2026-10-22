@@ -538,3 +538,5 @@ code {
 .assistant-form { max-width: 48rem; }
 .assistant-config-form { max-width: 40rem; }
 .assistant-config-actions { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+.registration-form, .change-password-form, .team-member-form { max-width: 32rem; }
+.temporary-password-value { font-size: 1.1rem; user-select: all; overflow-wrap: anywhere; }

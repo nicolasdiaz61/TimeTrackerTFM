@@ -1,7 +1,6 @@
 @page "/login"
-@using System.Net
-@using TimeTracker.Web.Http
-@inject AuthApiClient Api
+@inject ILoginApi Api
+@inject ISessionSignIn Session
 @inject JwtAuthenticationStateProvider Authentication
 @inject NavigationManager Navigation
 @inject SessionNotice Notice
@@ -25,22 +24,22 @@
         <InputText id="password" class="form-control" type="password" autocomplete="current-password" @bind-Value="form.Password" />
     </div>
 
-    @if (errorMessage is not null)
+    @if (form.ErrorMessage is not null)
     {
-        <div class="alert alert-danger" role="alert">@errorMessage</div>
+        <div class="alert alert-danger" role="alert">@form.ErrorMessage</div>
     }
 
-    <button type="submit" class="btn btn-primary" disabled="@busy">Entrar</button>
+    <button type="submit" class="btn btn-primary" disabled="@form.IsBusy">Entrar</button>
 </EditForm>
 
 @code {
-    private readonly LoginForm form = new();
-    private string? errorMessage;
-    private bool busy;
+    private LoginForm form = default!;
     private bool sessionExpired;
 
     [SupplyParameterFromQuery(Name = "returnUrl")]
     public string? ReturnUrlParameter { get; set; }
+
+    protected override void OnInitialized() => form = new LoginForm(Api, Session);
 
     protected override async Task OnInitializedAsync()
     {
@@ -49,49 +48,15 @@
         sessionExpired = Notice.Consume();
     }
 
+    protected override void OnParametersSet() => form.ReturnUrlParameter = ReturnUrlParameter;
+
     private async Task SubmitAsync()
     {
-        if (busy)
-        {
-            return;
-        }
-
-        if (string.IsNullOrWhiteSpace(form.Email) || string.IsNullOrEmpty(form.Password))
-        {
-            errorMessage = "Introduzca el correo electrónico y la contraseña.";
-            return;
-        }
-
-        busy = true;
-        errorMessage = null;
         sessionExpired = false;
-        try
+        await form.SubmitAsync();
+        if (form.NavigateTo is { } target)
         {
-            var response = await Api.LoginAsync(form.Email.Trim(), form.Password);
-            await Authentication.SignInAsync(response.AccessToken);
-            form.Password = string.Empty;
-            Navigation.NavigateTo(ReturnUrl.IsSafe(ReturnUrlParameter) ? ReturnUrlParameter! : ReturnUrl.DefaultTarget);
+            Navigation.NavigateTo(target);
         }
-        catch (ApiRequestException exception)
-        {
-            form.Password = string.Empty;
-            errorMessage = exception.StatusCode switch
-            {
-                HttpStatusCode.Unauthorized => "Correo o contraseña incorrectos.",
-                HttpStatusCode.TooManyRequests => "Demasiados intentos. Espere un minuto e inténtelo de nuevo.",
-                _ => ApiRequest.GenericErrorMessage,
-            };
-        }
-        finally
-        {
-            busy = false;
-        }
-    }
-
-    private sealed class LoginForm
-    {
-        public string Email { get; set; } = string.Empty;
-
-        public string Password { get; set; } = string.Empty;
     }
 }

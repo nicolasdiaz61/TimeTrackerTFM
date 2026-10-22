@@ -53,10 +53,20 @@ public sealed class RegisterCompanyUseCase(
 
     private async Task<RegisterCompanyResult> IssueSessionAsync(UserAccount manager, Company created, CancellationToken cancellationToken)
     {
-        // La compañía nace Active: si el emisor común la rechaza algo es incoherente y no se entrega ninguna sesión.
-        var session = await sessions.IssueAsync(manager, cancellationToken)
-            ?? throw new InvalidOperationException("La compañía recién creada no puede iniciar sesión.");
-        return new RegisterCompanyResult.Created(session, created.Id);
+        // La cuenta y la compañía ya están confirmadas: un fallo al emitir la sesión no debe convertirse en un error que invite a
+        // reintentar (y a duplicar). Se informa de que se crearon sin sesión y la persona inicia sesión con sus credenciales. La
+        // cancelación sí se propaga. La compañía nace Active: que el emisor común la rechace sería incoherente y tampoco entrega token.
+        try
+        {
+            var session = await sessions.IssueAsync(manager, cancellationToken);
+            return session is null
+                ? new RegisterCompanyResult.CreatedWithoutSession(created.Id)
+                : new RegisterCompanyResult.Created(session, created.Id);
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            return new RegisterCompanyResult.CreatedWithoutSession(created.Id, exception.GetType().Name);
+        }
     }
 
     private static List<FieldError> Validate(RegisterCompanyCommand command)

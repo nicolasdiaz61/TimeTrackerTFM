@@ -527,6 +527,7 @@ public class AssistantConfigurationFormTests
     [InlineData("env", "Entorno")]
     [InlineData("stored", "Guardado por un responsable")]
     [InlineData("none", "Sin clave")]
+    [InlineData("default", "Valor por defecto")]
     [InlineData("<b>x</b>", "<b>x</b>")]
     public void SourceLabel_TranslatesTheKnownOriginsAndKeepsTheRestAsText(string source, string label)
         => Assert.Equal(label, AssistantConfigurationForm.SourceLabel(source));

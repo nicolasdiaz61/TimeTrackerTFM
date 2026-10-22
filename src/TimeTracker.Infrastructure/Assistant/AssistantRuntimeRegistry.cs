@@ -29,16 +29,26 @@ internal sealed class AssistantRuntimeRegistry(
     private static readonly TimeSpan OverloadWarningInterval = TimeSpan.FromMinutes(5);
 
     private readonly ConcurrentDictionary<Guid, Lazy<Task<CompanyRuntime>>> _entries = new();
-    private readonly Dictionary<CompanyRuntime, ITimer> _expelled = [];
+    private readonly Dictionary<CompanyRuntime, (ITimer Timer, long Sequence)> _expelled = [];
     private readonly Lock _capacityGate = new();
     private long _lastOverloadWarningTicks = long.MinValue;
+    private long _expulsions;
     private bool _disposed;
+
+    /// <summary>Entradas vivas del registro, cargadas o en carga (para comprobar que un fallo no deja una entrada fallida).</summary>
+    internal int EntryCount => _entries.Count;
+
+    /// <summary>Compañías expulsadas cuyo pipeline sigue en su periodo de gracia.</summary>
+    internal int ExpelledCount
+    {
+        get { lock (_capacityGate) { return _expelled.Count; } }
+    }
 
     public async ValueTask<AssistantSnapshot> GetAsync(Guid companyId, CancellationToken cancellationToken)
     {
         while (true)
         {
-            var entry = _entries.GetOrAdd(companyId, id => new Lazy<Task<CompanyRuntime>>(() => FirstLoadAsync(id)));
+            var entry = _entries.GetOrAdd(companyId, NewEntry);
             CompanyRuntime runtime;
             try
             {
@@ -56,15 +66,20 @@ internal sealed class AssistantRuntimeRegistry(
                 throw;
             }
 
-            if (runtime.Evicted)
+            // El tope se aplica una sola vez por carga y con la entrada ya publicada, de modo que cuenta con las demás cargas simultáneas.
+            if (runtime.TryAdmit() && runtime.IsEnabled)
             {
-                // Se expulsó entre la búsqueda y el uso: se vuelve a cargar desde su fila.
-                _entries.TryRemove(new KeyValuePair<Guid, Lazy<Task<CompanyRuntime>>>(companyId, entry));
-                continue;
+                EnforceCapacity(runtime);
             }
 
-            runtime.Touch(timeProvider.GetUtcNow());
-            return runtime.Client.Current;
+            if (runtime.TryAcquire(timeProvider.GetUtcNow()) is { } snapshot)
+            {
+                return snapshot;
+            }
+
+            // Se expulsó entre la búsqueda y el uso: se vuelve a cargar desde su fila (la comprobación y la lectura son atómicas).
+            _entries.TryRemove(new KeyValuePair<Guid, Lazy<Task<CompanyRuntime>>>(companyId, entry));
+            cancellationToken.ThrowIfCancellationRequested();
         }
     }
 
@@ -126,7 +141,7 @@ internal sealed class AssistantRuntimeRegistry(
 
             _disposed = true;
             clients = [.. CompletedRuntimes().Select(runtime => runtime.Client), .. _expelled.Keys.Select(runtime => runtime.Client)];
-            timers = [.. _expelled.Values];
+            timers = [.. _expelled.Values.Select(expelled => expelled.Timer)];
             _expelled.Clear();
             _entries.Clear();
         }
@@ -142,13 +157,29 @@ internal sealed class AssistantRuntimeRegistry(
         using var timeout = new CancellationTokenSource(LoadTimeout, timeProvider);
         var read = await reader.ReadAsync(companyId, timeout.Token);
         var (client, rejected) = BuildFirst(companyId, read);
-        var runtime = new CompanyRuntime(companyId, client, read.UsesPlatform, timeProvider.GetUtcNow()) { LastRejectedVersion = rejected };
-        if (runtime.IsEnabled)
-        {
-            EnforceCapacity(runtime);
-        }
+        return new CompanyRuntime(companyId, client, read.UsesPlatform, timeProvider.GetUtcNow()) { LastRejectedVersion = rejected };
+    }
 
-        return runtime;
+    // Una carga que falla (o se agota) se retira sola, aunque nadie la espere ya: así un fallo tras abandonar la precarga del arranque
+    // no deja una entrada fallida que daría un 503 espurio a la primera pregunta.
+    private Lazy<Task<CompanyRuntime>> NewEntry(Guid companyId)
+    {
+        Lazy<Task<CompanyRuntime>>? entry = null;
+        entry = new Lazy<Task<CompanyRuntime>>(() =>
+        {
+            var load = FirstLoadAsync(companyId);
+            _ = load.ContinueWith(
+                failed =>
+                {
+                    _ = failed.Exception;
+                    _entries.TryRemove(new KeyValuePair<Guid, Lazy<Task<CompanyRuntime>>>(companyId, entry!));
+                },
+                CancellationToken.None,
+                TaskContinuationOptions.NotOnRanToCompletion | TaskContinuationOptions.ExecuteSynchronously,
+                TaskScheduler.Default);
+            return load;
+        });
+        return entry;
     }
 
     private (AssistantChatClient Client, string? RejectedVersion) BuildFirst(Guid companyId, CompanySettingsRead read)
@@ -206,9 +237,15 @@ internal sealed class AssistantRuntimeRegistry(
 
         // Se conserva la última configuración válida, salvo que la compañía haya perdido el indicador de plataforma: esa configuración
         // pudo construirse con la clave del entorno y no debe seguir sirviéndose (aviso de la revisión de la PR 4a).
-        if (runtime.UsesPlatform && !read.UsesPlatform)
+        if (runtime.BuiltWithPlatform && !read.UsesPlatform)
         {
             runtime.TrySwap(null, resolver.Disabled(), version, usesPlatform: false);
+        }
+        else
+        {
+            // Si se ganó el indicador con la fila rechazada, se anota para que el sondeo no la relea en cada vuelta; la configuración
+            // vigente se construyó sin los valores de plataforma, así que perderlo después no la degrada.
+            runtime.ObserveIndicator(read.UsesPlatform);
         }
     }
 
@@ -250,7 +287,7 @@ internal sealed class AssistantRuntimeRegistry(
         var limit = options.Value.MaxLoadedCompanies;
         lock (_capacityGate)
         {
-            if (_disposed)
+            if (_disposed || keep.Evicted)
             {
                 return;
             }
@@ -283,23 +320,38 @@ internal sealed class AssistantRuntimeRegistry(
         }
 
         // El pipeline anterior lo libera su gracia de 120 s; el soporte se descarta a la vez, salvo que el registro se cierre antes.
-        _expelled[runtime] = timeProvider.CreateTimer(ReleaseExpelled, runtime, AssistantChatClient.ReleaseGracePeriod, Timeout.InfiniteTimeSpan);
+        _expelled[runtime] = (timeProvider.CreateTimer(ReleaseExpelled, runtime, AssistantChatClient.ReleaseGracePeriod, Timeout.InfiniteTimeSpan), ++_expulsions);
+        BoundExpelled();
         return true;
+    }
+
+    // La cola de expulsadas no crece con la tasa de recarga: como mucho Ai:MaxLoadedCompanies pipelines esperan su gracia, de modo que la
+    // memoria retenida queda acotada por el doble del tope. Si se desborda, se libera ya el más antiguo (el más cercano a su gracia).
+    private void BoundExpelled()
+    {
+        var bound = Math.Max(1, options.Value.MaxLoadedCompanies);
+        while (_expelled.Count > bound)
+        {
+            var oldest = _expelled.MinBy(expelled => expelled.Value.Sequence);
+            _expelled.Remove(oldest.Key);
+            oldest.Value.Timer.Dispose();
+            oldest.Key.Client.Dispose();
+        }
     }
 
     private void ReleaseExpelled(object? state)
     {
         var runtime = (CompanyRuntime)state!;
-        ITimer? timer;
+        (ITimer Timer, long Sequence) expelled;
         lock (_capacityGate)
         {
-            if (!_expelled.Remove(runtime, out timer))
+            if (!_expelled.Remove(runtime, out expelled))
             {
                 return;
             }
         }
 
-        timer.Dispose();
+        expelled.Timer.Dispose();
         runtime.Client.Dispose();
     }
 

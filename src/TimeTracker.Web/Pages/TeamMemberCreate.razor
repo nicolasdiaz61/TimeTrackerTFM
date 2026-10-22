@@ -1,0 +1,122 @@
+@page "/equipo/alta"
+@attribute [Authorize(Roles = "Manager")]
+@using System.Net
+@using TimeTracker.Web.Http
+@using TimeTracker.Web.Team
+@inject IEmployeesApi Employees
+@inject TeamApiClient Team
+
+<PageTitle>Alta de personas - TimeTracker</PageTitle>
+
+<h1>Alta de personas</h1>
+
+<p>La persona recibirá una contraseña temporal que deberá cambiar en su primer inicio de sesión.</p>
+
+@if (form is null)
+{
+    <p><em>Cargando...</em></p>
+}
+else
+{
+    @* La contraseña temporal solo vive en la memoria de esta página y se pinta como texto plano. *@
+    <TemporaryPasswordNotice Reveal="form.Reveal" OnDismiss="@(() => form.Reveal.Dismiss())" />
+
+    @if (loadError is not null)
+    {
+        <div class="alert alert-warning" role="alert">@loadError</div>
+    }
+
+    <EditForm Model="form" OnSubmit="SubmitAsync" FormName="team-member-create" class="team-member-form">
+        <div class="mb-3">
+            <label for="display-name" class="form-label">Nombre</label>
+            <InputText id="display-name" class="form-control" maxlength="100" autocomplete="off" @bind-Value="form.DisplayName" />
+            <FieldErrors Messages="@(form.ErrorsFor("displayName"))" />
+        </div>
+        <div class="mb-3">
+            <label for="member-email" class="form-label">Correo electrónico</label>
+            <InputText id="member-email" class="form-control" type="email" autocomplete="off" @bind-Value="form.Email" />
+            <FieldErrors Messages="@(form.ErrorsFor("email"))" />
+        </div>
+        <div class="mb-3">
+            <label for="member-role" class="form-label">Rol</label>
+            <InputSelect id="member-role" class="form-select" @bind-Value="form.Role">
+                <option value="Employee">Empleado</option>
+                <option value="Manager">Responsable</option>
+            </InputSelect>
+            <FieldErrors Messages="@(form.ErrorsFor("role"))" />
+        </div>
+        <div class="mb-3">
+            <label for="member-manager" class="form-label">Responsable</label>
+            <select id="member-manager" class="form-select" @onchange="OnManagerChanged">
+                <option value="" selected="@(form.ManagerId is null)">Yo (valor por defecto)</option>
+                @foreach (var candidate in form.Candidates)
+                {
+                    <option value="@candidate.Id" selected="@(form.ManagerId == candidate.Id)">@candidate.DisplayName</option>
+                }
+            </select>
+            <FieldErrors Messages="@(form.ErrorsFor("managerId"))" />
+        </div>
+
+        @if (form.ErrorMessage is not null)
+        {
+            <div class="alert alert-danger" role="alert" data-testid="team-member-error">
+                @form.ErrorMessage
+                @if (form.OtherErrors.Count > 0)
+                {
+                    <ul class="mb-0">
+                        @foreach (var message in form.OtherErrors)
+                        {
+                            <li>@message</li>
+                        }
+                    </ul>
+                }
+            </div>
+        }
+
+        <button type="submit" class="btn btn-primary" disabled="@form.IsBusy">Dar de alta</button>
+        <a class="btn btn-outline-secondary" href="equipo">Volver al equipo</a>
+    </EditForm>
+}
+
+@code {
+    private TeamMemberCreationForm? form;
+    private string? loadError;
+
+    [CascadingParameter]
+    private Task<AuthenticationState>? AuthenticationStateTask { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        var isManager = AuthenticationStateTask is not null && (await AuthenticationStateTask).User.IsInRole("Manager");
+        var created = new TeamMemberCreationForm(Employees, isManager);
+        if (isManager)
+        {
+            // Los responsables elegibles son solo los que devuelve el equipo del propio Manager.
+            try
+            {
+                created.SetCandidates((await Team.GetMembersAsync()).Items);
+            }
+            catch (ApiRequestException exception) when (exception.StatusCode != HttpStatusCode.Unauthorized)
+            {
+                loadError = "No se pudo cargar la lista de responsables. Puede dar de alta a la persona a su cargo.";
+            }
+            catch (ApiRequestException)
+            {
+                // El 401 lo trata el BearerTokenHandler (sesión cerrada y redirección a /login).
+            }
+        }
+
+        form = created;
+    }
+
+    private void OnManagerChanged(ChangeEventArgs args)
+        => form?.SelectManager(Guid.TryParse(args.Value?.ToString(), out var id) ? id : null);
+
+    private async Task SubmitAsync()
+    {
+        if (form is not null)
+        {
+            await form.SubmitAsync();
+        }
+    }
+}

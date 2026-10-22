@@ -7,6 +7,7 @@
 @using TimeTracker.Web.Time
 @using TimeTracker.Web.Timeline
 @inject TeamApiClient Api
+@inject IEmployeesApi Employees
 @inject ILocalTimeZone Zone
 @inject TimeProvider Clock
 
@@ -29,6 +30,38 @@ else if (members is { Count: 0 })
 }
 else if (members is not null)
 {
+    <section class="mb-4 team-people" aria-labelledby="team-people-title">
+        <h2 id="team-people-title" class="h5">Personas a su cargo</h2>
+        @* La lista no indica quién tiene el cambio pendiente: la acción se ofrece a todas y la API responde si la persona ya cambió su contraseña. *@
+        <ul class="list-group">
+            @foreach (var member in members)
+            {
+                <li class="list-group-item d-flex flex-wrap justify-content-between align-items-center gap-2">
+                    <span>@member.DisplayName</span>
+                    <button type="button" class="btn btn-sm btn-outline-secondary" disabled="@regeneration.IsBusy"
+                            @onclick="() => regeneration.Request(member.Id, member.DisplayName)">Regenerar contraseña temporal</button>
+                </li>
+            }
+        </ul>
+
+        @if (regeneration.ConfirmationPending)
+        {
+            <div class="alert alert-danger mt-3" role="alertdialog" aria-labelledby="regenerate-title" data-testid="regenerate-confirmation">
+                <p id="regenerate-title" class="mb-2"><strong>¿Regenerar la contraseña temporal de @regeneration.PendingName?</strong></p>
+                <p>La contraseña actual dejará de valer y se mostrará una nueva una sola vez. Solo se puede regenerar antes de que la persona cambie su contraseña.</p>
+                <button type="button" class="btn btn-danger" @onclick="ConfirmRegenerationAsync" disabled="@regeneration.IsBusy">Sí, regenerar</button>
+                <button type="button" class="btn btn-outline-secondary" @onclick="regeneration.Cancel">Cancelar</button>
+            </div>
+        }
+
+        @if (regeneration.ErrorMessage is not null)
+        {
+            <div class="alert alert-danger mt-3" role="alert" data-testid="regenerate-error">@regeneration.ErrorMessage</div>
+        }
+
+        <TemporaryPasswordNotice Reveal="regeneration.Reveal" OnDismiss="@(() => regeneration.Reveal.Dismiss())" />
+    </section>
+
     <div class="mb-3 member-picker">
         <label for="member" class="form-label">Persona</label>
         <select id="member" class="form-select" @onchange="OnMemberChangedAsync">
@@ -67,6 +100,9 @@ else if (members is not null)
     private bool loadingMembers = true;
     private bool loadingEntries;
     private int loadSequence;
+    private TeamMemberTemporaryPassword regeneration = default!;
+
+    protected override void OnInitialized() => regeneration = new TeamMemberTemporaryPassword(Employees);
 
     protected override async Task OnInitializedAsync()
     {
@@ -85,6 +121,8 @@ else if (members is not null)
             loadingMembers = false;
         }
     }
+
+    private Task ConfirmRegenerationAsync() => regeneration.ConfirmAsync();
 
     // Al cambiar de miembro se conserva el mes mostrado.
     private async Task OnMemberChangedAsync(ChangeEventArgs args)
