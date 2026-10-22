@@ -143,6 +143,7 @@ public partial class DeliveryArtifactsTests
     [InlineData("Ai__DailyRequestsPerCompany", "500")]
     [InlineData("Ai__MaxLoadedCompanies", "100")]
     [InlineData("Ai__RuntimeIdleMinutes", "60")]
+    [InlineData("Registration__GlobalHourlyLimit", "30")]
     public void EnvExample_DocumentsTheCompanyLimitsCommentedWithTheirDefaults(string key, string defaultValue)
     {
         var example = ReadRepositoryFile(".env.example");
@@ -799,6 +800,52 @@ public partial class DeliveryArtifactsTests
             var line = section.Split('\n').Single(candidate => candidate.StartsWith($"- **{check}", StringComparison.Ordinal));
             Assert.Contains("Pendiente del responsable", line, StringComparison.Ordinal);
         }
+    }
+
+    // PR 5.1: procedimiento paso a paso tras abrir el registro y runbook autónomo.
+    [Fact]
+    public void Runbook_HasAStepByStepRestoreOrFixForwardProcedureAfterTheRegistrationIsOpen()
+    {
+        var runbook = ReadRepositoryFile("docs/runbook-railway.md");
+        var section = Section(runbook, "## Tras abrir el registro: restauración o corrección hacia delante", "\n## ");
+
+        string[] ordered =
+        [
+            "Parar las escrituras", "`Registration__Enabled=false`", "Copia de seguridad nueva de seguridad", "pg_dump -Fc", "__EFMigrationsHistory", "Restaurar con `pg_restore`",
+            "--single-transaction", "Qué versión de código desplegar", "GET <API>/health", "inicio de sesión con una cuenta Manager", "un fichaje completo",
+            "Reabrir el registro", "Cuándo borrar las copias",
+        ];
+        var positions = ordered.Select(step => section.IndexOf(step, StringComparison.Ordinal)).ToList();
+        Assert.True(positions.All(position => position >= 0), $"El procedimiento no menciona: {string.Join(", ", ordered.Where((step, index) => positions[index] < 0))}");
+        Assert.Equal(positions.Order(), positions);
+        Assert.Contains("rollback de un clic", section, StringComparison.Ordinal);
+        Assert.Contains("sustituye todos los datos", section, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Runbook_IsSelfContained_ExplainsItsPhasesAndQuestionsAndDoesNotPointToTheMovingOpenspecPath()
+    {
+        var runbook = ReadRepositoryFile("docs/runbook-railway.md");
+
+        Assert.DoesNotContain("openspec/changes", runbook, StringComparison.Ordinal);
+        var section = Section(runbook, "## Cómo leer este documento", "\n## ");
+        string[] required = ["**PR 1**", "**PR 1b**", "**PR 5**", "**PR 5.1**", "**tarea 9**", "**Q-1**", "**Q-8**", "**Q-10**", "**Q-12**", "`Q-n`", "`V-n`"];
+        var missing = Missing(section, required);
+        Assert.True(missing.Count == 0, $"La guía de lectura del runbook no explica: {string.Join(", ", missing)}");
+    }
+
+    [Fact]
+    public void Runbook_DocumentsTheRegistrationLimitsAndTheOperatorCheckOfTheForwardedHopsInV7()
+    {
+        var runbook = ReadRepositoryFile("docs/runbook-railway.md");
+
+        Assert.Contains("Registration__GlobalHourlyLimit", runbook, StringComparison.Ordinal);
+        var section = Section(runbook, "## Verificaciones de producción", "\n## ");
+        var v7 = section.Split('\n').Single(line => line.StartsWith("- **V-7", StringComparison.Ordinal));
+        Assert.Contains("no puede saber cuántos proxies", v7, StringComparison.Ordinal);
+        Assert.Contains("429", v7, StringComparison.Ordinal);
+        Assert.DoesNotContain("IPv6 `/64` queda pendiente", runbook, StringComparison.Ordinal);
+        Assert.DoesNotContain("Límite por IP del registro y IPv6", runbook, StringComparison.Ordinal);
     }
 
     [Fact]
