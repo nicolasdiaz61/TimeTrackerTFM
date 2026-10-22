@@ -1,6 +1,6 @@
 # Progreso de apply: multi-compania
 
-Fase: sdd-apply · Modo: openspec · **Strict TDD** · Rama de la PR 5: `feat/multi-compania-pr5-registro` (apilada sobre la PR 4b, `feat/multi-compania-pr4b-runtime`, PR #41) · Rama de la PR 1: `feat/multi-compania-pr1-modelo` (sale de `main` 9e572b8) · Rama de la PR 1b: `feat/multi-compania-pr1b-contraer` (apilada sobre la anterior) · Rama de la PR 3: `feat/multi-compania-pr3-aislamiento` (apilada sobre la PR 2) · Fecha: 2026-10-21
+Fase: sdd-apply · Modo: openspec · **Strict TDD** · Rama de la PR 6: `feat/multi-compania-pr6-empleados` (apilada sobre la PR 5, `feat/multi-compania-pr5-registro`, PR #42) · Rama de la PR 5: `feat/multi-compania-pr5-registro` (apilada sobre la PR 4b, `feat/multi-compania-pr4b-runtime`, PR #41) · Rama de la PR 1: `feat/multi-compania-pr1-modelo` (sale de `main` 9e572b8) · Rama de la PR 1b: `feat/multi-compania-pr1b-contraer` (apilada sobre la anterior) · Rama de la PR 3: `feat/multi-compania-pr3-aislamiento` (apilada sobre la PR 2) · Fecha: 2026-10-21
 
 ## Estado acumulado
 
@@ -16,7 +16,8 @@ Fase: sdd-apply · Modo: openspec · **Strict TDD** · Rama de la PR 5: `feat/mu
 | PR 4b | 4b.1 a 4b.13 | **Hechas** (13 de 13; ver la sección PR 4b al final; sin tareas de producción) |
 | PR 5 | 5.1 a 5.8 (con 5.6b y 5.7b), 5.10, 5.11, 5.11b, 5.12, 5.13, 5.14 | **Hechas** (16 de 17; ver la sección PR 5 al final) |
 | PR 5 | 5.9 (V-7, `ForwardedHeaders` en producción) | **Pendiente del responsable** (puerta previa a la apertura del registro; apply no accede a Railway) |
-| PR 6 a PR 8, tarea 9 | todas | Sin empezar |
+| PR 6 | 6.1 a 6.16 (con 6.15b) | **Hechas** (17 de 17; ver la sección PR 6 al final; sin tareas de producción) |
+| PR 7, PR 8, tarea 9 | todas | Sin empezar |
 
 ## Lo que queda al responsable (puertas previas, sin marcar en `tasks.md`)
 
@@ -606,4 +607,95 @@ Detalle en `design.md`, sección 9, «Desviaciones y aclaraciones del diseño su
 - **Enumeración por `409`** y **registro sin verificación de correo** (aceptados, ADR 0022): un código filtrado permite altas hasta que se sustituya la lista completa.
 - **Los contadores del limitador son por instancia** (ADR 0017): con réplicas, cada una cuenta aparte y reinicia al desplegar.
 - **Límite de cuerpo de 4 KiB** (`413`) es una decisión de diseño no fijada por la spec.
+- Q-1, Q-8 y Q-10 (proceso operativo de apertura y rotación) siguen abiertas.
+
+---
+
+# PR 6 — Alta de empleados, contraseña temporal y cambio de contraseña
+
+Rama `feat/multi-compania-pr6-empleados` (apilada sobre `feat/multi-compania-pr5-registro`, PR #42; cadena `stacked-to-main`) · Strict TDD · Copia previa en `..\TimeTracker.rollback\pr-mc6\` (24 archivos) · Sin migración ni cambio de esquema (el token `xmin` ya existía desde la PR 1) · `Registration__Enabled` **no se activa en ningún entorno**.
+
+## Lo que queda al responsable
+
+Nada de producción en esta PR (sin migración, sin cambio de esquema; no se accede a Railway). Para tener en cuenta al desplegar y operar:
+
+- Desplegable tras la PR 5 sin puertas nuevas. Efecto a comunicar: los tokens vigentes siguen valiendo (el cambio forzado solo afecta a quien tenga `must_change_password = true`, es decir, a las personas dadas de alta con esta PR).
+- `Company__MaxEmployees` es opcional (50 por defecto, de 1 a 1000, solo en Railway si se quiere otro valor); un valor fuera de rango o no numérico impide el arranque nombrando la clave.
+- **Runbook (PR 8):** revisar periódicamente las cuentas con `must_change_password` antigua (la contraseña temporal no caduca) y recordar que un token `mcp` ya emitido no se invalida al regenerar (30 minutos). Ambos riesgos están aceptados en el ADR 0022.
+- **Pendiente aparte (no se toca aquí):** el límite por IP del registro frente a IPv6 y `ForwardedHeaders` es una PR de seguimiento. Esta PR solo añade límites por usuario del token (no por IP) y no modifica el reparto por IP ni `ForwardedHeaders`.
+
+## Commits de esta entrega
+
+| Commit | Mensaje | Contenido |
+|---|---|---|
+| `4bdd856` | `feat(multi-compania): casos de uso del alta de empleados, la regeneración y el cambio de contraseña` | 6.3 a 6.6: `CreateTeamMemberUseCase`, `ResetTemporaryPasswordUseCase`, `ChangePasswordUseCase`, `TemporaryPasswordGenerator`, `SessionIssuer.IsCompanyActiveAsync`, `UserRepository` (alta bajo tope en `Serializable`, lecturas seguidas, guardado con `xmin`) y su spike V-14 |
+| `84d874f` | `feat(multi-compania): tope de empleados por entorno y cambio de contraseña obligatorio por middleware` | 6.9 y 6.11: `CompanyOptions`, validador, `ICompanyLimits`; `PasswordChangePendingMiddleware` y su marcador |
+| `f70d2a2` | `feat(multi-compania): endpoints del alta de empleados, la regeneración y el cambio de contraseña, con contrato` | 6.7, 6.8, 6.10, 6.12 a 6.15b: endpoints, políticas de tasa, contrato `openapi.json`, pruebas HTTP, de arquitectura y de contrato; corrección del conflicto de serialización envuelto; prueba del lado aceptado de 4 KiB |
+| `874b66c` | `docs(adr): ampliación del ADR 0022 con la contraseña temporal, el cambio forzado, el tope exacto y los riesgos aceptados` | 6.16: ADR 0022 y su prueba de contenido |
+| (este) | `docs(openspec): progreso de apply de la PR 6 de multi-compania` | `tasks.md`, `design.md` (V-13, V-14 y desviaciones), este archivo |
+
+Tamaño (`git diff 0d3ac25 HEAD` de los cuatro commits de código y ADR): 59 archivos, **+4 040 / -12**; producción (`src`) **+926 / -5** (30 archivos), pruebas **+2 750 / -5** (27 archivos), ADR 0022 **+15 / -2** y `docs/api/openapi.json` generado **+349**. La previsión era de 500-800 líneas: el código de producción cabe; el volumen son las pruebas de una superficie de seguridad (aislamiento, carreras, privacidad, contrato).
+
+## Evidencia de Strict TDD (ciclo por tarea)
+
+| Tarea | Archivo de prueba | Capa | Safety net | RED | GREEN | TRIANGULATE | REFACTOR |
+|---|---|---|---|---|---|---|---|
+| 6.1 | — | — | N/A (copia) | N/A | `..\TimeTracker.rollback\pr-mc6\` (24 archivos) | N/A | N/A |
+| 6.2 (V-13) | — | — | N/A | N/A | Rutas y specs comprobadas (design.md, «Resultados de V-n») | N/A | N/A |
+| 6.3 (V-14) | `IT/Employees/UserCapRepositoryTests`, `IT/Employees/UserRepositoryConcurrencyTests` | Integración (Testcontainers) | N/A (nuevo) | CS0535 (`UserRepository` no implementa `AddWithinCapAsync`) | 8/8 y 4/4 | Cinco altas simultáneas con barrera asíncrona (un `Created` y cuatro `CapReached`), **control sin transacción que supera el tope (7 con tope 3)**, bajo el tope y otra compañía, correo repetido, responsable ajeno (`23503`), reintentos acotados a 3 (`Busy`), reintento que se resuelve y fallo envuelto en dos niveles. Mutaciones: `ReadCommitted`, 5 reintentos y un solo nivel de excepción hacen fallar 1, 1 y 1 | Recorrido de toda la cadena de excepciones internas (RED real: un `500` esporádico con cinco altas HTTP) |
+| 6.4 | `AT/Team/CreateTeamMemberUseCaseTests`, `AT/TemporaryPasswordGeneratorTests` | Unitaria | suite de aplicación en verde | CS0246 (`CreateTeamMemberUseCase`, `ITemporaryPasswordGenerator`, `AddUserOutcome`, `ICompanyLimits`) | 470/470 de aplicación | Rol por defecto y explícito (4 formas), responsable por defecto y de la misma compañía, ajeno, inexistente y no Manager con el mismo resultado, nueve campos inválidos aislados y todos juntos, correo repetido, tope, `Busy`; generador: 50 distintas y con política, alfabeto sin ambigüedades y completo. Mutaciones: sin `mustChangePassword`, rol del responsable sin comprobar | — |
+| 6.5 | `AT/Team/ResetTemporaryPasswordUseCaseTests` | Unitaria | idem | CS0246 (`ResetTemporaryPasswordUseCase`) | idem | Regeneración correcta, el mismo `NotFound` para ajeno/inexistente/el propio Manager, ya cambiada → `Conflict`, conflicto de concurrencia → `Conflict`, generador real. Mutación: sin la comprobación de `MustChangePassword` | — |
+| 6.6 | `AT/ChangePasswordUseCaseTests`, `AT/SessionIssuerTests` | Unitaria | idem | CS0246 (`ChangePasswordUseCase`, `IsCompanyActiveAsync`) | idem | Cambio correcto, compañía suspendida **sin verificar ni hashear**, usuario inexistente, actual errónea/vacía/enorme (sin hashear), nueva de 11/129, igual a la actual, ambas mal, conflicto `xmin`. Mutaciones: sin la comprobación de compañía y sin la regla «distinta de la actual» | — |
+| 6.7 | `IT/Employees/EmployeeCreationEndpointTests` | Integración (HTTP + Testcontainers) | N/A (nuevo) | 46 de 98 en rojo antes de los endpoints (rutas inexistentes) | 16/16 | `201` con las cinco propiedades exactas, hash que verifica, entrada con `mcp`, tres contraseñas distintas, `401`/`403` antes de evaluar el cuerpo, `companyId`/`passwordHash` ignorados, responsable ajeno/inexistente/Employee con huella idéntica, responsable Manager de la misma compañía, `409` genérico entre compañías, cinco campos inválidos, límite 30/min con `Retry-After` y CORS y otro Manager sin afectar, sin eco en registros. Mutación: límite 31 | `Cache-Control` ya lo fija `SecurityHeadersMiddleware`: se retiró la cabecera redundante |
+| 6.8 | `IT/Employees/EmployeeCapTests` | Integración | idem | idem | 5/5 | Tope en el límite y por debajo, **cinco `POST` simultáneos: un `201` y cuatro `409` (3 compañías por ejecución; 12 ejecuciones seguidas sin fallo)**, otra compañía sin afectar, tope por defecto de 50. Mutación: ver 6.3 | — |
+| 6.9 | `IT/Employees/CompanyOptionsValidatorTests` | Integración (sin base de datos) | pruebas de opciones existentes en verde | CS0246 (`CompanyOptions`) | 9/9 | Defecto 50, 1/1000/3, 0/1001/-5 sin imprimir el valor, `muchos` sin imprimir el valor, sin clave en `appsettings*.json`. Mutaciones: rango máximo 2000, mínimo 0 y sin la comprobación previa del enlazador | — |
+| 6.10 | `IT/Employees/RegenerateTemporaryPasswordEndpointTests` | Integración | N/A (nuevo) | rojo antes del endpoint | 7/7 | `200` con una sola propiedad, la anterior deja de entrar, `401`/`403`, `404` idéntico para ajeno/inexistente/otro Manager/uno mismo **con control del responsable que sí puede**, `409` por cambio previo, **carrera real con SQL entre lectura y guardado (`409` y la elegida no se pisa)**, sin eco, 30/min con contador propio. Mutaciones: regenerar sin filtrar por responsable y sin `IsConcurrencyToken` | — |
+| 6.11 | `IT/Employees/PasswordChangePendingMiddlewareTests`, `AR/PasswordChangePendingMarkerTests` | Integración / arquitectura | pruebas de pipeline en verde | 3 de 14 en rojo (los controles pasaban) | 14/14 y 7/7 | Time-entries, equipo, asistente y fichaje → `403` problem+json sin base de datos; mismos endpoints sin `mcp` servidos (control); siete valores de `mcp` distintos de `"true"` tratados como sin cambio; `me` permitido; anónimos exentos; ruta inexistente `403` solo con `mcp`; orden con sonda en la autorización. Mutaciones: presencia en vez de valor, comparación sin distinguir mayúsculas, sin la exención anónima y middleware tras la autorización | — |
+| 6.12 | `IT/Employees/ChangePasswordEndpointTests` | Integración | N/A (nuevo) | rojo antes del endpoint | 14/14 | Cambio correcto con token sin `mcp` y acceso (control: antes `403`), cinco contraseñas inválidas, 11 → `400` y 12 → `200`, `401`, compañía suspendida frente a activa, **carrera real con el Manager (`409`)**, 5/min con otro usuario libre, `userId`/`companyId` ignorados, sin eco, la temporal deja de valer. Mutaciones: sin `AllowWhilePasswordChangePending`, sin la política de tasa, sin la comprobación de compañía | — |
+| 6.13 | `IT/Employees/ManagerCreationIsolationTests` | Integración | N/A (nuevo) | rojo antes de los endpoints | 3/3 | Manager nuevo con responsable, rol y `cid` del creador y configuración del asistente de A (nunca la de B), sin jerarquía transitiva, no puede crear bajo un Manager de B | — |
+| 6.14 | `AR/OpenApiContractTests` | Arquitectura | contrato de la PR 5 en verde | rojo (rutas ausentes) | 7 pruebas nuevas en verde | Rutas, respuestas, Bearer, campos exactos, sin `companyId`/`passwordHash`/`employeeId`, `temporaryPassword` solo en dos esquemas, sin operación del tope, `companyName` solo donde corresponde. SHA-256 del contrato regenerado = versionado (a mano) | Sustituye la prueba «DoesNotYetContain…» de la PR 5 |
+| 6.15 | `IT/Seeding/DemoUsersSeederTests` | Integración | siembra en verde | «Verde a la primera» (la siembra ya dejaba `must_change_password = false`); mutación: sembrar con la marca la hace fallar | 1 nueva en verde | Usuarios demo sin cambio pendiente, token sin `mcp`, contraseña errónea y correo desconocido con la misma huella | — |
+| 6.15b | `IT/Authentication/PasswordStorageAndFallbackPolicyTests`, `IT/Security/AuthorizationCoverageTests` | Integración | cobertura de autorización en verde | «Verde a la primera» en lo ya cubierto; recorrido nuevo en rojo hasta el endpoint | 12 y 2 nuevas en verde | Hash/sal, recorrido registro → alta → regeneración → login → cambio con `temporaryPassword` solo en dos respuestas y sin contraseñas en registros, nueve rutas protegidas sin token (con y sin `Content-Type` JSON) y control `415` autenticado, endpoints de empleados con política Manager y de cambio con respaldo | — |
+| 6.16 | `AR/DeliveryArtifactsTests` | Arquitectura | 51 | 1 en rojo (ADR sin las decisiones de la PR 6) | verde | Contenido del ADR sin valores secretos | — |
+
+### Resumen de pruebas
+
+- Total tras la PR: 111 + 470 + 288 + 473 + 281 + 985 = **2 608 pruebas** (antes 2 455; +153: dominio +0, aplicación +44, arquitectura +13, integración +96), todas en verde.
+- Ninguna llamada a un proveedor real de IA; valores inventados (`contrasena-prueba-12345`, `ana@example.test`, `clave-de-prueba-123`). Sin `Thread.Sleep`: las carreras se provocan con una barrera asíncrona y con SQL concurrente justo antes del guardado (`OneShotRacingInterceptor`); el único retardo del código de producción es el escalonado de reintentos del alta (15 ms por intento).
+
+### Evidencia de unidad de trabajo
+
+| Evidencia | Valor |
+|---|---|
+| Prueba focalizada | `T-AT` (470), `ASPNETCORE_URLS=http://127.0.0.1:0 T-IT --filter "FullyQualifiedName~Employees"` (Docker; 100 en verde en 1 min), `T-AR` (281) |
+| Arnés de ejecución | La API real con PostgreSQL (Testcontainers): alta, inicio de sesión con la temporal, cambio forzado, regeneración, tope con cinco peticiones simultáneas, carreras con SQL entre lectura y guardado, compañía suspendida con sesión vigente, dos compañías A/B. Nada contra producción |
+| Límite de reversión | Revertir los cuatro commits de código y ADR y restaurar `..\TimeTracker.rollback\pr-mc6\`: sin cambios de esquema ni de datos; los usuarios creados con la PR conservan su hash y su marca |
+
+## Puerta de la PR (todo en verde)
+
+| Paso | Resultado |
+|---|---|
+| DOCKER-CHECK | `docker info` responde (29.7.2); solo lectura |
+| Entorno limpio | Sin variables `Cors__`, `ConnectionStrings__`, `Database__`, `Jwt__`, `Seed__`, `Ai__`, `Registration__`, `Company__`, `ForwardedHeaders__`, `ASPNETCORE_`, `DOTNET_ENVIRONMENT` |
+| RESTORE | Correcto |
+| BUILD | `-warnaserror`: 0 advertencias, 0 errores |
+| TEST | Domain 111, Application 470, Web 288, Infrastructure 473, Architecture 281, Api.Integration 985: 0 fallos (con `ASPNETCORE_URLS=http://127.0.0.1:0` solo en ese comando; integración 4 min 27 s) |
+| COV-A | Application: líneas 99,5 %, ramas 96,7 % (mínimo 80 %) |
+| COV-D | Domain: líneas 100,0 %, ramas 100,0 % (mínimo 100 %) |
+| FORMAT | `--verify-no-changes`: sin cambios |
+| VULN | Sin `has the following vulnerable packages` |
+| EF-PENDING | «No changes have been made to the model since the last migration»; sin modelo ni migración nuevos |
+| Contrato | `dotnet build src/TimeTracker.Api -c Release --no-incremental`: el `docs/api/openapi.json` conserva el mismo SHA-256 (`76489e10...b1a90a`), comprobado a mano |
+
+## Desviaciones
+
+Detalle en `design.md`, sección 9, «Desviaciones y aclaraciones del diseño surgidas en la PR 6»: resultado `Busy` propio cuando los reintentos se agotan, lecturas seguidas (`ForUpdate`) y `SaveChangesAsync` en el repositorio de usuarios, `ICompanyLimits` en Application, comprobación previa del valor no numérico del tope, el middleware exime los endpoints anónimos y deniega por defecto una ruta inexistente con `mcp`, el rol del alta no distingue mayúsculas, un único mensaje para responsable inexistente/ajeno/no Manager, el contrato incorpora las tres rutas, las pruebas de los avisos de la PR 5 (lado aceptado de 4 KiB; `Content-Type` no JSON anónimo → `401`), la cabecera `no-store` ya la pone la capa común y el SHA-256 del contrato. Hallazgo de la PR: con altas simultáneas reales EF envuelve el fallo de serialización en dos niveles (un `500` esporádico en la primera versión), corregido y blindado con prueba.
+
+## Riesgos abiertos
+
+- **La contraseña temporal no caduca** y **un token `mcp` emitido no se invalida al regenerar** (aceptados, ADR 0022): el runbook (PR 8) debe incluir la revisión periódica de las cuentas con `must_change_password` antigua.
+- **El cambio forzado se apoya en un claim de 30 minutos**: no consulta la base de datos por petición.
+- **Bajo carrera extrema el alta puede responder `409` («demasiadas altas simultáneas») sin haber alcanzado el tope** si se agotan los tres reintentos; el tope nunca se supera y el cliente repite la operación.
+- **Cualquier Manager de la compañía puede crear Managers** y editar la configuración del asistente de su compañía (aceptado en la spec).
+- **Pendiente aparte:** límite por IPv6 y `ForwardedHeaders` del registro (PR de seguimiento); V-7 sigue sin comprobar en Railway (5.9).
 - Q-1, Q-8 y Q-10 (proceso operativo de apertura y rotación) siguen abiertas.
