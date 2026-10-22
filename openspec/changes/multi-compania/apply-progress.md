@@ -816,3 +816,74 @@ RESTORE correcto; BUILD `-warnaserror` 0/0; TEST Domain 111, Application 470, We
 - README: la sección «Activar el autodespliegue» pasa a «Despliegue manual y autodespliegue» (no hay autodespliegue). `config.yaml` no se tocó.
 - Las specs vigentes solo se corrigen en la cifra de ADR; los demás deltas se listan en `design.md` para el informe de archivo.
 - Pendientes del responsable: V-1, V-3, V-4 (Railway), V-6, V-7, Q-1, Q-8; Q-9 queda resuelta por el ADR 0021 y el índice (confirmar con el usuario) y Q-10 descrita en el runbook. Seguimiento abierto: límite IPv6 /64 y `ForwardedHeaders` (PR aparte).
+
+## PR 5.1: límites del registro, fallo de sesión y runbook de restauración
+
+Rama `fix/multi-compania-pr5-1-registro-limites` (sobre `feat/multi-compania-pr8-docs`). Sin migraciones ni cambio de contrato (`openapi.json` sin cambios). Copia previa en `..\TimeTracker.rollback\pr-mc51\` (Registration, Security, Authentication, Companies, pruebas de registro, runbook, design, apply-progress y tasks). Decisiones y desviaciones: `design.md`, «PR 5.1: límites del registro, fallo de sesión y runbook (desviaciones)».
+
+### Commits
+
+| Commit | Mensaje | Contenido |
+|---|---|---|
+| `0bdd9b6` | `fix(registro): limite IPv6 por /64, tope global de altas, particiones acotadas y fallo de sesion sin 500` | Código y pruebas (A.1 a A.4, A.6) |
+| `da93335` | `docs(runbook): restauracion y correccion hacia delante ...` | Runbook, README, `.env.example`, `DeliveryArtifactsTests` (B, A.5) |
+| (este) | `docs(openspec): ...` | design.md, spec delta, tasks.md y este archivo |
+
+### Evidencia de Strict TDD
+
+| Tarea | Prueba | RED | GREEN | Notas |
+|---|---|---|---|---|
+| A.1 /64 | `RegistrationClientKeyTests` (6), `RegistrationRateLimitTests.WithForwardedHeaders_RotatingIPv6AddressesInsideOne64...` | Sin tipo/comportamiento (no compilaba) | verde | Mutación `PrefixBytes` 8 a 7: detectada |
+| A.2 tope global | `RegistrationGlobalLimiterTests` (4), `TheGlobalCap_*` (2), validador (`GlobalHourlyLimit` 1..1000, 6 casos) | Sin tipo | verde | Mutación «no liberar en no-creado»: detectada (5 pruebas rojas con las otras dos mutaciones) |
+| A.3 particiones | `RegistrationPartitionTrackerTests` (4) | Sin tipo | verde | Mutación de la poda (`now < _nextPrune`): detectada |
+| A.4 sesión | `RegisterCompanyUseCaseTests` (+2, una reescrita), `RegistrationSessionFailureTests` (2) | 2 rojas en Application (`InvalidOperationException` en lugar de `CreatedWithoutSession`) | verde | Cancelación propagada |
+| A.5 / B docs | `DeliveryArtifactsTests` (+3 y una fila de teoría) | 4 rojas con los documentos anteriores | 310/310 | Ningún marcador debilitado; ADR 0018/0019 intactos |
+
+### Puerta
+
+RESTORE correcto; BUILD `-warnaserror` 0/0; TEST Domain 111, Application 472, Web 420, Infrastructure 473, Architecture 310, Api.Integration 1011, todo en verde (`ASPNETCORE_URLS=http://127.0.0.1:0` solo en ese comando); COV-D 100,0 %/100,0 %; COV-A 99,5 %/96,7 %; FORMAT sin cambios; VULN sin vulnerables; EF-PENDING sin cambios de modelo.
+
+### Pendientes y riesgos
+
+- V-7 sigue siendo del responsable (el número correcto de saltos no es observable desde el código).
+- El tope global y el límite por IP son por instancia (memoria): válido con la instancia única actual.
+- El login conserva el agrupamiento por dirección completa (fuera de alcance).
+- Con un código filtrado, el tope global puede agotarse y bloquear altas legítimas hasta que acabe la ventana; la rotación de códigos lo corta.
+
+## PR 4b.1: seguimiento de la revisión de la PR 4b y cabo suelto de la PR 5.1
+
+Rama `fix/multi-compania-pr4b-1-runtime` (sobre `fix/multi-compania-pr5-1-registro-limites`). Sin migraciones ni cambio de contrato (`openapi.json` sin cambios). Copia previa en `..\TimeTracker.rollback\pr-mc4b1\` (árbol completo en HEAD de la rama de partida). Decisiones y desviaciones: `design.md`, «PR 4b.1: runtime del asistente por compañía (desviaciones)».
+
+### Commits
+
+| Commit | Mensaje | Contenido |
+|---|---|---|
+| `798c0a5` | `fix(registro): registrar la causa (solo el tipo de excepcion) ...` | 4b.1.7 |
+| `72dbbf9` | `fix(asistente): acotar expulsadas y tope, cerrar la recarga perpetua y la carrera expulsion/uso, y recuperar pruebas del cargador` | 4b.1.1 a 4b.1.6 (código y pruebas) |
+| `5d7423d` | `test(arquitectura): quitacomentarios compartido ...` | 4b.1.6 (500 de la guarda), 4b.1.8 |
+| `afc1f49` | `style(arquitectura): formato de los using static ...` | formato |
+| (este) | `docs(openspec): ...` | design.md, tasks.md y este archivo |
+
+### Evidencia de Strict TDD
+
+| Tarea | Prueba | RED | GREEN | Mutación |
+|---|---|---|---|---|
+| 4b.1.7 causa | `RegisterCompanyUseCaseTests` (+2 aserciones), `RegistrationSessionFailureTests` (tipo en el registro, sin mensaje) | no compilaba (`Cause`) | verde | registrar `Message` en lugar del tipo: detectada |
+| 4b.1.1 tope | `ConcurrentFirstQuestionsOfManyCompanies_LeaveExactlyTheLimit...` | verde también antes (la ventana no se fuerza de forma determinista; ver design) | verde | quitar `EnforceCapacity` de `GetAsync`: detectada |
+| 4b.1.2 cola | `TheQueueOfExpelledPipelines_IsBoundedByTheLimit...`, `AnExpelledPipelineWithinTheBound_KeepsItsFullGracePeriod` | roja (`ExpelledCount` 4, sin liberar) | verde | quitar `BoundExpelled`: detectada |
+| 4b.1.3 indicador | `WhenThePlatformIndicatorIsGained_AndTheRowIsRejected...`, `AValidRowStillReloads...`, `LosingTheIndicatorAgain...`, `Poll_AGainedIndicator...` | roja (indicador sin anotar) | verde | quitar `ObserveIndicator`, usar `UsesPlatform` en la degradación: ambas detectadas |
+| 4b.1.4 carrera | `CompanyRuntimeTests` (4, una concurrente con invariante) | no compilaba (`TryAcquire`) | verde | ignorar `_evicted` en `TryAcquire`: detectada |
+| 4b.1.5 carga abandonada | `ALoadThatFailsAfterItsOnlyCallerGaveUp...` | roja (entrada fallida viva) | verde | `OnlyOnCanceled` en lugar de `NotOnRanToCompletion`: detectada |
+| 4b.1.6 pruebas | 9 escenarios del cargador sobre el registro, 3 del sondeo, cuota, guarda de la PR 3 | caracterización (verdes salvo un error propio corregido: una fila sin modelo de una compañía sin plataforma no hereda el del entorno) | verde | cuota: consumir al usuario antes de la compañía: detectada; guarda: quitar la comparación de compañía: detectada |
+| 4b.1.8 `StripComments` | `SourceTextTests` (18) | no compilaba | 328/328 de arquitectura | verbatim siempre falso y cadenas en bruto desactivadas: ambas detectadas (se añadió un caso `@"c:\dir\"` tras sobrevivir la primera) |
+
+### Puerta
+
+RESTORE correcto; BUILD `-warnaserror` 0/0; TEST Domain 111, Application 472, Web 420, Infrastructure 495, Architecture 328, Api.Integration 1011, todo en verde (`ASPNETCORE_URLS=http://127.0.0.1:0` solo en ese comando); COV-D 100,0 %/100,0 %; COV-A 99,5 %/96,7 %; FORMAT sin cambios (tras corregir los saltos de línea de los `using static`); VULN sin vulnerables; `openapi.json` sin cambios; EF-PENDING N/A (sin modelo).
+
+### Desviaciones y pendientes
+
+- Se registra solo el tipo de la excepción de sesión, no su mensaje (ver design, punto 8).
+- Sin ROJO conductual determinista para el tope blando (punto 1 del design).
+- Menores de legibilidad y V-8 de la revisión de la 4b quedan sin tocar (fuera de alcance).
+- Memoria de Engram (`sdd/multi-compania/apply-progress`): no actualizada desde este ejecutor (sin acceso a las herramientas `mem_*`); el orquestador debe persistirla.

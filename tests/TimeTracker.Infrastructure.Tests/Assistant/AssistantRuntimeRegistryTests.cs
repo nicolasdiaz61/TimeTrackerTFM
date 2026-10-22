@@ -54,24 +54,30 @@ public sealed class AssistantRuntimeRegistryTests : IDisposable
     }
 
     private static AssistantSettings Row(
-        AssistantProvider provider, string version, string? model = "db-m", EncryptedCredential? credential = null)
-        => new(provider, model, null, null, null, credential, Guid.NewGuid(), DateTimeOffset.UnixEpoch, version);
+        AssistantProvider provider,
+        string version,
+        string? model = "db-m",
+        EncryptedCredential? credential = null,
+        int? timeoutSeconds = null,
+        int? maxOutputTokens = null,
+        AssistantEffort? effort = null)
+        => new(provider, model, timeoutSeconds, maxOutputTokens, effort, credential, Guid.NewGuid(), DateTimeOffset.UnixEpoch, version);
 
     private static EncryptedCredential Encrypt(AesGcmCredentialProtector protector, AssistantProvider provider, Guid company)
         => protector.Protect(new AssistantCredential(OwnSecret), provider, company);
 
-    private Rig NewRig(AiOptions? environment = null)
+    private Rig NewRig(AiOptions? environment = null, AesGcmCredentialProtector? protector = null)
     {
-        var rig = new Rig(environment ?? PlatformEnvironment());
+        var rig = new Rig(environment ?? PlatformEnvironment(), protector);
         _disposables.Add(rig.Registry);
         return rig;
     }
 
     private sealed class Rig
     {
-        public Rig(AiOptions environment)
+        public Rig(AiOptions environment, AesGcmCredentialProtector? protector = null)
         {
-            Protector = AssistantRuntimeRegistryTests.Protector();
+            Protector = protector ?? AssistantRuntimeRegistryTests.Protector();
             var options = Options.Create(environment);
             Registry = new AssistantRuntimeRegistry(
                 Reader, new AssistantOptionsResolver(options, new ConfigurationAssistantEnvironment(options), Protector), Factory, options, Time, Logger);
@@ -478,5 +484,223 @@ public sealed class AssistantRuntimeRegistryTests : IDisposable
         Assert.Equal(
             [new LoadedRuntime(CompanyA, "7", false, null), new LoadedRuntime(CompanyB, "0", true, null)],
             loaded);
+    }
+
+    // --- Recarga perpetua: ganar el indicador de plataforma con una fila rechazada ---
+
+    [Fact]
+    public async Task WhenThePlatformIndicatorIsGained_AndTheRowIsRejected_TheIndicatorIsRecorded_SoThePollerSeesNoChange()
+    {
+        var rig = NewRig();
+        rig.Reader.Set(CompanyA, Row(AssistantProvider.Ollama, "7"), usesPlatform: false);
+        var before = await rig.GetAsync(CompanyA);
+        // Proveedor fuera de la lista permitida: rechazada también para una compañía de plataforma.
+        rig.Reader.Set(CompanyA, Row(AssistantProvider.Gemini, "8"), usesPlatform: true);
+
+        await rig.Registry.ReloadAsync(CompanyA, CancellationToken.None);
+        await rig.Registry.ReloadAsync(CompanyA, CancellationToken.None);
+        await rig.Registry.ReloadAsync(CompanyA, CancellationToken.None);
+
+        var loaded = Assert.Single(rig.Registry.Loaded());
+        Assert.Equal(new LoadedRuntime(CompanyA, "7", true, "8"), loaded);
+        Assert.Same(before, await rig.GetAsync(CompanyA));
+        Assert.Single(rig.Logger.Entries, entry => entry.Level == LogLevel.Warning);
+    }
+
+    [Fact]
+    public async Task AValidRowStillReloads_AfterTheIndicatorWasGainedWithARejectedRow()
+    {
+        var rig = NewRig();
+        rig.Reader.Set(CompanyA, Row(AssistantProvider.Ollama, "7"), usesPlatform: false);
+        await rig.GetAsync(CompanyA);
+        rig.Reader.Set(CompanyA, Row(AssistantProvider.Gemini, "8"), usesPlatform: true);
+        await rig.Registry.ReloadAsync(CompanyA, CancellationToken.None);
+        rig.Reader.Set(CompanyA, Row(AssistantProvider.Ollama, "9", model: "nuevo"), usesPlatform: true);
+
+        await rig.Registry.ReloadAsync(CompanyA, CancellationToken.None);
+
+        var snapshot = await rig.GetAsync(CompanyA);
+        Assert.Equal(("nuevo", "9"), (snapshot.Options.Model, snapshot.Version));
+        Assert.Null(Assert.Single(rig.Registry.Loaded()).LastRejectedVersion);
+    }
+
+    [Fact]
+    public async Task LosingTheIndicatorAgain_AfterGainingItWithARejectedRow_KeepsTheLastValidOneBuiltWithoutThePlatformKey()
+    {
+        var rig = NewRig();
+        rig.Reader.Set(CompanyA, Row(AssistantProvider.Ollama, "7"), usesPlatform: false);
+        var before = await rig.GetAsync(CompanyA);
+        rig.Reader.Set(CompanyA, Row(AssistantProvider.Gemini, "8"), usesPlatform: true);
+        await rig.Registry.ReloadAsync(CompanyA, CancellationToken.None);
+        rig.Reader.Set(CompanyA, Row(AssistantProvider.Gemini, "8"), usesPlatform: false);
+
+        await rig.Registry.ReloadAsync(CompanyA, CancellationToken.None);
+
+        // Esa configuración nunca usó la clave de plataforma: no hay motivo para degradarla.
+        Assert.Same(before, await rig.GetAsync(CompanyA));
+        Assert.False(Assert.Single(rig.Registry.Loaded()).UsesPlatform);
+    }
+
+    // --- Un fallo de carga tras abandonar la espera no deja una entrada fallida ---
+
+    [Fact]
+    public async Task ALoadThatFailsAfterItsOnlyCallerGaveUp_DoesNotLeaveAFailedEntry_ForTheNextQuestion()
+    {
+        var rig = NewRig();
+        rig.Reader.Set(CompanyA, Row(AssistantProvider.Ollama, "7"), usesPlatform: false);
+        rig.Reader.Gate = new TaskCompletionSource();
+        rig.Reader.Failure = new TimeoutException("base de datos caída");
+        using var cancellation = new CancellationTokenSource();
+
+        // Como la precarga del arranque: nadie más espera esta carga y quien la pidió se rinde.
+        var preload = rig.Registry.GetAsync(CompanyA, cancellation.Token).AsTask();
+        await rig.Reader.WaitForReadsAsync(1);
+        await cancellation.CancelAsync();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => preload);
+        rig.Reader.Gate.SetResult();
+        Assert.True(SpinWait.SpinUntil(() => rig.Registry.EntryCount == 0, TimeSpan.FromSeconds(10)));
+        rig.Reader.Failure = null;
+        rig.Reader.Gate = null;
+
+        var snapshot = await rig.GetAsync(CompanyA);
+
+        Assert.NotNull(snapshot.Pipeline);
+        Assert.Equal(2, rig.Reader.Reads[CompanyA]);
+    }
+
+    // --- Escenarios del antiguo cargador, ahora sobre el registro ---
+
+    [Fact]
+    public async Task AValidRow_MapsProviderModelKeyTimeoutTokensEffortAndEndpoint_AndKeepsTheKeyOutOfTheSnapshot()
+    {
+        var rig = NewRig();
+        var credential = Encrypt(rig.Protector, AssistantProvider.Anthropic, CompanyA);
+        rig.Reader.Set(
+            CompanyA,
+            Row(AssistantProvider.Anthropic, "17", model: "db-m", credential: credential, timeoutSeconds: 40, maxOutputTokens: 600, effort: AssistantEffort.High),
+            usesPlatform: false);
+
+        var snapshot = await rig.GetAsync(CompanyA);
+
+        var created = Assert.Single(rig.Factory.Created);
+        Assert.Equal(("Anthropic", "db-m", OwnSecret, 40, 600), (created.Provider, created.Model, created.ApiKey, created.TimeoutSeconds, created.MaxOutputTokens));
+        Assert.Equal(AssistantEffort.High, created.ResolvedEffort);
+        Assert.Equal("http://localhost:11434/", created.Endpoint);
+        Assert.Equal("17", snapshot.Version);
+        Assert.Null(snapshot.Options.ApiKey);
+        Assert.DoesNotContain(rig.Logger.Entries, entry => entry.Level >= LogLevel.Warning);
+    }
+
+    [Fact]
+    public async Task APlatformCompanyRowThatOmitsValues_TakesThemFromTheEnvironment()
+    {
+        var environment = PlatformEnvironment();
+        environment.TimeoutSeconds = 33;
+        var rig = NewRig(environment);
+        rig.Reader.Set(CompanyA, Row(AssistantProvider.Ollama, "3", model: null), usesPlatform: true);
+
+        await rig.GetAsync(CompanyA);
+
+        var created = Assert.Single(rig.Factory.Created);
+        Assert.Equal(("Ollama", "env-m", 33), (created.Provider, created.Model, created.TimeoutSeconds));
+    }
+
+    [Fact]
+    public async Task TheNoneProvider_DisablesTheCompanyUnderTheRowVersion_WithoutBuildingAClient()
+    {
+        var rig = NewRig();
+        rig.Reader.Set(CompanyA, Row(AssistantProvider.None, "9", model: null), usesPlatform: false);
+
+        var snapshot = await rig.GetAsync(CompanyA);
+
+        Assert.Null(snapshot.Pipeline);
+        Assert.Equal("9", snapshot.Version);
+        Assert.Empty(rig.Factory.Clients);
+        Assert.DoesNotContain(rig.Logger.Entries, entry => entry.Level >= LogLevel.Warning);
+    }
+
+    [Fact]
+    public async Task ARowEncryptedWithARetiredMasterKey_IsRejectedAsUndecryptable_AndNeverUsed()
+    {
+        var writer = Protector();
+        var otherKey = new AiOptions { ActiveMasterKeyVersion = "2" };
+        otherKey.MasterKeys["2"] = Convert.ToBase64String(RandomNumberGenerator.GetBytes(32));
+        var rig = NewRig(protector: new AesGcmCredentialProtector(Options.Create(otherKey)));
+        rig.Reader.Set(CompanyA, Row(AssistantProvider.Anthropic, "31", credential: Encrypt(writer, AssistantProvider.Anthropic, CompanyA)), usesPlatform: false);
+
+        var snapshot = await rig.GetAsync(CompanyA);
+
+        Assert.Null(snapshot.Pipeline);
+        Assert.Empty(rig.Factory.Created);
+        var warning = Assert.Single(rig.Logger.Entries);
+        Assert.Contains("undecryptable", warning.Message, StringComparison.Ordinal);
+        Assert.DoesNotContain(OwnSecret, warning.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task WithoutAMasterKey_TheStoredCredentialIsNotUsed()
+    {
+        var writer = Protector();
+        var rig = NewRig(protector: new AesGcmCredentialProtector(Options.Create(new AiOptions())));
+        rig.Reader.Set(CompanyA, Row(AssistantProvider.Anthropic, "32", credential: Encrypt(writer, AssistantProvider.Anthropic, CompanyA)), usesPlatform: false);
+
+        var snapshot = await rig.GetAsync(CompanyA);
+
+        Assert.Null(snapshot.Pipeline);
+        Assert.Empty(rig.Factory.Created);
+        Assert.Equal("32", snapshot.Version);
+    }
+
+    [Fact]
+    public async Task WhenTheFactoryFailsOnAReload_TheLastValidOneIsKept_AndOnlyTheExceptionTypeIsLogged()
+    {
+        var rig = NewRig();
+        rig.Reader.Set(CompanyA, Row(AssistantProvider.Ollama, "7"), usesPlatform: false);
+        var before = await rig.GetAsync(CompanyA);
+        rig.Reader.Set(CompanyA, Row(AssistantProvider.Ollama, "8"), usesPlatform: false);
+        rig.Factory.Failure = new InvalidOperationException($"fallo con {OwnSecret}");
+
+        await rig.Registry.ReloadAsync(CompanyA, CancellationToken.None);
+
+        Assert.Same(before, await rig.GetAsync(CompanyA));
+        var warning = Assert.Single(rig.Logger.Entries, entry => entry.Level == LogLevel.Warning);
+        Assert.Contains(nameof(InvalidOperationException), warning.Message, StringComparison.Ordinal);
+        Assert.DoesNotContain(OwnSecret, warning.Message, StringComparison.Ordinal);
+        Assert.Equal("8", Assert.Single(rig.Registry.Loaded()).LastRejectedVersion);
+    }
+
+    [Fact]
+    public async Task WhenTheDatabaseFailsOnAReload_ItPropagates_AndTheLastValidOneIsKept()
+    {
+        var rig = NewRig();
+        rig.Reader.Set(CompanyA, Row(AssistantProvider.Ollama, "7"), usesPlatform: false);
+        var before = await rig.GetAsync(CompanyA);
+        rig.Reader.Failure = new TimeoutException("base de datos caída");
+
+        await Assert.ThrowsAsync<TimeoutException>(() => rig.Registry.ReloadAsync(CompanyA, CancellationToken.None));
+
+        rig.Reader.Failure = null;
+        Assert.Same(before, await rig.GetAsync(CompanyA));
+        Assert.Equal("7", Assert.Single(rig.Registry.Loaded()).Version);
+    }
+
+    [Fact]
+    public async Task ConcurrentReloadsOfOneCompany_AreSerialised_AndTheSecondFindsTheVersionAlreadyApplied()
+    {
+        var rig = NewRig();
+        rig.Reader.Set(CompanyA, Row(AssistantProvider.Ollama, "7"), usesPlatform: false);
+        await rig.GetAsync(CompanyA);
+        rig.Reader.Set(CompanyA, Row(AssistantProvider.Ollama, "8"), usesPlatform: false);
+        rig.Reader.Gate = new TaskCompletionSource();
+
+        var first = rig.Registry.ReloadAsync(CompanyA, CancellationToken.None);
+        var second = rig.Registry.ReloadAsync(CompanyA, CancellationToken.None);
+        rig.Reader.Gate.SetResult();
+        await Task.WhenAll(first, second);
+
+        // Sin serializar, la segunda lectura habría empezado antes de liberar la puerta (dos lecturas simultáneas).
+        Assert.Equal(1, rig.Reader.MaxConcurrentReads);
+        Assert.Equal(2, rig.Factory.Created.Count);
+        Assert.Equal("8", Assert.Single(rig.Registry.Loaded()).Version);
     }
 }

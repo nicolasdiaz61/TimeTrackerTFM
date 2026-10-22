@@ -328,3 +328,27 @@ No bloquean el código (procesos operativos, `design.md` sección 10): custodia 
 Total de tareas: **138** (PR 1: 14 [1.1-1.13 más 1.4b] · PR 1b: 12 [1b.1-1b.10 más 1b.6b y 1b.8b] · PR 2: 12 [2.1-2.11 más 2.9b] · PR 3: 12 · PR 4a: 15 [4a.1-4a.14 más 4a.8b] · PR 4b: 13 · PR 5: 17 [5.1-5.14 más 5.6b, 5.7b y 5.11b] · PR 6: 17 [6.1-6.16 más 6.15b] · PR 7: 10 [7.1-7.8 más 7.3b y 7.4b] · PR 8: 9 · tarea 9: 7).
 
 Orden estrictamente secuencial por PR: 1 → 1b → 2 → 3 → 4a → 4b → 5 → 6 → 7 → 8 → 9. Dependencias duras: **1b** necesita la PR 1 **desplegada y observada** y V-1 resuelta (nunca se despliegan seguidas ni juntas); **2** necesita 1b (el puente y el esquema B; DD-24); **3** necesita 1b (FK compuestas) y 2 (`cid`); **4a** necesita 3 (filtro); **4b** necesita 4a; **5** necesita 4b (regla de apertura); **6** necesita 5 (`PasswordPolicy`, opciones, colaborador de emisión de tokens); **7** necesita 5 y 6 (contrato); **8** necesita 1-7. **Paralelizable** (solo como trabajo de lectura y sin escritores concurrentes): las verificaciones de producción (V-1, V-3, V-4, V-6, V-7) pueden pedirse al responsable desde el principio mientras se implementan las PR 1 a 3; dentro de cada PR, las pruebas independientes (p. ej. 5.2/5.3, 6.4/6.5/6.6, 7.2/7.3/7.4) pueden prepararse en paralelo, con un único escritor.
+
+## PR 5.1: seguimiento de la revisión de la PR 5 y runbook de restauración
+
+Rama `fix/multi-compania-pr5-1-registro-limites`. Sin migraciones.
+
+- [x] 5.1.1 Límite por IP del registro agrupando IPv6 por `/64` (IPv4 exacta) con prueba de rotación.
+- [x] 5.1.2 Tope global de altas por hora (`Registration__GlobalHourlyLimit`, 30 por defecto) que solo cuenta altas y se valida al arrancar.
+- [x] 5.1.3 Particiones del limitador acotadas (10 000) con partición de desbordamiento.
+- [x] 5.1.4 Fallo de emisión de sesión tras crear la cuenta: `409` con detalle claro en lugar de `500` (desviación en `design.md`).
+- [x] 5.1.5 Validador de `ForwardedHeaders`: revisado; lo no verificable en código queda como V-7 del responsable con prueba en el runbook.
+- [x] 5.1.6 Runbook: procedimiento paso a paso de restauración o corrección hacia delante tras abrir el registro y runbook autónomo.
+
+## PR 4b.1: seguimiento de la revisión de la PR 4b y cabo suelto de la PR 5.1
+
+Rama `fix/multi-compania-pr4b-1-runtime` (sobre `fix/multi-compania-pr5-1-registro-limites`). Sin migraciones ni cambio de contrato.
+
+- [x] 4b.1.1 Tope de `Ai__MaxLoadedCompanies` aplicado con la entrada publicada y una vez por carga: cargas simultáneas dejan exactamente el tope.
+- [x] 4b.1.2 Cola de expulsadas acotada por el tope (se libera ya la más antigua al desbordarse).
+- [x] 4b.1.3 Ganar `uses_platform_assistant` con una fila rechazada anota el indicador observado y el sondeo deja de recargar en cada vuelta (indicador observado distinto del indicador de construcción).
+- [x] 4b.1.4 Carrera expulsión/uso: comprobación y lectura de la instantánea atómicas (`TryAcquire`), sin 503 falso.
+- [x] 4b.1.5 Una carga fallida tras abandonar la precarga del arranque se retira sola de las entradas.
+- [x] 4b.1.6 Pruebas: escenarios del antiguo cargador y del ciclo de vida del sondeo recuperados; prueba de cuota no vacua; prueba de tope exacta y determinista; prueba de 500 por HTTP de la guarda de la PR 3 que distingue la guarda de la clave foránea.
+- [x] 4b.1.7 PR 5.1: `CreatedWithoutSession` lleva la causa (solo el nombre del tipo de la excepción) y se registra con el registro de metadatos del alta; cancelación y 409 intactos.
+- [x] 4b.1.8 `StripComments` compartido (`SourceText`) y consciente de literales en las pruebas de arquitectura.
