@@ -12,7 +12,9 @@ Fase: sdd-apply · Modo: openspec · **Strict TDD** · Rama de la PR 1: `feat/mu
 | PR 1b | 1b.2 (puertas previas de despliegue), 1b.3 (reconfirmación de V-3 con el responsable; la parte local está hecha) | **Pendientes del responsable** (apply no accede a producción ni a Railway) |
 | PR 2 | 2.1 a 2.11 (con 2.9b) | **Hechas** (12 de 12; ver la sección PR 2 al final; sin tareas de producción) |
 | PR 3 | 3.1 a 3.12 | **Hechas** (12 de 12; ver la sección PR 3 al final; sin tareas de producción) |
-| PR 4a a PR 8, tarea 9 | todas | Sin empezar (fuera del alcance de este lote) |
+| PR 4a | 4a.1 a 4a.14 | **Hechas** (ver la sección PR 4a al final) |
+| PR 4b | 4b.1 a 4b.13 | **Hechas** (13 de 13; ver la sección PR 4b al final; sin tareas de producción) |
+| PR 5 a PR 8, tarea 9 | todas | Sin empezar |
 
 ## Lo que queda al responsable (puertas previas, sin marcar en `tasks.md`)
 
@@ -370,7 +372,7 @@ Tamaño (`git diff 3d004fe HEAD` de los cinco commits de código y ADR): 51 arch
 
 | Tarea | Archivo de prueba | Capa | Safety net | RED | GREEN | TRIANGULATE | REFACTOR |
 |---|---|---|---|---|---|---|---|
-| 4a.1 | — | — | 156/156 de configuración del asistente (Application) y 33/33 del protector | N/A | `..\TimeTracker.rollback\pr-mc4a\` | N/A | N/A |
+| 4a.1 | — | — | N/A (copia; la línea base de 156/156 de configuración del asistente en Application y 33/33 del protector se tomó antes de la tarea 4a.3) | N/A | `..\TimeTracker.rollback\pr-mc4a\` | N/A | N/A |
 | 4a.2 | — (decisión V-18) | — | N/A | N/A | Anotada en `design.md` | N/A | N/A |
 | 4a.3 | `AT/Assistant/Configuration/AssistantSettingsResolverTests` | Unitaria | 156/156 | CS7036 «falta el argumento `platformDefaults`» (las 9 pruebas existentes adaptadas) y `SettingSource.Default` inexistente | 15/15 | Sin fila con/sin plataforma, fila con clave de entorno del mismo proveedor, modelo solo de la fila, «sin fila» frente a `None` guardado | Limpio |
 | 4a.4 | `AT/.../AssistantUseCasesCompanyTests` | Unitaria | 156/156 | CS7036 (los casos de uso no recibían `ICompanyRepository`) | 12/12 | Demo y otra compañía en `Get`, prueba con clave de entorno / guardada propia / ajena / candidata, `Save`/`Reset` recargan la compañía del contexto, fallo de recarga, firmas sin compañía por reflexión | `FindCredential` sin `Guid companyId` (la guarda `CompanyGuardsTests` lo detectó) |
@@ -427,3 +429,89 @@ Detalle en `design.md`, sección 9, «Desviaciones y aclaraciones del diseño su
 - El puente solo sirve a la compañía por defecto: una compañía registrada que guarde su configuración no tendrá asistente hasta la PR 4b (esperado; el registro sigue cerrado).
 - Revertir tras un guardado v2 obliga a volver a introducir la clave (ADR 0021).
 - Q-8 (custodia de la clave maestra) sigue abierta y gana importancia: protege a todas las compañías.
+
+---
+
+# PR 4b — Runtime por compañía
+
+Rama `feat/multi-compania-pr4b-runtime` (apilada sobre `feat/multi-compania-pr4a-datos`, PR #40; cadena `stacked-to-main`) · Strict TDD · Copia previa en `..\TimeTracker.rollback\pr-mc4b\` (183 archivos).
+
+## Lo que queda al responsable
+
+Nada de producción en esta PR (sin migración ni cambio de esquema; no se accede a Railway). Al desplegarla:
+
+- Las claves `Ai__RequestsPerMinutePerCompany`, `Ai__DailyRequestsPerCompany`, `Ai__MaxLoadedCompanies` y `Ai__RuntimeIdleMinutes` tienen valores por defecto (30, 500, 100 y 60): no hace falta definirlas. Un valor fuera de rango o no numérico impide arrancar.
+- Los contadores de cuota siguen en memoria de la instancia (ADR 0017): se reinician al desplegar.
+- Rollback antes de abrir el registro: revertir la PR vuelve al runtime singleton de la compañía de plataforma. Tras abrirlo no hay `Down` ni se revierte esta PR (fix-forward).
+- Es la última de las cuatro condiciones de apertura del registro (PR 1, 1b, 2, 3, 4a y 4b fusionadas y desplegadas, tareas 9.4 y 9.6). El registro sigue apagado.
+
+## Commits de esta entrega
+
+| Commit | Mensaje | Contenido |
+|---|---|---|
+| `5de50b7` | `feat(multi-compania): topes del asistente por compañía validados al arrancar y documentados` | 4b.3 y 4b.12: `AiOptions`, validador, `AiOptionsBinder`, `.env.example` |
+| `b7d74fd` | `feat(multi-compania): ritmo por minuto y tope diario del asistente por compañía` | 4b.2 (V-17), 4b.9, 4b.10: `IAssistantQuota`, `InMemoryAssistantQuota`, caso de uso y endpoint |
+| `a4bc5ca` | `feat(multi-compania): registro de instantáneas del asistente por compañía, sondeo global y retirada del puente` | 4b.4 a 4b.8, 4b.11 y la retirada del puente: registro, lector, resolución, sondeo, motor, `ListVersionsAsync`, listas cerradas, medición V-8 |
+| (siguiente) | `test(multi-compania): la medición de memoria solo exige una cota superior` | Ajuste de la prueba de V-8 |
+| (este) | `docs(openspec): progreso de apply de la PR 4b de multi-compania` | `tasks.md`, `design.md`, este archivo y las correcciones de documentación de la PR 4a (ADR 0021, tarea 4a.3, fila 4a.1) |
+
+Tamaño (`git diff 097cd2a HEAD`, tres commits de código): `src` 28 archivos, **+1 001 / -316**; pruebas 34 archivos, **+2 418 / -763**; `.env.example` +8. El código de producción queda por debajo de la previsión de 700-1000 líneas netas; el volumen de pruebas (registro, expulsión, sondeo, cuotas, A/B) es lo que pesa.
+
+## Evidencia de Strict TDD (ciclo por tarea)
+
+| Tarea | Archivo de prueba | Capa | Safety net | RED | GREEN | TRIANGULATE | REFACTOR |
+|---|---|---|---|---|---|---|---|
+| 4b.1 | — | — | N/A (copia) | N/A | `..\TimeTracker.rollback\pr-mc4b\` | N/A | N/A |
+| 4b.2 | — (decisión V-17) | — | N/A | N/A | Anotada en `design.md` | N/A | N/A |
+| 4b.3 | `IFT/AiOptionsCompanyLimitsTests`, `IT/Startup/AiCompanyLimitsStartupTests`, `IT/Assistant/CompanyLimitsNotEditableTests` | Unitaria / integración | 93 de opciones y 70 de arranque | CS0117 (las propiedades no existían); el valor `muchas` se imprimía en la excepción del enlazador (4 en rojo) | 97/97 y 25/25 | Cuatro claves × (0, mínimo, máximo, máximo + 1), sin proveedor, proveedor desconocido, no numérico, `appsettings` | Limpio. `CompanyLimitsNotEditable`: verde a la primera (el cuerpo estricto de la 4a ya lo rechazaba); mutación no ejecutada |
+| 4b.4 | `IFT/AssistantRuntimeRegistryTests`, `CompanySettingsReaderTests` | Unitaria (reloj falso) | 457 de asistente en Infrastructure | CS0246 (`AssistantRuntimeRegistry`, `AssistantOptionsResolver`, `ICompanySettingsReader`); mutación comprobada: la plataforma para todas las compañías hace fallar 3 | 30 del registro y 7 del lector | Concurrencia (una sola lectura), A/B, clave propia, sin fila con y sin plataforma, primera fila inválida / no descifrable / no permitida / fábrica que falla, fallo y plazo agotado sin cachear, cancelación del llamante, recarga, versión repetida, conservar la última válida con un aviso por versión, pérdida y recuperación del indicador | Limpio |
+| 4b.5 | `IFT/AssistantRuntimeMemoryTests` | Unitaria (medición) | N/A (nueva) | CS0246 | 3/3 | 1, 20 y 100 compañías: 4 KiB, 203 KiB y 266 KiB | Cota solo superior (la medición puntual es ruidosa) |
+| 4b.6 | `IFT/AssistantRuntimeEvictionTests` | Unitaria (reloj falso) | Registro 30/30 | CS0246 (como 4b.4) | 11/11 | Expulsión de la menos usada, el uso reciente protege, recarga tras expulsión, petición en curso y gracia de 120 s, deshabilitadas no cuentan, un guardado que habilita pasa a contar, concurrencia, caducidad por inactividad (incluye deshabilitadas), aviso con límite de frecuencia, cierre | Margen de 1 s de `AskAsync` corregido en la prueba |
+| 4b.7 | `IT/AssistantSettingsListVersionsTests`, `IFT/AssistantSettingsPollerTests`, `AR/IgnoreQueryFiltersClosedListTests` | Integración (Testcontainers) / unitaria / arquitectura | 223 de arquitectura y 12 de sondeo | CS1061 (`ListVersionsAsync`) y la lista cerrada con una entrada sin uso (tolerancia retirada) | 4/4, 13/13 y 223/223 | Una consulta sin entidades y sin compañía en el contexto, seguimiento de guardado y borrado, indicador, sin tablas; solo compañías cargadas, versión `"0"`, versión rechazada, máximo de 4 recargas en paralelo, errores sin propagar con aviso por racha y línea al recuperarse, precarga acotada | `TransitionallyUnused` retirada: la lista queda con 2 sitios y ninguna entrada sin uso |
+| 4b.8 | `IFT/ChatAssistantEngineTests`, `ChatAssistantEngineSnapshotTests`, `AT/AskAssistantUseCaseTests` | Unitaria | 339 + 132 de motor y 38 del caso de uso | CS0535 (`GetAvailabilityAsync`) y constructor del motor | Verde | Compañía del token, una sola lectura por petición, fallo de carga = no disponible sin cachear, instantánea intercambiada a mitad | Puente y guarda `ServesCompany` retirados |
+| 4b.9 | `IFT/InMemoryAssistantQuotaTests` | Unitaria (reloj falso) | 8 de cuota | CS1061 (`TryConsumeDaily` / `TryConsumeMinute`) y `QuotaScope` | 18/18 | Tope de compañía, ámbito de usuario, el rechazo de un ámbito no consume el otro, 22:00 → 7200 s y reinicio, concurrencia (300 usuarios, 25 permitidos), ventana de un minuto, purga de un solo barrido | Limpio |
+| 4b.10 | `IT/AssistantCompanyRateLimitTests`, `AT/AskAssistantUseCaseTests` | Integración / unitaria | 23 de límites | Compilación (cuota) | 11/11 y 39/39 | 429 con `Retry-After`, `detail` propio y CORS; reinicio de ventana; el rechazo por usuario no consume; anónimos; `400` y `503` cuentan; diario y reinicio; A no afecta a B | Limpio |
+| 4b.11 | `IT/AssistantRuntimeIsolationTests` | Integración (Testcontainers, sondeo con reloj falso) | Suite de asistente 177 | «Verde a la primera» tras compilar el registro; la corrección fue de una expectativa (la demo precarga su instantánea) | 7/7 | A no habilita B, la clave de plataforma nunca sirve a otra compañía, clave propia, guardado externo con sondeo, dos instancias, borrado de fila, pérdida del indicador de plataforma | Limpio |
+| 4b.12 | `AR/DeliveryArtifactsTests` | Arquitectura | 40 | 5 de 18 en rojo (claves y comentario ausentes) | 45/45 | Cuatro claves comentadas con su valor y comentario de que no las edita un Manager | Limpio |
+| 4b.13 | — | — | Suite completa | — | Puerta de la PR (abajo) | — | `dotnet format` sin cambios |
+
+### Resumen de pruebas
+
+- Total tras la PR: 95 + 366 + 473 + 223 + 288 + 782 = **2 227 pruebas** (antes 2 116), todas en verde. Se retiran las del cargador singleton (sustituidas por las del registro) y dos del puente.
+- Ninguna llamada a un proveedor real de IA; valores de prueba inventados (`clave-prueba-123456`, `clave-plataforma-123456`). Sin `Thread.Sleep`: el tiempo va con `FakeTimeProvider` y las esperas con señales (`TaskCompletionSource`, `PollCompleted`).
+
+### Evidencia de unidad de trabajo
+
+| Evidencia | Valor |
+|---|---|
+| Prueba focalizada | `T-IFT --filter "FullyQualifiedName~Assistant"` (en verde), `ASPNETCORE_URLS=http://127.0.0.1:0 T-IT --filter "FullyQualifiedName~Assistant"` (en verde, Docker) y `T-AR` |
+| Arnés de ejecución | La API real con PostgreSQL (Testcontainers), el registro y el sondeo reales y dos compañías: guardar en A y preguntar, B sin fila, clave de plataforma solo para la demo, guardado externo por SQL, dos instancias sobre la misma base, pérdida del indicador. Nada contra producción |
+| Límite de reversión | Revertir los tres commits de código y restaurar `..\TimeTracker.rollback\pr-mc4b\`; sin migración. Antes de abrir el registro vuelve el runtime singleton; tras abrirlo, fix-forward |
+
+## Puerta de la PR (todo en verde)
+
+| Paso | Resultado |
+|---|---|
+| DOCKER-CHECK | `docker info` responde (29.7.2); solo lectura |
+| Entorno limpio | Sin variables `Cors__`, `ConnectionStrings__`, `Database__`, `Jwt__`, `Seed__`, `Ai__`, `Registration__`, `Company__`, `ForwardedHeaders__`, `ASPNETCORE_`, `DOTNET_ENVIRONMENT` |
+| RESTORE | Correcto |
+| BUILD | `-warnaserror`: 0 advertencias, 0 errores |
+| TEST | Domain 95, Application 366, Web 288, Infrastructure 473, Architecture 223, Api.Integration 782: 0 fallos (con `ASPNETCORE_URLS=http://127.0.0.1:0` solo en ese comando) |
+| COV-A | Application: líneas 99,7 %, ramas 97,0 % (mínimo 80 %) |
+| COV-D | Domain: líneas 100,0 %, ramas 100,0 % (mínimo 100 %) |
+| FORMAT | `--verify-no-changes`: sin cambios |
+| VULN | Sin `has the following vulnerable packages` |
+| EF-PENDING | «No changes have been made to the model since the last migration»; sin modelo ni migración nuevos |
+
+## Desviaciones
+
+Detalle en `design.md`, sección 9, «Desviaciones y aclaraciones del diseño surgidas en la PR 4b»: estructura del runtime (lector, resolvedor y soporte por compañía), `IAssistantEngine.GetAvailabilityAsync`, sondeo con `LEFT JOIN` que incluye el indicador de plataforma, sondeo interno, tope que cuenta solo compañías con proveedor, `AiOptionsBinder` para el valor no numérico, el `400` por cuerpo ilegible no cuenta para el minuto, guardar con la compañía no cargada y cambios de pruebas.
+
+Avisos de la revisión de la PR 4a: (1) **resuelto** (la compañía que pierde `uses_platform_assistant` degrada a deshabilitado aunque su fila se rechace, y el cambio del indicador recarga); (2) **resuelto** (ADR 0021: desviación deliberada de la convención «Sustituido por» del ADR 0001, un guardado que conserve la clave recifra a v2 y revertir obliga a volver a introducir la clave; nota «ver desviación 1» en la tarea 4a.3; fila 4a.1 de la tabla de evidencia de la PR 4a).
+
+## Riesgos abiertos
+
+- Si el indicador pasa de falso a verdadero y la fila de esa compañía queda rechazada, el sondeo la vuelve a leer en cada vuelta (sin repetir el aviso).
+- Los contadores de cuota y las instantáneas son por instancia (ADR 0017): con réplicas, cada una cuenta aparte y converge por el sondeo.
+- Con mucha actividad simultánea el coste real son las conexiones abiertas al proveedor (V-8 mide en reposo).
+- Q-8 (custodia de la clave maestra) sigue abierta.
