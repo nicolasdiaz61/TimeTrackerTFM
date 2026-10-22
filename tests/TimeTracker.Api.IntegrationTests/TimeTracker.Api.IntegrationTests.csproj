@@ -20,6 +20,8 @@
     <Compile Include="..\TimeTracker.Infrastructure.Tests\Fakes\HangingChatClient.cs" Link="Fakes\HangingChatClient.cs" />
     <Compile Include="..\TimeTracker.Infrastructure.Tests\Fakes\DisposalTrackingChatClient.cs" Link="Fakes\DisposalTrackingChatClient.cs" />
     <Compile Include="..\TimeTracker.Infrastructure.Tests\Fakes\RecordingChatClientFactory.cs" Link="Fakes\RecordingChatClientFactory.cs" />
+    <Compile Include="..\TimeTracker.Application.Tests\Fakes\InMemoryCompanyRepository.cs" Link="Fakes\InMemoryCompanyRepository.cs" />
+    <Compile Include="..\TimeTracker.Application.Tests\Fakes\FixedCurrentUser.cs" Link="Fakes\FixedCurrentUser.cs" />
   </ItemGroup>
 
 </Project>

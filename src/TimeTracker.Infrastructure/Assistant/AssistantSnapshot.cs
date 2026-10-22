@@ -3,8 +3,8 @@ using Microsoft.Extensions.AI;
 namespace TimeTracker.Infrastructure.Assistant;
 
 /// <summary>
-/// Configuración efectiva del asistente en un instante (DD-10): el pipeline ya montado, los valores con los que se creó y la
-/// versión de la fila de la que salen (<c>"0"</c> = entorno). No cambia nunca: un cambio publica otra instantánea.
+/// Configuración efectiva del asistente de una compañía en un instante (DD-10, DD-14): el pipeline ya montado, los valores con los que se creó y la
+/// versión de la fila de la que salen (<c>"0"</c> = sin fila). No cambia nunca: un cambio publica otra instantánea.
 /// </summary>
 internal sealed record AssistantSnapshot(IChatClient? Pipeline, AiOptions Options, string Version)
 {

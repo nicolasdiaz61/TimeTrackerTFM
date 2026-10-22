@@ -33,10 +33,14 @@ internal static partial class AssistantSettingsLog
     public static partial void PollRecovered(ILogger logger);
 
     [LoggerMessage(EventId = 16, Level = LogLevel.Warning,
-        Message = "La primera carga de la configuración del asistente superó {Seconds} s; se usa el entorno hasta el siguiente sondeo.")]
+        Message = "La primera carga de la configuración del asistente superó {Seconds} s; la compañía de plataforma cargará su configuración al recibir la primera pregunta.")]
     public static partial void FirstLoadTimedOut(ILogger logger, int seconds);
 
     [LoggerMessage(EventId = 17, Level = LogLevel.Warning,
         Message = "Un suscriptor de PollCompleted lanzó una excepción ({ExceptionType}); el sondeo continúa.")]
     public static partial void PollCompletedSubscriberFailed(ILogger logger, string exceptionType);
+
+    [LoggerMessage(EventId = 18, Level = LogLevel.Warning,
+        Message = "Hay más compañías con asistente activo que el tope Ai:MaxLoadedCompanies ({Limit}): se expulsan las menos usadas y se recargan al preguntar; suba el tope si se repite.")]
+    public static partial void Overloaded(ILogger logger, int limit);
 }

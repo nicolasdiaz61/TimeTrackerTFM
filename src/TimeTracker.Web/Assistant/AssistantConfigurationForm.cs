@@ -88,6 +88,7 @@ public sealed class AssistantConfigurationForm
         EnvironmentSource => "Entorno",
         "stored" => "Guardado por un responsable",
         "none" => "Sin clave",
+        "default" => "Valor por defecto",
         _ => source,
     };
 

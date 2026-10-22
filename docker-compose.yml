@@ -30,6 +30,7 @@ services:
       ConnectionStrings__Default: Host=postgres;Port=5432;Database=${POSTGRES_DB};Username=${POSTGRES_USER};Password=${POSTGRES_PASSWORD}
       # Clave de firma y contraseña de demostración: obligatorias y sin literales en este archivo.
       Jwt__SigningKey: ${Jwt__SigningKey:?Defina Jwt__SigningKey en .env}
+      # Compose siembra usuarios de demostración, así que nunca abre el registro de compañías (la API no arrancaría).
       Seed__DemoUsers: "true"
       Seed__DemoPassword: ${Seed__DemoPassword:?Defina Seed__DemoPassword en .env (al menos 12 caracteres)}
     # Para llegar a un Ollama que corre en el anfitrión (Ai__Endpoint=http://host.docker.internal:11434/); en Linux no existe por defecto.

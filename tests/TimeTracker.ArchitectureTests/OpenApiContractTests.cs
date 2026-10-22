@@ -6,6 +6,16 @@ public class OpenApiContractTests
 {
     private const string TimeEntriesPath = "/api/time-entries";
     private const string ConfigurationPath = "/api/asistente/configuracion";
+    private const string RegisterCompanyPath = "/api/auth/register-company";
+    private const string EmployeesPath = "/api/employees";
+    private const string TemporaryPasswordPath = "/api/employees/{memberId}/temporary-password";
+    private const string ChangePasswordPath = "/api/auth/change-password";
+
+    // Nombres que ninguna operación del alta, la regeneración y el cambio de contraseña puede declarar (AGENTS §6).
+    private static readonly string[] ForbiddenNames = ["companyId", "passwordHash", "employeeId"];
+
+    // Código con el que DocumentGeneration abre el registro solo para exportar el contrato (Api/Configuration/DocumentGeneration.cs).
+    private const string FictitiousGenerationCode = "codigo-ficticio-solo-para-exportar-openapi";
 
     [Fact]
     public void ExportedDocument_ContainsHealthGet200()
@@ -247,6 +257,191 @@ public class OpenApiContractTests
         var withKey = schemas.EnumerateObject().Where(schema => PropertyNames(schemas, schema.Name).Contains("credential")).Select(schema => schema.Name).Order(StringComparer.Ordinal);
         Assert.Equal(["AssistantConfigurationRequest", "AssistantConfigurationSources", "AssistantConnectionTestRequest"], withKey);
         Assert.Equal("string", schemas.GetProperty("AssistantConfigurationSources").GetProperty("properties").GetProperty("credential").GetProperty("type").GetString());
+    }
+
+    [Fact]
+    public void ExportedDocument_ContainsOnlyThePostRegisterCompanyOperation_AnonymousWithItsResponses()
+    {
+        using var document = LoadDocument();
+        var paths = document.RootElement.GetProperty("paths");
+
+        var register = paths.GetProperty(RegisterCompanyPath);
+        Assert.Equal(["post"], register.EnumerateObject().Select(operation => operation.Name));
+        Assert.Equal(["201", "400", "403", "409", "429"], ResponseCodes(paths, RegisterCompanyPath, "post"));
+        // Anónima: «security: []» en la operación retira el requisito Bearer global.
+        Assert.False(RequiresBearer(document.RootElement, RegisterCompanyPath, "post"));
+        Assert.Equal(0, register.GetProperty("post").GetProperty("security").GetArrayLength());
+        // El 413 por cuerpo grande lo rechaza el servidor antes de enlazarlo y no se declara.
+        Assert.DoesNotContain("413", ResponseCodes(paths, RegisterCompanyPath, "post"));
+    }
+
+    [Fact]
+    public void ExportedDocument_RegisterCompanyRequestHasExactlyTheFivePropertiesAndNoCompanyId()
+    {
+        using var document = LoadDocument();
+        var schemas = document.RootElement.GetProperty("components").GetProperty("schemas");
+
+        Assert.Equal(
+            ["companyName", "email", "inviteCode", "managerName", "password"],
+            PropertyNames(schemas, "RegisterCompanyRequest").Order(StringComparer.Ordinal));
+        var reference = document.RootElement.GetProperty("paths").GetProperty(RegisterCompanyPath).GetProperty("post")
+            .GetProperty("requestBody").GetProperty("content").GetProperty("application/json").GetProperty("schema").GetProperty("oneOf").EnumerateArray()
+            .Select(option => option.TryGetProperty("$ref", out var value) ? value.GetString() : null).Single(value => value is not null);
+        Assert.EndsWith("/RegisterCompanyRequest", reference, StringComparison.Ordinal);
+        // El cuerpo ignora las propiedades desconocidas (no rechaza): el contrato no declara additionalProperties falso.
+        Assert.False(schemas.GetProperty("RegisterCompanyRequest").TryGetProperty("additionalProperties", out _));
+    }
+
+    [Fact]
+    public void ExportedDocument_RegisterCompanyHasNoInviteCodeExampleAndNoFictitiousGenerationCode()
+    {
+        var text = File.ReadAllText(Path.Combine(RepositoryRoot.Path, "docs", "api", "openapi.json"));
+
+        Assert.DoesNotContain(FictitiousGenerationCode, text, StringComparison.Ordinal);
+        Assert.DoesNotContain("codigo-prueba", text, StringComparison.Ordinal);
+        using var document = LoadDocument();
+        var inviteCode = document.RootElement.GetProperty("components").GetProperty("schemas").GetProperty("RegisterCompanyRequest").GetProperty("properties").GetProperty("inviteCode");
+        Assert.False(inviteCode.TryGetProperty("example", out _));
+        Assert.False(inviteCode.TryGetProperty("default", out _));
+        Assert.False(inviteCode.TryGetProperty("enum", out _));
+    }
+
+    // V-12: las guardas del contrato prohíben passwordHash y companyId, pero no los nombres legítimos «password» (petición del registro) ni
+    // «companyName» (respuestas de sesión). Si alguien endureciera una guarda por nombre, esta prueba lo delataría.
+    [Fact]
+    public void ExportedDocument_KeepsPasswordAndCompanyNameAsLegitimateNames()
+    {
+        using var document = LoadDocument();
+        var schemas = document.RootElement.GetProperty("components").GetProperty("schemas");
+
+        Assert.Contains("password", PropertyNames(schemas, "RegisterCompanyRequest"));
+        Assert.Contains("companyName", PropertyNames(schemas, "RegisterCompanyRequest"));
+        Assert.Contains("companyName", PropertyNames(schemas, "UserResponse"));
+        Assert.DoesNotContain("passwordHash", CollectNames(document.RootElement), StringComparer.OrdinalIgnoreCase);
+        Assert.DoesNotContain("companyId", CollectNames(document.RootElement), StringComparer.OrdinalIgnoreCase);
+    }
+
+    // Tarea 6.14: el contrato incorpora aquí el alta, la regeneración y el cambio de contraseña (la PR 5 solo tenía el registro).
+    [Fact]
+    public void ExportedDocument_ContainsOnlyThePostEmployeesOperation_WithItsResponsesAndBearer()
+    {
+        using var document = LoadDocument();
+        var paths = document.RootElement.GetProperty("paths");
+
+        Assert.Equal(["post"], paths.GetProperty(EmployeesPath).EnumerateObject().Select(operation => operation.Name));
+        Assert.Equal(["201", "400", "401", "403", "409", "429"], ResponseCodes(paths, EmployeesPath, "post"));
+        Assert.True(RequiresBearer(document.RootElement, EmployeesPath, "post"));
+    }
+
+    [Fact]
+    public void ExportedDocument_ContainsOnlyThePostTemporaryPasswordOperation_WithItsResponsesAndBearer()
+    {
+        using var document = LoadDocument();
+        var paths = document.RootElement.GetProperty("paths");
+
+        Assert.Equal(["post"], paths.GetProperty(TemporaryPasswordPath).EnumerateObject().Select(operation => operation.Name));
+        Assert.Equal(["200", "401", "403", "404", "409", "429"], ResponseCodes(paths, TemporaryPasswordPath, "post"));
+        Assert.True(RequiresBearer(document.RootElement, TemporaryPasswordPath, "post"));
+        // El único parámetro es el identificador de la persona en la ruta (válido) y no hay cuerpo.
+        var operation = paths.GetProperty(TemporaryPasswordPath).GetProperty("post");
+        var parameter = Assert.Single(operation.GetProperty("parameters").EnumerateArray());
+        Assert.Equal("memberId", parameter.GetProperty("name").GetString());
+        Assert.Equal("path", parameter.GetProperty("in").GetString());
+        Assert.Equal("uuid", parameter.GetProperty("schema").GetProperty("format").GetString());
+        Assert.False(operation.TryGetProperty("requestBody", out _));
+    }
+
+    [Fact]
+    public void ExportedDocument_ContainsOnlyThePostChangePasswordOperation_WithItsResponsesAndBearer()
+    {
+        using var document = LoadDocument();
+        var paths = document.RootElement.GetProperty("paths");
+
+        Assert.Equal(["post"], paths.GetProperty(ChangePasswordPath).EnumerateObject().Select(operation => operation.Name));
+        Assert.Equal(["200", "400", "401", "403", "409", "429"], ResponseCodes(paths, ChangePasswordPath, "post"));
+        Assert.True(RequiresBearer(document.RootElement, ChangePasswordPath, "post"));
+        // Devuelve el mismo cuerpo que el inicio de sesión.
+        var success = paths.GetProperty(ChangePasswordPath).GetProperty("post").GetProperty("responses").GetProperty("200").GetRawText();
+        Assert.Contains("#/components/schemas/LoginResponse", success, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ExportedDocument_TheNewOperationsDeclareExactlyTheirFieldsAndNothingForbidden()
+    {
+        using var document = LoadDocument();
+        var schemas = document.RootElement.GetProperty("components").GetProperty("schemas");
+        var paths = document.RootElement.GetProperty("paths");
+
+        Assert.Equal(["displayName", "email", "managerId", "role"], PropertyNames(schemas, "CreateEmployeeRequest").Order(StringComparer.Ordinal));
+        Assert.Equal(["displayName", "email", "id", "role", "temporaryPassword"], PropertyNames(schemas, "CreateEmployeeResponse").Order(StringComparer.Ordinal));
+        Assert.Equal(["temporaryPassword"], PropertyNames(schemas, "TemporaryPasswordResponse"));
+        Assert.Equal(["currentPassword", "newPassword"], PropertyNames(schemas, "ChangePasswordRequest").Order(StringComparer.Ordinal));
+        foreach (var schema in new[] { "CreateEmployeeRequest", "CreateEmployeeResponse", "TemporaryPasswordResponse", "ChangePasswordRequest" })
+        {
+            Assert.DoesNotContain(PropertyNames(schemas, schema), name => ForbiddenNames.Contains(name, StringComparer.OrdinalIgnoreCase));
+        }
+
+        foreach (var path in new[] { EmployeesPath, TemporaryPasswordPath, ChangePasswordPath })
+        {
+            var text = paths.GetProperty(path).GetRawText();
+            foreach (var forbidden in ForbiddenNames)
+            {
+                Assert.DoesNotContain($"\"{forbidden}\"", text, StringComparison.OrdinalIgnoreCase);
+            }
+        }
+    }
+
+    [Fact]
+    public void ExportedDocument_TemporaryPasswordAppearsOnlyInTheResponseSchemasOfTheCreationAndTheRegeneration()
+    {
+        using var document = LoadDocument();
+        var schemas = document.RootElement.GetProperty("components").GetProperty("schemas");
+        var paths = document.RootElement.GetProperty("paths");
+
+        var withTemporaryPassword = schemas.EnumerateObject()
+            .Where(schema => PropertyNames(schemas, schema.Name).Contains("temporaryPassword"))
+            .Select(schema => schema.Name)
+            .Order(StringComparer.Ordinal);
+
+        Assert.Equal(["CreateEmployeeResponse", "TemporaryPasswordResponse"], withTemporaryPassword);
+        // Y esos esquemas solo se devuelven en el 201 del alta y en el 200 de la regeneración.
+        Assert.Contains("CreateEmployeeResponse", paths.GetProperty(EmployeesPath).GetProperty("post").GetProperty("responses").GetProperty("201").GetRawText(), StringComparison.Ordinal);
+        Assert.Contains("TemporaryPasswordResponse", paths.GetProperty(TemporaryPasswordPath).GetProperty("post").GetProperty("responses").GetProperty("200").GetRawText(), StringComparison.Ordinal);
+        Assert.DoesNotContain("temporaryPassword", paths.GetProperty(ChangePasswordPath).GetRawText(), StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void ExportedDocument_HasNoOperationOrFieldThatChangesTheEmployeeCap()
+    {
+        using var document = LoadDocument();
+        var names = CollectNames(document.RootElement).ToList();
+        var paths = document.RootElement.GetProperty("paths").EnumerateObject().Select(path => path.Name).ToList();
+
+        Assert.NotEmpty(names);
+        Assert.DoesNotContain(names, name => name.Contains("maxEmployees", StringComparison.OrdinalIgnoreCase));
+        Assert.DoesNotContain(paths, path => path.Contains("limit", StringComparison.OrdinalIgnoreCase) || path.Contains("tope", StringComparison.OrdinalIgnoreCase) || path.Contains("quota", StringComparison.OrdinalIgnoreCase));
+        // Las únicas rutas de personas son el alta y la regeneración.
+        Assert.Equal([EmployeesPath, TemporaryPasswordPath], paths.Where(path => path.StartsWith("/api/employees", StringComparison.Ordinal)).Order(StringComparer.Ordinal));
+    }
+
+    [Fact]
+    public void ExportedDocument_CompanyNameAppearsOnlyInTheRegistrationRequestAndInTheUserOfTheSessionResponses()
+    {
+        using var document = LoadDocument();
+        var schemas = document.RootElement.GetProperty("components").GetProperty("schemas");
+        var paths = document.RootElement.GetProperty("paths");
+
+        var withCompanyName = schemas.EnumerateObject()
+            .Where(schema => PropertyNames(schemas, schema.Name).Contains("companyName"))
+            .Select(schema => schema.Name)
+            .Order(StringComparer.Ordinal);
+
+        // UserResponse es el usuario del inicio de sesión, del registro, del cambio de contraseña y de «me»; ningún otro esquema lo lleva.
+        Assert.Equal(["RegisterCompanyRequest", "UserResponse"], withCompanyName);
+        Assert.Contains("UserResponse", paths.GetProperty("/api/auth/me").GetProperty("get").GetProperty("responses").GetProperty("200").GetRawText(), StringComparison.Ordinal);
+        Assert.Contains("LoginResponse", paths.GetProperty("/api/auth/login").GetProperty("post").GetProperty("responses").GetProperty("200").GetRawText(), StringComparison.Ordinal);
+        Assert.Contains("LoginResponse", paths.GetProperty(ChangePasswordPath).GetProperty("post").GetProperty("responses").GetProperty("200").GetRawText(), StringComparison.Ordinal);
+        Assert.Contains("LoginResponse", paths.GetProperty(RegisterCompanyPath).GetProperty("post").GetProperty("responses").GetProperty("201").GetRawText(), StringComparison.Ordinal);
     }
 
     [Fact]

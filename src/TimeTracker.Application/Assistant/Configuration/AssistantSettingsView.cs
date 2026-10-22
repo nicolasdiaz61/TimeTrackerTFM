@@ -16,15 +16,15 @@ public sealed record AssistantSettingsView(
     /// Construye la vista sobre la fila guardada. Una fila cuyo proveedor ya no está permitido no se aplica:
     /// los valores efectivos son entonces los del entorno, pero el token sigue siendo el de la fila.
     /// </summary>
-    internal static AssistantSettingsView Build(AssistantEnvironmentDefaults environment, IAssistantCredentialProtector protector, AssistantSettings? stored)
+    internal static AssistantSettingsView Build(AssistantEnvironmentDefaults environment, IAssistantCredentialProtector protector, AssistantSettings? stored, AssistantCompany company)
     {
         var allowed = Configuration.AllowedProviders.Resolve(environment).Providers;
         var applied = stored is not null && (stored.Provider == AssistantProvider.None || allowed.Contains(stored.Provider));
         var inUse = applied ? stored : null;
-        var credentialUsable = inUse is not null && UsableCredential.FromStored(inUse, inUse.Provider, protector) is not null;
+        var credentialUsable = inUse is not null && UsableCredential.FromStored(inUse, inUse.Provider, protector, company.Id) is not null;
 
         return new AssistantSettingsView(
-            AssistantSettingsResolver.Resolve(environment, inUse, credentialUsable),
+            AssistantSettingsResolver.Resolve(environment, inUse, credentialUsable, company.UsesPlatformAssistant),
             protector.IsAvailable,
             [.. allowed.Select(p => new AllowedProviderInfo(p, AssistantProviderTraits.For(p).RequiresCredential, AssistantProviderTraits.For(p).SupportsEffort))],
             stored?.Version ?? "0",

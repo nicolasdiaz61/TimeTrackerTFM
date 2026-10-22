@@ -6,13 +6,15 @@ using System.Text;
 using Microsoft.Extensions.Options;
 
 using TimeTracker.Application.Assistant.Configuration;
+using TimeTracker.Domain.Companies;
 
 namespace TimeTracker.Infrastructure.Assistant;
 
 /// <summary>
 /// Cifra la clave del proveedor con AES-256-GCM y una clave maestra versionada del entorno (DD-6). Las claves se
 /// decodifican y validan una sola vez; una entrada inválida deja solo esa versión como no disponible y nunca se imprime.
-/// El texto cifrado guarda la etiqueta al final y se autentica contra proveedor y versión (AAD).
+/// El texto cifrado guarda la etiqueta al final y se autentica contra compañía, proveedor y versión (AAD v2, DD-17). El formato
+/// no se guarda: se deduce probando v2 y, solo para la compañía por defecto, el v1 anterior (sin compañía).
 /// </summary>
 public sealed class AesGcmCredentialProtector : IAssistantCredentialProtector
 {
@@ -67,7 +69,7 @@ public sealed class AesGcmCredentialProtector : IAssistantCredentialProtector
 
     public ProtectionUnavailableReason UnavailableReason { get; } = ProtectionUnavailableReason.None;
 
-    public EncryptedCredential Protect(AssistantCredential plaintext, AssistantProvider provider)
+    public EncryptedCredential Protect(AssistantCredential plaintext, AssistantProvider provider, Guid companyId)
     {
         if (_activeVersion is not { } version)
         {
@@ -80,7 +82,7 @@ public sealed class AesGcmCredentialProtector : IAssistantCredentialProtector
             var nonce = RandomNumberGenerator.GetBytes(NonceBytes);
             var output = new byte[data.Length + TagBytes];
             using var aes = new AesGcm(_masterKeys[version], TagBytes);
-            aes.Encrypt(nonce, data, output.AsSpan(0, data.Length), output.AsSpan(data.Length), AssociatedData(provider, version));
+            aes.Encrypt(nonce, data, output.AsSpan(0, data.Length), output.AsSpan(data.Length), AssociatedDataV2(companyId, provider, version));
             return new EncryptedCredential(output, nonce, version);
         }
         finally
@@ -89,7 +91,7 @@ public sealed class AesGcmCredentialProtector : IAssistantCredentialProtector
         }
     }
 
-    public bool TryUnprotect(EncryptedCredential stored, AssistantProvider provider, [NotNullWhen(true)] out AssistantCredential? plaintext)
+    public bool TryUnprotect(EncryptedCredential stored, AssistantProvider provider, Guid companyId, [NotNullWhen(true)] out AssistantCredential? plaintext)
     {
         plaintext = null;
         if (!_masterKeys.TryGetValue(stored.KeyVersion, out var key) || stored.Nonce.Length != NonceBytes || stored.Ciphertext.Length < TagBytes)
@@ -97,18 +99,25 @@ public sealed class AesGcmCredentialProtector : IAssistantCredentialProtector
             return false;
         }
 
+        // Los textos cifrados v1 solo pueden existir en la compañía por defecto: en cualquier otra no se prueba v1.
+        plaintext = TryDecrypt(key, stored, AssociatedDataV2(companyId, provider, stored.KeyVersion))
+            ?? (companyId == Company.DefaultId ? TryDecrypt(key, stored, AssociatedDataV1(provider, stored.KeyVersion)) : null);
+        return plaintext is not null;
+    }
+
+    private static AssistantCredential? TryDecrypt(byte[] key, EncryptedCredential stored, byte[] associatedData)
+    {
         var cipherLength = stored.Ciphertext.Length - TagBytes;
         var data = new byte[cipherLength];
         try
         {
             using var aes = new AesGcm(key, TagBytes);
-            aes.Decrypt(stored.Nonce, stored.Ciphertext.AsSpan(0, cipherLength), stored.Ciphertext.AsSpan(cipherLength), data, AssociatedData(provider, stored.KeyVersion));
-            plaintext = new AssistantCredential(Encoding.UTF8.GetString(data));
-            return true;
+            aes.Decrypt(stored.Nonce, stored.Ciphertext.AsSpan(0, cipherLength), stored.Ciphertext.AsSpan(cipherLength), data, associatedData);
+            return new AssistantCredential(Encoding.UTF8.GetString(data));
         }
         catch (CryptographicException)
         {
-            return false;
+            return null;
         }
         finally
         {
@@ -116,7 +125,10 @@ public sealed class AesGcmCredentialProtector : IAssistantCredentialProtector
         }
     }
 
-    private static byte[] AssociatedData(AssistantProvider provider, short version)
+    private static byte[] AssociatedDataV2(Guid companyId, AssistantProvider provider, short version)
+        => Encoding.UTF8.GetBytes($"tt-assistant-credential|v2|{companyId:D}|{provider}|{version}");
+
+    private static byte[] AssociatedDataV1(AssistantProvider provider, short version)
         => Encoding.UTF8.GetBytes($"tt-assistant-credential|v1|{provider}|{version}");
 
     private static bool TryParseVersion(string? value, out short version)

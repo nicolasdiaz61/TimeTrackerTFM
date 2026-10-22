@@ -6,16 +6,17 @@ using Microsoft.EntityFrameworkCore;
 using Npgsql;
 
 using TimeTracker.Application.Assistant.Configuration;
-using TimeTracker.Domain.Companies;
+using TimeTracker.Application.Identity;
 
 namespace TimeTracker.Infrastructure.Persistence;
 
 /// <summary>
 /// Almacén PostgreSQL de la configuración del asistente; la fila y su auditoría se confirman en una sola transacción (DD-8, DD-9).
-/// Puente transitorio (DD-14, PR 1b a 4b): la clave primaria es <c>company_id</c>, pero mientras no haya filtro de compañía ni
-/// contexto de petición el almacén sirve siempre a la compañía por defecto. La PR 4a lo generaliza con la compañía del contexto.
+/// Actúa solo sobre la fila de la compañía del contexto (DD-13): las lecturas las acota el filtro global de consulta y las
+/// escrituras fijan <c>CompanyId</c> desde <see cref="ICompanyContext"/>, que la guarda de <c>SaveChanges</c> vuelve a comprobar.
+/// La clave primaria es <c>company_id</c>: una fila por compañía y un token de concurrencia (<c>xmin</c>) por fila.
 /// </summary>
-public sealed class AssistantSettingsStore(TimeTrackerDbContext context) : IAssistantSettingsStore
+public sealed class AssistantSettingsStore(TimeTrackerDbContext context, ICompanyContext companyContext) : IAssistantSettingsStore
 {
     // Un xmin real nunca es 0 (los identificadores de transacción empiezan en 3): el 0 es el centinela «sin fila» del contrato.
     private const string NoRowToken = "0";
@@ -25,10 +26,11 @@ public sealed class AssistantSettingsStore(TimeTrackerDbContext context) : IAssi
 
     private static readonly JsonSerializerOptions AuditJson = new(JsonSerializerDefaults.Web);
 
-    // Puente de la PR 1b: la única compañía servida hasta que la 4a tome la compañía del contexto.
-    private static readonly Guid BridgeCompanyId = Company.DefaultId;
+    // El filtro global acota la consulta a la compañía del contexto; sin compañía no devuelve filas.
+    private IQueryable<AssistantSettingsRecord> Rows() => context.Set<AssistantSettingsRecord>();
 
-    private IQueryable<AssistantSettingsRecord> Rows() => context.Set<AssistantSettingsRecord>().Where(row => row.CompanyId == BridgeCompanyId);
+    // Las escrituras exigen compañía: nunca se inventa una por defecto.
+    private Guid CompanyForWrite => companyContext.CompanyId ?? throw new InvalidOperationException("No hay compañía en el contexto: no se puede escribir la configuración del asistente.");
 
     public async Task<AssistantSettings?> GetAsync(CancellationToken cancellationToken)
     {
@@ -59,6 +61,25 @@ public sealed class AssistantSettingsStore(TimeTrackerDbContext context) : IAssi
         catch (PostgresException exception) when (IsMissingTable(exception))
         {
             return NoRowToken;
+        }
+    }
+
+    public async Task<IReadOnlyList<CompanyVersion>> ListVersionsAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            // company-filter-bypass: el sondeo global lee la versión de todas las compañías (DD-15); no hay compañía en su contexto y no lee datos de configuración.
+            var rows = await (
+                from company in context.Companies.AsNoTracking()
+                join settings in context.Set<AssistantSettingsRecord>().IgnoreQueryFilters().AsNoTracking() on company.Id equals settings.CompanyId into joined
+                from row in joined.DefaultIfEmpty()
+                select new { company.Id, company.UsesPlatformAssistant, Xmin = row == null ? (uint?)null : EF.Property<uint>(row, XminColumn) })
+                .ToListAsync(cancellationToken);
+            return [.. rows.Select(row => new CompanyVersion(row.Id, row.Xmin is { } xmin ? Token(xmin) : NoRowToken, row.UsesPlatformAssistant))];
+        }
+        catch (PostgresException exception) when (IsMissingTable(exception))
+        {
+            return [];
         }
     }
 
@@ -111,7 +132,7 @@ public sealed class AssistantSettingsStore(TimeTrackerDbContext context) : IAssi
     {
         if (expectedToken == NoRowToken)
         {
-            var created = new AssistantSettingsRecord { CompanyId = BridgeCompanyId };
+            var created = new AssistantSettingsRecord { CompanyId = CompanyForWrite };
             context.Add(created);
             return created;
         }
@@ -174,10 +195,10 @@ public sealed class AssistantSettingsStore(TimeTrackerDbContext context) : IAssi
             row.UpdatedAt,
             Token(xmin));
 
-    private static AssistantSettingsAuditRecord ToAuditRecord(AuditEntry audit)
+    private AssistantSettingsAuditRecord ToAuditRecord(AuditEntry audit)
         => new()
         {
-            CompanyId = BridgeCompanyId,
+            CompanyId = CompanyForWrite,
             OccurredAt = audit.OccurredAt.ToUniversalTime(),
             ActorId = audit.ActorId,
             Action = audit.Action.ToString(),

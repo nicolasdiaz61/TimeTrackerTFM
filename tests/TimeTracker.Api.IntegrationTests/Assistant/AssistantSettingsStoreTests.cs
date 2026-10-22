@@ -146,14 +146,14 @@ public sealed class AssistantSettingsStoreTests(PostgresFixture postgres) : IAsy
     public async Task TheStoredCredential_DoesNotContainThePlainKeyAndDecryptsBack()
     {
         var protector = CreateProtector();
-        var encrypted = protector.Protect(new AssistantCredential(Secret), AssistantProvider.Anthropic);
+        var encrypted = protector.Protect(new AssistantCredential(Secret), AssistantProvider.Anthropic, Company.DefaultId);
 
         await SaveAsync(Settings("m", encrypted), NoRow);
 
         var column = (byte[])(await ScalarAsync("SELECT credential_ciphertext FROM assistant_settings"))!;
         Assert.DoesNotContain(Secret, Encoding.UTF8.GetString(column), StringComparison.Ordinal);
         var stored = (await GetAsync())!.Credential!;
-        Assert.True(protector.TryUnprotect(stored, AssistantProvider.Anthropic, out var plaintext));
+        Assert.True(protector.TryUnprotect(stored, AssistantProvider.Anthropic, Company.DefaultId, out var plaintext));
         Assert.Equal(Secret, plaintext!.Value);
     }
 
@@ -243,7 +243,7 @@ public sealed class AssistantSettingsStoreTests(PostgresFixture postgres) : IAsy
     public async Task WhenTheTableDoesNotExist_ReadsReturnNoRowAndZero()
     {
         var emptyDatabase = await postgres.CreateEmptyDatabaseAsync();
-        var store = new AssistantSettingsStore(postgres.CreateContext(emptyDatabase));
+        var store = postgres.CreateAssistantStore(emptyDatabase);
 
         Assert.Null(await store.GetAsync(CancellationToken.None));
         Assert.Equal(NoRow, await store.GetVersionAsync(CancellationToken.None));
@@ -253,7 +253,7 @@ public sealed class AssistantSettingsStoreTests(PostgresFixture postgres) : IAsy
     public async Task WhenTheDatabaseIsUnreachable_TheExceptionPropagates()
     {
         var unreachable = new NpgsqlConnectionStringBuilder(_connectionString) { Port = 1, Timeout = 2 }.ConnectionString;
-        var store = new AssistantSettingsStore(postgres.CreateContext(unreachable));
+        var store = postgres.CreateAssistantStore(unreachable);
 
         // EF Core envuelve el fallo de conexión: lo que importa es que no se confunde con «sin fila».
         var read = await Assert.ThrowsAnyAsync<Exception>(() => store.GetAsync(CancellationToken.None));
@@ -286,9 +286,9 @@ public sealed class AssistantSettingsStoreTests(PostgresFixture postgres) : IAsy
         => new(new TimeTrackerDbContext(new DbContextOptionsBuilder<TimeTrackerDbContext>()
             .UseNpgsql(_connectionString)
             .AddInterceptors(new RacingSqlInterceptor(_connectionString, sql))
-            .Options, new TestCompanyContext(Company.DefaultId)));
+            .Options, new TestCompanyContext(Company.DefaultId)), new TestCompanyContext(Company.DefaultId));
 
-    private AssistantSettingsStore NewStore() => new(postgres.CreateContext(_connectionString));
+    private AssistantSettingsStore NewStore() => postgres.CreateAssistantStore(_connectionString);
 
     private Task<SaveOutcome> SaveAsync(AssistantSettings settings, string token)
         => NewStore().SaveAsync(settings, token, Audit(), CancellationToken.None);

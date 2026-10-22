@@ -28,7 +28,7 @@ public sealed class ChatAssistantEngineSnapshotTests
         {
             Harness = new ToolHarness(ToolHarness.Luis, UserRole.Employee);
             Client = new AssistantChatClient(inner, options, Harness.Clock);
-            Engine = new ChatAssistantEngine(Client, Harness.Toolset, new FixedCurrentUser(ToolHarness.Luis, UserRole.Employee), Harness.Clock, Logger);
+            Engine = new ChatAssistantEngine(new FakeRuntimeRegistry(Client), Harness.Toolset, new FixedCurrentUser(ToolHarness.Luis, UserRole.Employee), Harness.Clock, Logger);
         }
 
         public ToolHarness Harness { get; }
@@ -38,6 +38,9 @@ public sealed class ChatAssistantEngineSnapshotTests
         public CapturingLogger<ChatAssistantEngine> Logger { get; } = new();
 
         public ChatAssistantEngine Engine { get; }
+
+        public ChatAssistantEngine NewRequestEngine()
+            => new(new FakeRuntimeRegistry(Client), Harness.Toolset, new FixedCurrentUser(ToolHarness.Luis, UserRole.Employee), Harness.Clock, Logger);
     }
 
     [Fact]
@@ -93,7 +96,8 @@ public sealed class ChatAssistantEngineSnapshotTests
         Assert.Equal("a", await rig.Engine.ReplyAsync(Question, CancellationToken.None));
         rig.Client.Swap(replacement, Options("modelo-b", tokens: 128), "8");
 
-        Assert.Equal("b", await rig.Engine.ReplyAsync(Question, CancellationToken.None));
+        // El motor es de ámbito de petición: la petición siguiente tiene su propio motor y lee la instantánea nueva.
+        Assert.Equal("b", await rig.NewRequestEngine().ReplyAsync(Question, CancellationToken.None));
         Assert.Equal(("modelo-b", 128), (replacement.Calls[0].Options!.ModelId, replacement.Calls[0].Options!.MaxOutputTokens));
     }
 
@@ -110,8 +114,8 @@ public sealed class ChatAssistantEngineSnapshotTests
 
         Assert.Equal("respuesta en curso", await rig.Engine.ReplyAsync(Question, CancellationToken.None));
 
-        Assert.False(rig.Engine.IsEnabled);
-        Assert.Null(await rig.Engine.ReplyAsync(Question, CancellationToken.None));
+        Assert.Equal(AssistantAvailability.Disabled, await rig.NewRequestEngine().GetAvailabilityAsync(CancellationToken.None));
+        Assert.Null(await rig.NewRequestEngine().ReplyAsync(Question, CancellationToken.None));
     }
 
     [Fact]
@@ -126,7 +130,7 @@ public sealed class ChatAssistantEngineSnapshotTests
 
         rig.Client.Swap(new FakeChatClient(), generous, "10");
 
-        Assert.True(quota.TryConsume(ToolHarness.Luis).Allowed);
-        Assert.False(quota.TryConsume(ToolHarness.Luis).Allowed);
+        Assert.True(quota.TryConsumeDaily(Guid.Empty, ToolHarness.Luis).Allowed);
+        Assert.False(quota.TryConsumeDaily(Guid.Empty, ToolHarness.Luis).Allowed);
     }
 }

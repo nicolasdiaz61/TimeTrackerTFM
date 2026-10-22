@@ -118,4 +118,19 @@ public class CompanyTests
     {
         Assert.Equal(["Active", "Suspended"], Enum.GetNames<CompanyStatus>());
     }
+
+    [Theory]
+    [InlineData("Acme Norte", true)]
+    [InlineData("  a  ", true)]
+    [InlineData("", false)]
+    [InlineData("   ", false)]
+    public void IsValidName_RequiresAtLeastOneCharacterAfterTrimming(string name, bool expected)
+        => Assert.Equal(expected, Company.IsValidName(name));
+
+    [Fact]
+    public void IsValidName_AcceptsExactly100CharactersAfterTrimmingAndRejects101()
+    {
+        Assert.True(Company.IsValidName($"  {new string('c', Company.MaxNameLength)}  "));
+        Assert.False(Company.IsValidName(new string('c', Company.MaxNameLength + 1)));
+    }
 }

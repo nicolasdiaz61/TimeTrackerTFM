@@ -4,6 +4,7 @@ using Microsoft.Extensions.Time.Testing;
 
 using TimeTracker.Application.Assistant.Configuration;
 using TimeTracker.Application.Tests.Fakes;
+using TimeTracker.Domain.Companies;
 using TimeTracker.Domain.Users;
 
 using static TimeTracker.Application.Tests.Assistant.Configuration.ConfigurationTestData;
@@ -21,7 +22,7 @@ public class SaveAssistantSettingsUseCaseTests
     private AssistantEnvironmentDefaults _env = Env(allowedProviders: "Anthropic,OpenAI,Gemini");
 
     private async Task<SaveAssistantSettingsResult> Save(AssistantSettingsInput input, string token = "0")
-        => await new SaveAssistantSettingsUseCase(_store, _protector, new FakeEnvironment(_env), _reloader, new FixedCurrentUser(Ana, UserRole.Manager), _time)
+        => await new SaveAssistantSettingsUseCase(_store, _protector, new FakeEnvironment(_env), _reloader, new FixedCurrentUser(Ana, UserRole.Manager), _time, PlatformCompanies())
             .ExecuteAsync(new SaveAssistantSettingsCommand(input, token), CancellationToken.None);
 
     private static AssistantSettingsView Saved(SaveAssistantSettingsResult result) => Assert.IsType<SaveAssistantSettingsResult.Saved>(result).View;
@@ -30,7 +31,7 @@ public class SaveAssistantSettingsUseCaseTests
         => [.. Assert.IsType<SaveAssistantSettingsResult.Invalid>(result).Errors.Select(e => e.Field)];
 
     private EncryptedCredential StoreKeyFor(AssistantProvider provider, short keyVersion = 1)
-        => _protector.Protect(new AssistantCredential(SecretKey), provider) with { KeyVersion = keyVersion };
+        => _protector.Protect(new AssistantCredential(SecretKey), provider, Company.DefaultId) with { KeyVersion = keyVersion };
 
     [Fact]
     public async Task AValidSave_PersistsTheRowAuditsAndReturnsTheNewState()
@@ -148,7 +149,7 @@ public class SaveAssistantSettingsUseCaseTests
         var view = Saved(await Save(Input(provider: "Gemini", credential: "otra-clave-654321"), token));
 
         Assert.True(view.Effective.CredentialConfigured);
-        Assert.True(_protector.TryUnprotect(_store.Row!.Credential!, AssistantProvider.Gemini, out var plain));
+        Assert.True(_protector.TryUnprotect(_store.Row!.Credential!, AssistantProvider.Gemini, Company.DefaultId, out var plain));
         Assert.Equal("otra-clave-654321", plain.Value);
     }
 
@@ -176,7 +177,7 @@ public class SaveAssistantSettingsUseCaseTests
 
         Saved(await Save(Input(provider: "OpenAI", credential: SecretKey), _store.Row.Version));
 
-        Assert.True(_protector.TryUnprotect(_store.Row!.Credential!, AssistantProvider.OpenAI, out _));
+        Assert.True(_protector.TryUnprotect(_store.Row!.Credential!, AssistantProvider.OpenAI, Company.DefaultId, out _));
     }
 
     [Fact]

@@ -11,6 +11,10 @@ namespace TimeTracker.Application.Authentication;
 /// </summary>
 public sealed class SessionIssuer(ICompanyRepository companies, IAccessTokenIssuer issuer)
 {
+    /// <summary>Indica si la compañía existe y está activa; para comprobarlo antes de cambiar nada, sin emitir un token.</summary>
+    public async Task<bool> IsCompanyActiveAsync(Guid companyId, CancellationToken cancellationToken)
+        => await companies.FindLoginInfoAsync(companyId, cancellationToken) is { Status: CompanyStatus.Active };
+
     /// <summary>Devuelve <c>null</c> si la compañía no existe o no está activa: el llamador responde el mismo 401 genérico.</summary>
     public async Task<LoginResult?> IssueAsync(UserAccount user, CancellationToken cancellationToken)
     {

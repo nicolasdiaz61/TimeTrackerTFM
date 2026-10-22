@@ -3,7 +3,7 @@ namespace TimeTracker.Application.Assistant.Configuration;
 /// <summary>Reglas puras de validación; los mensajes nombran el campo y nunca incluyen valores recibidos.</summary>
 public static class AssistantSettingsRules
 {
-    public static SettingsValidation Validate(AssistantSettingsInput input, AssistantEnvironmentDefaults environment, AssistantSettings? stored, IAssistantCredentialProtector protector)
+    public static SettingsValidation Validate(AssistantSettingsInput input, AssistantEnvironmentDefaults environment, AssistantSettings? stored, IAssistantCredentialProtector protector, Guid companyId)
     {
         var errors = new List<FieldError>();
         var provider = ParseProvider(input.Provider, environment, errors);
@@ -15,7 +15,7 @@ public static class AssistantSettingsRules
 
         if (provider is { } selected && selected != AssistantProvider.None)
         {
-            ValidateProviderRequirements(selected, input.Model is null ? environment.Model : model, credential, environment, stored, protector, errors);
+            ValidateProviderRequirements(selected, input.Model is null ? environment.Model : model, credential, environment, stored, protector, companyId, errors);
         }
         else if (provider == AssistantProvider.None && credential is not null)
         {
@@ -109,6 +109,7 @@ public static class AssistantSettingsRules
         AssistantEnvironmentDefaults environment,
         AssistantSettings? stored,
         IAssistantCredentialProtector protector,
+        Guid companyId,
         List<FieldError> errors)
     {
         var traits = AssistantProviderTraits.For(provider);
@@ -118,7 +119,7 @@ public static class AssistantSettingsRules
         }
 
         var hasCredential = newCredential is not null
-            || UsableCredential.FromStored(stored, provider, protector) is not null
+            || UsableCredential.FromStored(stored, provider, protector, companyId) is not null
             || UsableCredential.FromEnvironment(environment, provider) is not null;
         if (traits.RequiresCredential && !hasCredential)
         {
