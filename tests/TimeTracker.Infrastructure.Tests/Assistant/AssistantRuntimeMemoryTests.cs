@@ -76,6 +76,7 @@ public sealed class AssistantRuntimeMemoryTests(ITestOutputHelper output)
     {
         var bytes = MeasureBytesForCompanies(count, output);
 
-        Assert.InRange(bytes, 1, MaxBytesPerLoadedCompany * count);
+        // Solo cota superior: con cobertura o recolecciones concurrentes la diferencia puntual puede salir pequeña o incluso negativa.
+        Assert.True(bytes <= MaxBytesPerLoadedCompany * count, $"{bytes} bytes para {count} compañías");
     }
 }
