@@ -25,6 +25,7 @@ public sealed class RegistrationOptionsValidator(IConfiguration configuration, I
 
         var failures = new List<string>();
         AddInviteCodeFailures(options, failures);
+        AddGlobalLimitFailure(options, failures);
         AddDemoSeedFailure(failures);
         AddForwardedHeadersFailure(failures);
 
@@ -41,6 +42,14 @@ public sealed class RegistrationOptionsValidator(IConfiguration configuration, I
         else if (codes.Any(code => code.Length is < MinimumCodeLength or > InviteCodeValidator.MaximumLength))
         {
             failures.Add($"Registration:InviteCodes: cada código debe tener entre {MinimumCodeLength} y {InviteCodeValidator.MaximumLength} caracteres y no puede estar en blanco.");
+        }
+    }
+
+    private static void AddGlobalLimitFailure(RegistrationOptions options, List<string> failures)
+    {
+        if (options.GlobalHourlyLimit is < 1 or > RegistrationOptions.MaxGlobalHourlyLimit)
+        {
+            failures.Add($"Registration:GlobalHourlyLimit: debe estar entre 1 y {RegistrationOptions.MaxGlobalHourlyLimit} (altas por hora entre todas las IP).");
         }
     }
 

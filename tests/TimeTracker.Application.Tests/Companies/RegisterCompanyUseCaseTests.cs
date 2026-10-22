@@ -197,14 +197,35 @@ public class RegisterCompanyUseCaseTests
     }
 
     [Fact]
-    public async Task Register_WhenTheCompanyIsNotActiveAfterCreation_FailsInsteadOfReturningASession()
+    public async Task Register_WhenTheCompanyIsNotActiveAfterCreation_ReturnsCreatedWithoutSessionAndIssuesNoToken()
     {
-        // Imposible hoy (la compañía nace Active), pero un token jamás se emite saltándose la regla del emisor común.
+        // Imposible hoy (la compañía nace Active), pero un token jamás se emite saltándose la regla del emisor común. La cuenta ya
+        // existe: se informa de que se creó, sin sesión, para que nadie repita el registro.
         var useCase = CreateUseCase(new SuspendingStore(_companies));
 
-        await Assert.ThrowsAsync<InvalidOperationException>(() => useCase.ExecuteAsync(Command(), CancellationToken.None));
+        var result = await useCase.ExecuteAsync(Command(), CancellationToken.None);
 
+        Assert.IsType<RegisterCompanyResult.CreatedWithoutSession>(result);
         Assert.Empty(_issuer.IssuedFor);
+    }
+
+    [Fact]
+    public async Task Register_WhenTheTokenIssuerFailsAfterCreation_ReturnsCreatedWithoutSessionWithTheNewCompany()
+    {
+        _issuer.Failure = new InvalidOperationException("fallo simulado al firmar el token");
+
+        var result = await CreateUseCase().ExecuteAsync(Command(), CancellationToken.None);
+
+        var created = Assert.IsType<RegisterCompanyResult.CreatedWithoutSession>(result);
+        Assert.Equal(Assert.Single(_store.Calls).Company.Id, created.CompanyId);
+    }
+
+    [Fact]
+    public async Task Register_WhenTheSessionIsCancelledAfterCreation_PropagatesTheCancellation()
+    {
+        _issuer.Failure = new OperationCanceledException();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => CreateUseCase().ExecuteAsync(Command(), CancellationToken.None));
     }
 
     private sealed class SuspendingStore(InMemoryCompanyRepository companies) : ICompanyRegistrationStore

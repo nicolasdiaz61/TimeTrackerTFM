@@ -4,6 +4,7 @@ namespace TimeTracker.Api.Registration;
 public enum RegistrationAttemptResult
 {
     Created,
+    CreatedWithoutSession,
     RejectedByInviteCode,
     RejectedByValidation,
     RejectedByDuplicate,
@@ -19,6 +20,8 @@ public static partial class RegistrationLog
     public const string Category = "TimeTracker.Api.Registration";
 
     public static void Created(ILogger logger, Guid companyId, DateTimeOffset at) => LogCreated(logger, RegistrationAttemptResult.Created, companyId, at);
+
+    public static void CreatedWithoutSession(ILogger logger, Guid companyId, DateTimeOffset at) => LogCreated(logger, RegistrationAttemptResult.CreatedWithoutSession, companyId, at);
 
     public static void Rejected(ILogger logger, RegistrationAttemptResult result, DateTimeOffset at) => LogRejected(logger, result, at);
 

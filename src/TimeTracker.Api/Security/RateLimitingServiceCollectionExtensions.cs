@@ -47,13 +47,13 @@ public static class RateLimitingServiceCollectionExtensions
 
     private static readonly TimeSpan LoginWindow = TimeSpan.FromMinutes(1);
 
-    private static readonly TimeSpan RegisterCompanyWindow = TimeSpan.FromHours(1);
+    private static readonly TimeSpan RegisterCompanyWindow = RegistrationOptions.LimitWindow;
 
     private static readonly TimeSpan AssistantWindow = TimeSpan.FromMinutes(1);
 
     private const string LoginDetail = "Espere un minuto antes de volver a intentarlo.";
 
-    private const string RegisterCompanyDetail = "Ha realizado demasiados intentos de registro. Inténtelo de nuevo más tarde.";
+    internal const string RegisterCompanyDetail = "Ha realizado demasiados intentos de registro. Inténtelo de nuevo más tarde.";
 
     private const string AssistantDetail = "Ha realizado demasiadas consultas al asistente en poco tiempo. Espere un minuto antes de volver a intentarlo.";
 
@@ -81,8 +81,9 @@ public static class RateLimitingServiceCollectionExtensions
                 }));
             // Registro de compañías: anónimo, por IP (con ForwardedHeaders la IP real del cliente) y 5 por hora. Cuentan todos los
             // intentos, también los rechazados por el código, y el sexto se rechaza sin evaluar el código (DD-19).
+            // La clave agrupa IPv6 por /64 y está acotada (RegistrationPartitionTracker): rotar direcciones no da cupo nuevo ni hace crecer la memoria.
             options.AddPolicy(RegisterCompanyPolicy, httpContext => RateLimitPartition.GetFixedWindowLimiter(
-                httpContext.Connection.RemoteIpAddress?.ToString() ?? NoAddressPartition,
+                httpContext.RequestServices.GetRequiredService<RegistrationPartitionTracker>().Resolve(RegistrationClientKey.For(httpContext.Connection.RemoteIpAddress)),
                 _ => new FixedWindowRateLimiterOptions
                 {
                     PermitLimit = RegisterCompanyPermitLimit,
