@@ -35,7 +35,13 @@ public sealed class AskAssistantUseCase(IAssistantEngine engine, IAssistantQuota
             return new AskAssistantResult.Rejected(error);
         }
 
-        if (!engine.IsEnabled)
+        var availability = await engine.GetAvailabilityAsync(cancellationToken);
+        if (availability == AssistantAvailability.Unavailable)
+        {
+            return new AskAssistantResult.Unavailable(Disabled: false);
+        }
+
+        if (availability == AssistantAvailability.Disabled)
         {
             return new AskAssistantResult.Unavailable(Disabled: true);
         }

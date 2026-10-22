@@ -32,7 +32,7 @@ builder.Services.AddAssistantConfiguration();
 // La exportación del contrato OpenAPI nunca debe tocar la base de datos: allí no se registra el sondeo.
 if (!DocumentGeneration.IsRunningUnderTool)
 {
-    builder.Services.AddHostedService<AssistantSettingsPoller>();
+    builder.Services.AddAssistantSettingsPoller();
 }
 builder.Services.AddHostedService<ProtectionStatusLogger>();
 builder.Services.AddRateLimiting();

@@ -1,28 +1,42 @@
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Microsoft.Extensions.Time.Testing;
 
+using TimeTracker.Application.Assistant.Configuration;
+using TimeTracker.Domain.Companies;
 using TimeTracker.Infrastructure.Assistant;
 using TimeTracker.Infrastructure.Tests.Fakes;
 
 namespace TimeTracker.Infrastructure.Tests.Assistant;
 
+/// <summary>
+/// DD-15: el sondeo global lee las versiones de todas las compañías y recarga solo las ya cargadas que cambiaron. Reloj falso, registro
+/// y almacén en memoria: la vuelta termina con una señal explícita, sin esperas por tiempo real.
+/// </summary>
 public sealed class AssistantSettingsPollerTests : IAsyncLifetime
 {
     private const string Secret = "clave-prueba-123456";
     private const int PollSeconds = 7;
 
+    private static readonly Guid CompanyA = Guid.Parse("00000000-0000-4000-8000-0000000000a1");
+    private static readonly Guid CompanyB = Guid.Parse("00000000-0000-4000-8000-0000000000b1");
+    private static readonly Guid CompanyC = Guid.Parse("00000000-0000-4000-8000-0000000000c1");
+
     private readonly FakeTimeProvider _time = new();
-    private readonly FakeSettingsLoader _loader = new();
+    private readonly FakeRuntimeRegistry _registry = new(new AssistantChatClient(null, new AiOptions()));
+    private readonly FakeAssistantSettingsStore _store = new();
     private readonly CapturingLogger<AssistantSettingsPoller> _logger = new();
-    private readonly AssistantChatClient _client;
+    private readonly ServiceProvider _provider;
     private readonly AssistantSettingsPoller _poller;
 
     public AssistantSettingsPollerTests()
     {
-        _client = new AssistantChatClient(null, new AiOptions(), _time);
-        _loader.OnLoad = () => _client.Swap(null, new AiOptions(), _loader.StoredVersion);
-        _poller = new AssistantSettingsPoller(_loader, _client, Options.Create(new AiOptions { SettingsPollSeconds = PollSeconds }), _time, _logger);
+        var services = new ServiceCollection();
+        services.AddScoped<IAssistantSettingsStore>(_ => _store);
+        _provider = services.BuildServiceProvider();
+        _poller = new AssistantSettingsPoller(
+            _registry, _provider.GetRequiredService<IServiceScopeFactory>(), Options.Create(new AiOptions { SettingsPollSeconds = PollSeconds }), _time, _logger);
     }
 
     public Task InitializeAsync() => Task.CompletedTask;
@@ -31,7 +45,16 @@ public sealed class AssistantSettingsPollerTests : IAsyncLifetime
     {
         await _poller.StopAsync(CancellationToken.None);
         _poller.Dispose();
-        _client.Dispose();
+        await _provider.DisposeAsync();
+    }
+
+    private void Loaded(Guid company, string version, bool usesPlatform = false, string? rejected = null)
+        => _registry.LoadedRuntimes.Add(new LoadedRuntime(company, version, usesPlatform, rejected));
+
+    private void Stored(Guid company, string version, bool usesPlatform = false)
+    {
+        _store.Versions.RemoveAll(entry => entry.CompanyId == company);
+        _store.Versions.Add(new CompanyVersion(company, version, usesPlatform));
     }
 
     // Avanza un intervalo y espera la señal explícita de «vuelta terminada» del sondeo (sin esperas por tiempo real).
@@ -52,24 +75,188 @@ public sealed class AssistantSettingsPollerTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task Poll_LoadsOnlyWhenTheVersionChanges()
+    public async Task Poll_ReloadsOnlyTheLoadedCompaniesWhoseVersionChanged()
+    {
+        Loaded(CompanyA, "5");
+        Loaded(CompanyB, "9");
+        Stored(CompanyA, "5");
+        Stored(CompanyB, "9");
+        await _poller.StartAsync(CancellationToken.None);
+
+        await TickAsync();
+        Assert.Empty(_registry.Reloads);
+
+        Stored(CompanyB, "10");
+        await TickAsync();
+
+        Assert.Equal([CompanyB], _registry.Reloads);
+        Assert.Equal(2, _store.ListCalls);
+    }
+
+    [Fact]
+    public async Task Poll_IgnoresCompaniesThatAreNotLoaded_EvenIfTheirVersionIsNew()
+    {
+        Loaded(CompanyA, "5");
+        Stored(CompanyA, "5");
+        Stored(CompanyC, "77");
+        await _poller.StartAsync(CancellationToken.None);
+
+        await TickAsync();
+
+        Assert.Empty(_registry.Reloads);
+    }
+
+    [Fact]
+    public async Task Poll_ANewRowForAnEntryWithVersionZero_CountsAsAChange_AndADeletedRowToo()
+    {
+        Loaded(CompanyA, "0");
+        Loaded(CompanyB, "9");
+        Stored(CompanyA, "31");
+        Stored(CompanyB, "0");
+        await _poller.StartAsync(CancellationToken.None);
+
+        await TickAsync();
+
+        Assert.Equal([CompanyA, CompanyB], _registry.Reloads.Order());
+    }
+
+    [Fact]
+    public async Task Poll_AChangeOfThePlatformIndicator_ReloadsTheCompanyEvenWithTheSameVersion()
+    {
+        Loaded(CompanyA, "0", usesPlatform: true);
+        Stored(CompanyA, "0", usesPlatform: false);
+        await _poller.StartAsync(CancellationToken.None);
+
+        await TickAsync();
+
+        Assert.Equal([CompanyA], _registry.Reloads);
+    }
+
+    [Fact]
+    public async Task Poll_DoesNotReadAgainAVersionThatWasAlreadyRejected()
+    {
+        Loaded(CompanyA, "5", rejected: "6");
+        Stored(CompanyA, "6");
+        await _poller.StartAsync(CancellationToken.None);
+
+        await TickAsync();
+
+        Assert.Empty(_registry.Reloads);
+    }
+
+    [Fact]
+    public async Task Poll_LimitsTheNumberOfParallelReloads()
+    {
+        var all = Enumerable.Range(1, 12).Select(number => Guid.Parse($"00000000-0000-4000-8000-{number:D12}")).ToList();
+        foreach (var company in all)
+        {
+            Loaded(company, "1");
+            Stored(company, "2");
+        }
+
+        var release = new TaskCompletionSource();
+        _registry.SignalAtInFlight = AssistantSettingsPoller.MaxParallelReloads;
+        _registry.OnReload = (_, token) => release.Task.WaitAsync(token);
+        await _poller.StartAsync(CancellationToken.None);
+
+        var completed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        _poller.PollCompleted += () => completed.TrySetResult();
+        _time.Advance(TimeSpan.FromSeconds(PollSeconds));
+        await _registry.Reached.WaitAsync(TimeSpan.FromSeconds(10));
+
+        // Con todas bloqueadas, el sondeo no ha lanzado más recargas que el máximo permitido.
+        Assert.Equal(AssistantSettingsPoller.MaxParallelReloads, _registry.Reloads.Count);
+        release.SetResult();
+        await completed.Task.WaitAsync(TimeSpan.FromSeconds(10));
+
+        Assert.Equal(12, _registry.Reloads.Count);
+        Assert.Equal(AssistantSettingsPoller.MaxParallelReloads, _registry.MaxConcurrentReloads);
+    }
+
+    [Fact]
+    public async Task Poll_ExpiresIdleEntriesOnEveryLap()
     {
         await _poller.StartAsync(CancellationToken.None);
-        Assert.Equal((1, 0), (_loader.Reads, _loader.Loads));
 
         await TickAsync();
-        Assert.Equal(0, _loader.Loads);
-
-        _loader.StoredVersion = "5";
         await TickAsync();
-        Assert.Equal(1, _loader.Loads);
+
+        Assert.Equal(2, _registry.Expirations);
+    }
+
+    [Fact]
+    public async Task Poll_AFailingReloadDoesNotStopTheOthers_NorPropagates_AndWarnsOncePerStreak()
+    {
+        Loaded(CompanyA, "1");
+        Loaded(CompanyB, "1");
+        Stored(CompanyA, "2");
+        Stored(CompanyB, "2");
+        _registry.OnReload = (company, _) => company == CompanyA ? throw new TimeoutException($"fallo con {Secret}") : Task.CompletedTask;
+        await _poller.StartAsync(CancellationToken.None);
 
         await TickAsync();
-        Assert.Equal(1, _loader.Loads);
-
-        _loader.StoredVersion = "6";
         await TickAsync();
-        Assert.Equal(2, _loader.Loads);
+
+        Assert.Equal(2, _registry.Reloads.Count(company => company == CompanyB));
+        var warning = Assert.Single(_logger.Entries);
+        Assert.Equal(LogLevel.Warning, warning.Level);
+        Assert.Contains(nameof(TimeoutException), warning.Message, StringComparison.Ordinal);
+        Assert.DoesNotContain(Secret, warning.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Poll_WhenTheDatabaseFails_WarnsOnce_AndLogsALineWhenItRecovers()
+    {
+        Loaded(CompanyA, "1");
+        Stored(CompanyA, "1");
+        await _poller.StartAsync(CancellationToken.None);
+        _store.Failure = new TimeoutException("base de datos caída");
+
+        await TickAsync();
+        await TickAsync();
+        Assert.Single(_logger.Entries, entry => entry.Level == LogLevel.Warning);
+
+        _store.Failure = null;
+        await TickAsync();
+
+        Assert.Equal(LogLevel.Information, _logger.Entries[^1].Level);
+        Assert.Equal(2, _logger.Entries.Count);
+    }
+
+    [Fact]
+    public async Task Start_PreloadsOnlyThePlatformCompany_InsideTheBoundedFirstLoad()
+    {
+        await _poller.StartAsync(CancellationToken.None);
+
+        Assert.Equal([Company.DefaultId], _registry.Gets);
+    }
+
+    [Fact]
+    public async Task Start_WhenThePreloadTimesOut_StartsAnywayAndWarns()
+    {
+        var hanging = new HangingRegistry();
+        var poller = new AssistantSettingsPoller(
+            hanging, _provider.GetRequiredService<IServiceScopeFactory>(), Options.Create(new AiOptions { SettingsPollSeconds = PollSeconds }), _time, _logger);
+
+        var starting = poller.StartAsync(CancellationToken.None);
+        _time.Advance(TimeSpan.FromSeconds(AssistantSettingsPoller.FirstLoadTimeoutSeconds + 1));
+        await starting.WaitAsync(TimeSpan.FromSeconds(10));
+
+        Assert.Contains(_logger.Entries, entry => entry.Level == LogLevel.Warning);
+        await poller.StopAsync(CancellationToken.None);
+        poller.Dispose();
+    }
+
+    [Fact]
+    public async Task Start_WhenThePreloadFailsForInfrastructure_StartsAnywayAndWarnsOnlyTheExceptionType()
+    {
+        _registry.GetFailure = new TimeoutException($"fallo con {Secret}");
+
+        await _poller.StartAsync(CancellationToken.None);
+
+        var warning = Assert.Single(_logger.Entries);
+        Assert.Contains(nameof(TimeoutException), warning.Message, StringComparison.Ordinal);
+        Assert.DoesNotContain(Secret, warning.Message, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -77,164 +264,29 @@ public sealed class AssistantSettingsPollerTests : IAsyncLifetime
     {
         await _poller.StartAsync(CancellationToken.None);
         _poller.PollCompleted += () => throw new InvalidOperationException($"fallo del suscriptor con {Secret}");
+        Loaded(CompanyA, "1");
+        Stored(CompanyA, "2");
 
         await TickAsync();
-        _loader.StoredVersion = "9";
         await TickAsync();
 
-        Assert.Equal(1, _loader.Loads);
-        Assert.Equal(2, _logger.Entries.Count);
-        var warning = _logger.Entries[0];
-        Assert.Equal(LogLevel.Warning, warning.Level);
-        Assert.DoesNotContain(Secret, warning.Message, StringComparison.Ordinal);
+        Assert.Equal(2, _registry.Reloads.Count);
+        Assert.All(_logger.Entries, entry => Assert.DoesNotContain(Secret, entry.Message, StringComparison.Ordinal));
+        Assert.Contains(_logger.Entries, entry => entry.Message.Contains(nameof(InvalidOperationException), StringComparison.Ordinal));
     }
 
-    [Fact]
-    public async Task Poll_DoesNotReloadAVersionThatWasRejected()
+    private sealed class HangingRegistry : IAssistantRuntimeRegistry
     {
-        await _poller.StartAsync(CancellationToken.None);
-        _loader.StoredVersion = "21";
-        _loader.LastRejectedVersion = "21";
+        public async ValueTask<AssistantSnapshot> GetAsync(Guid companyId, CancellationToken cancellationToken)
+        {
+            await Task.Delay(Timeout.Infinite, cancellationToken);
+            throw new InvalidOperationException();
+        }
 
-        await TickAsync();
-        await TickAsync();
-        Assert.Equal(0, _loader.Loads);
+        public Task ReloadAsync(Guid companyId, CancellationToken cancellationToken) => Task.CompletedTask;
 
-        _loader.StoredVersion = "22";
-        await TickAsync();
-        Assert.Equal(1, _loader.Loads);
-    }
+        public IReadOnlyList<LoadedRuntime> Loaded() => [];
 
-    [Fact]
-    public async Task Poll_BeforeTheIntervalElapses_DoesNotReadAnything()
-    {
-        await _poller.StartAsync(CancellationToken.None);
-
-        _time.Advance(TimeSpan.FromSeconds(PollSeconds - 1));
-        Assert.Equal(1, _loader.Reads);
-
-        // El primer sondeo llega justo al cumplirse el intervalo completo, y es uno solo.
-        await TickAsync();
-        Assert.Equal(2, _loader.Reads);
-    }
-
-    [Fact]
-    public async Task Poll_WhenTheDatabaseIsDown_KeepsTheLastConfigurationAndWarnsOncePerStreakWithOnlyTheTypeName()
-    {
-        await _poller.StartAsync(CancellationToken.None);
-        _loader.ReadFailure = new TimeoutException($"sin conexión con {Secret}");
-
-        await TickAsync();
-        await TickAsync();
-        await TickAsync();
-
-        var warning = Assert.Single(_logger.Entries);
-        Assert.Equal(LogLevel.Warning, warning.Level);
-        Assert.Contains(nameof(TimeoutException), warning.Message, StringComparison.Ordinal);
-        Assert.DoesNotContain(Secret, warning.Message, StringComparison.Ordinal);
-        Assert.Equal(0, _loader.Loads);
-    }
-
-    [Fact]
-    public async Task Poll_WhenTheDatabaseRecovers_LogsOneInformationLineAndAWarningAgainOnTheNextStreak()
-    {
-        await _poller.StartAsync(CancellationToken.None);
-        _loader.ReadFailure = new TimeoutException();
-        await TickAsync();
-
-        _loader.ReadFailure = null;
-        await TickAsync();
-        await TickAsync();
-
-        Assert.Equal([LogLevel.Warning, LogLevel.Information], _logger.Entries.Select(entry => entry.Level));
-
-        _loader.ReadFailure = new TimeoutException();
-        await TickAsync();
-
-        Assert.Equal([LogLevel.Warning, LogLevel.Information, LogLevel.Warning], _logger.Entries.Select(entry => entry.Level));
-    }
-
-    [Fact]
-    public async Task Poll_WhenTheLoadFails_CountsAsTheSameStreak()
-    {
-        await _poller.StartAsync(CancellationToken.None);
-        _loader.StoredVersion = "8";
-        _loader.LoadFailure = new InvalidOperationException($"fallo con {Secret}");
-
-        await TickAsync();
-        await TickAsync();
-
-        var warning = Assert.Single(_logger.Entries);
-        Assert.Contains(nameof(InvalidOperationException), warning.Message, StringComparison.Ordinal);
-        Assert.DoesNotContain(Secret, warning.Message, StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public async Task StartAsync_RunsTheFirstLoadBeforeReturning()
-    {
-        _loader.StoredVersion = "9";
-
-        await _poller.StartAsync(CancellationToken.None);
-
-        Assert.Equal(1, _loader.Loads);
-        Assert.Equal("9", _client.Current.Version);
-    }
-
-    [Fact]
-    public async Task StartAsync_WhenTheFirstLoadFails_DoesNotThrowAndWarnsOnce()
-    {
-        _loader.StoredVersion = "9";
-        _loader.LoadFailure = new InvalidOperationException("fallo");
-
-        await _poller.StartAsync(CancellationToken.None);
-
-        Assert.Equal(LogLevel.Warning, Assert.Single(_logger.Entries).Level);
-        Assert.Equal("0", _client.Current.Version);
-    }
-
-    [Fact]
-    public async Task StartAsync_BoundsTheFirstLoadTo10SecondsAndKeepsPolling()
-    {
-        _loader.StoredVersion = "9";
-        _loader.LoadGate = new TaskCompletionSource();
-
-        var starting = _poller.StartAsync(CancellationToken.None);
-        await _loader.LoadStarted.WaitAsync(TimeSpan.FromSeconds(10));
-        _time.Advance(TimeSpan.FromSeconds(9));
-        Assert.False(starting.IsCompleted);
-
-        _time.Advance(TimeSpan.FromSeconds(1));
-        await starting.WaitAsync(TimeSpan.FromSeconds(5));
-
-        var warning = Assert.Single(_logger.Entries);
-        Assert.Contains("10", warning.Message, StringComparison.Ordinal);
-        _loader.LoadGate = null;
-        await TickAsync();
-        Assert.Equal("9", _client.Current.Version);
-    }
-
-    [Fact]
-    public async Task StartAsync_WhenTheHostCancelsTheStart_Propagates()
-    {
-        _loader.StoredVersion = "9";
-        _loader.LoadGate = new TaskCompletionSource();
-        using var cancellation = new CancellationTokenSource();
-
-        var starting = _poller.StartAsync(cancellation.Token);
-        await _loader.LoadStarted.WaitAsync(TimeSpan.FromSeconds(10));
-        await cancellation.CancelAsync();
-
-        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => starting);
-    }
-
-    [Fact]
-    public async Task StopAsync_StopsPolling()
-    {
-        await _poller.StartAsync(CancellationToken.None);
-        await _poller.StopAsync(CancellationToken.None);
-
-        _time.Advance(TimeSpan.FromSeconds(PollSeconds * 3));
-
-        Assert.Equal(1, _loader.Reads);
+        public int ExpireIdle() => 0;
     }
 }

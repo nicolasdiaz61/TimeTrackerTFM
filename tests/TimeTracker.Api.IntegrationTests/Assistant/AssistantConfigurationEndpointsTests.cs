@@ -123,6 +123,10 @@ public sealed class AssistantConfigurationEndpointsTests(PostgresFixture postgre
             root.GetProperty("applied").GetBoolean()));
         Assert.NotEqual("0", root.GetProperty("concurrencyToken").GetString());
         Assert.Equal(1, await CountAsync(connectionString, "assistant_settings_audit", "action = 'Saved' AND credential_changed = false"));
+        // La compañía aún no estaba cargada: no hay nada que recargar y la primera pregunta construye la instantánea con la fila guardada.
+        Assert.Empty(factory.ChatFactory.Created);
+        var chat = await client.PostAsync(AssistantClient.Route, new StringContent("""{"message":"hola"}""", System.Text.Encoding.UTF8, "application/json"), CancellationToken.None);
+        Assert.Equal(HttpStatusCode.OK, chat.StatusCode);
         Assert.Equal("modelo-nuevo", factory.ChatFactory.Created[^1].Model);
     }
 

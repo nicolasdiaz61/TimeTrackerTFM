@@ -121,6 +121,9 @@ internal sealed class CountingSettingsStore : IAssistantSettingsStore
         return Task.FromResult<SaveOutcome>(new SaveOutcome.Saved("2"));
     }
 
+    public Task<IReadOnlyList<CompanyVersion>> ListVersionsAsync(CancellationToken cancellationToken)
+        => Task.FromResult<IReadOnlyList<CompanyVersion>>([]);
+
     public Task<DeleteOutcome> DeleteAsync(string expectedToken, AuditEntry audit, CancellationToken cancellationToken)
     {
         WriteCalls++;
@@ -140,6 +143,9 @@ internal sealed class RacingDeleteStore : IAssistantSettingsStore
 
     public Task<SaveOutcome> SaveAsync(AssistantSettings next, string expectedToken, AuditEntry audit, CancellationToken cancellationToken)
         => throw new NotSupportedException();
+
+    public Task<IReadOnlyList<CompanyVersion>> ListVersionsAsync(CancellationToken cancellationToken)
+        => Task.FromResult<IReadOnlyList<CompanyVersion>>([]);
 
     public Task<DeleteOutcome> DeleteAsync(string expectedToken, AuditEntry audit, CancellationToken cancellationToken)
         => Task.FromResult(DeleteOutcome.Conflict);

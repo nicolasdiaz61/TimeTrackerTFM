@@ -279,6 +279,18 @@ public class AskAssistantUseCaseTests
         Assert.Equal(new AskAssistantResult.QuotaExceeded(TimeSpan.FromHours(2), QuotaScope.CompanyDaily), result);
     }
 
+    [Fact]
+    public async Task Ask_WhenTheCompanyRuntimeFailsToLoad_IsUnavailableNotDisabled_AndConsumesNoDailyQuota()
+    {
+        _engine.LoadFails = true;
+
+        var result = await Ask("Hola");
+
+        Assert.Equal(new AskAssistantResult.Unavailable(Disabled: false), result);
+        Assert.Empty(_quota.Consumed);
+        Assert.Null(_engine.Received);
+    }
+
     private static AssistantTurnInput Turn(string role, string text) => new(role, text);
 
     private static AssistantTurnInput[] Turns(int count, string text)
@@ -303,9 +315,14 @@ public class AskAssistantUseCaseTests
     {
         public bool IsEnabled { get; set; } = true;
 
+        public bool LoadFails { get; set; }
+
         public string? Reply { get; set; } = "Respuesta.";
 
         public AssistantConversation? Received { get; private set; }
+
+        public Task<AssistantAvailability> GetAvailabilityAsync(CancellationToken cancellationToken)
+            => Task.FromResult(LoadFails ? AssistantAvailability.Unavailable : IsEnabled ? AssistantAvailability.Enabled : AssistantAvailability.Disabled);
 
         public Task<string?> ReplyAsync(AssistantConversation conversation, CancellationToken cancellationToken)
         {

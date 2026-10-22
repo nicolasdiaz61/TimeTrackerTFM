@@ -21,9 +21,8 @@ namespace TimeTracker.Api.IntegrationTests.Assistant;
 /// <summary>
 /// Herramientas del asistente acotadas a la compañía del token (TC-8). Con dos compañías en PostgreSQL real, las tres herramientas
 /// se ejecutan como el modelo las invocaría (también con un GUID de la otra compañía inyectado y argumentos extra): nada de B
-/// llega al resultado ni al registro, y un miembro de B es indistinguible de un GUID inexistente. La ruta HTTP del chat solo
-/// sirve a la compañía de plataforma hasta la PR 4b (puente), por eso las herramientas se ejercitan sobre el mismo repositorio
-/// filtrado que usa la API.
+/// llega al resultado ni al registro, y un miembro de B es indistinguible de un GUID inexistente. El chat de B entero se prueba en
+/// <c>AssistantRuntimeIsolationTests</c>; aquí las herramientas se ejercitan sobre el mismo repositorio filtrado que usa la API.
 /// </summary>
 [Collection("Postgres")]
 public sealed class AssistantToolsIsolationTests(PostgresFixture postgres)

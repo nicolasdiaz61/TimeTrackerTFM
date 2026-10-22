@@ -155,4 +155,49 @@ public class AssistantCompanyRateLimitTests
 
         Assert.Equal(HttpStatusCode.OK, (await NewUser(factory).AskAsync("hola")).StatusCode);
     }
+
+    private static readonly Guid CompanyB = Guid.Parse("33333333-3333-7333-8333-333333333333");
+
+    private static HttpClient UserOfCompanyB(AssistantApiFactory factory)
+    {
+        var client = factory.CreateDefaultClient();
+        var token = TestTokens.Create(Guid.NewGuid(), "Employee", factory.Clock.GetUtcNow(), companyId: CompanyB.ToString(), companyName: "compania b");
+        client.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
+        return client;
+    }
+
+    [Fact]
+    public async Task ACompanyWithItsMinuteExhausted_DoesNotAffectAnotherCompany()
+    {
+        using var factory = new AssistantApiFactory(Model(), Settings(("Ai:RequestsPerMinutePerCompany", "1")));
+        Assert.Equal(HttpStatusCode.OK, (await NewUser(factory).AskAsync("hola")).StatusCode);
+        Assert.Equal(HttpStatusCode.TooManyRequests, (await NewUser(factory).AskAsync("hola")).StatusCode);
+
+        Assert.Equal(HttpStatusCode.OK, (await UserOfCompanyB(factory).AskAsync("hola")).StatusCode);
+        Assert.Equal(HttpStatusCode.TooManyRequests, (await UserOfCompanyB(factory).AskAsync("hola")).StatusCode);
+    }
+
+    [Fact]
+    public async Task ACompanyWithItsDailyCapExhausted_DoesNotAffectAnotherCompany()
+    {
+        using var factory = new AssistantApiFactory(Model(), Settings(("Ai:DailyRequestsPerCompany", "1")));
+        Assert.Equal(HttpStatusCode.OK, (await NewUser(factory).AskAsync("hola")).StatusCode);
+        Assert.Equal(HttpStatusCode.TooManyRequests, (await NewUser(factory).AskAsync("hola")).StatusCode);
+
+        Assert.Equal(HttpStatusCode.OK, (await UserOfCompanyB(factory).AskAsync("hola")).StatusCode);
+    }
+
+    [Fact]
+    public async Task ADisabledCompany_NeverConsumesTheDailyCapNorTheUserCap()
+    {
+        var disabled = new Dictionary<Guid, Microsoft.Extensions.AI.IChatClient?> { [CompanyB] = null };
+        using var factory = new AssistantApiFactory(
+            Model(), Settings(("Ai:DailyRequestsPerCompany", "1"), ("Ai:DailyRequestsPerUser", "1")), modelsByCompany: disabled);
+        var user = UserOfCompanyB(factory);
+
+        for (var attempt = 0; attempt < 3; attempt++)
+        {
+            Assert.Equal(HttpStatusCode.ServiceUnavailable, (await user.AskAsync("hola")).StatusCode);
+        }
+    }
 }

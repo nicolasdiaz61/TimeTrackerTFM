@@ -12,7 +12,7 @@ public static class AssistantServiceCollectionExtensions
 {
     /// <summary>
     /// Registra el asistente (DD-13). Sin <c>Ai:Provider</c> el contenedor se construye igual y el motor queda
-    /// deshabilitado. Ciclos de vida: cliente y cuota son singleton (el cliente guarda el pipeline y el contador
+    /// deshabilitado. Ciclos de vida: registro de instantáneas y cuota son singleton (el registro guarda los pipelines y el contador
     /// diario debe sobrevivir a la petición); el motor y las herramientas dependen de la identidad y del
     /// <c>DbContext</c> del ámbito, así que son de ámbito. Un motor singleton no pasaría la validación del contenedor.
     /// </summary>
@@ -24,17 +24,14 @@ public static class AssistantServiceCollectionExtensions
             .ValidateOnStart();
 
         services.TryAddSingleton<IChatClientFactory, DefaultChatClientFactory>();
-        // El contenedor libera el cliente al cerrar y con él el del proveedor.
-        services.AddSingleton(provider =>
-        {
-            var options = provider.GetRequiredService<IOptions<AiOptions>>().Value;
-            return new AssistantChatClient(provider.GetRequiredService<IChatClientFactory>().Create(options), options, provider.GetRequiredService<TimeProvider>());
-        });
         // Singleton: decodifica y valida las claves maestras una sola vez; sin clave activa válida queda no disponible.
         services.AddSingleton<IAssistantCredentialProtector, AesGcmCredentialProtector>();
-        // Recarga en caliente (DD-10, DD-11): el cargador es singleton y abre su propio ámbito para el DbContext. El sondeo lo registra Api.
+        // Instantáneas por compañía (DD-14): el registro es singleton y desechable (el contenedor lo libera al cerrar y con él los clientes
+        // del proveedor); el lector abre un ámbito con la compañía para leer su fila. El sondeo global lo registra Api.
         services.AddSingleton<IAssistantEnvironment, ConfigurationAssistantEnvironment>();
-        services.AddSingleton<IAssistantSettingsLoader, AssistantSettingsLoader>();
+        services.AddSingleton<AssistantOptionsResolver>();
+        services.AddSingleton<ICompanySettingsReader, CompanySettingsReader>();
+        services.AddSingleton<IAssistantRuntimeRegistry, AssistantRuntimeRegistry>();
         services.AddSingleton<IAssistantRuntimeReloader, AssistantRuntimeReloader>();
         // Sin estado: crea y desecha un cliente por prueba y no comparte nada con la instantánea del chat (DD-13).
         services.AddSingleton<IAssistantConnectionTester, AssistantConnectionTester>();
@@ -45,4 +42,11 @@ public static class AssistantServiceCollectionExtensions
 
         return services;
     }
+
+    /// <summary>
+    /// Sondeo global de la configuración guardada (DD-15). Va después de la migración (<c>DatabaseMigrationHostedService</c> corre en
+    /// <c>StartingAsync</c>) y antes de que Kestrel acepte peticiones. La exportación del contrato OpenAPI nunca debe tocar la base de datos.
+    /// </summary>
+    public static IServiceCollection AddAssistantSettingsPoller(this IServiceCollection services)
+        => services.AddHostedService<AssistantSettingsPoller>();
 }

@@ -15,15 +15,10 @@ public partial class IgnoreQueryFiltersClosedListTests
     {
         // Sitio 1: el login no tiene compañía y el correo es único global.
         ["src/TimeTracker.Infrastructure/Persistence/UserRepository.cs"] = 1,
-        // Sitio 2: el sondeo global lee (company_id, xmin) de todas las compañías. Se implementa en la tarea 4b.7.
+        // Sitio 2 y último (tarea 4b.7): `ListVersionsAsync`, el sondeo global, lee (company_id, xmin) de todas las compañías.
         ["src/TimeTracker.Infrastructure/Persistence/AssistantSettingsStore.cs"] = 1,
     };
 
-    // TRANSITORIO (tarea 3.6, mantenida en la 4a): `AssistantSettingsStore.ListVersionsAsync` nace en la tarea 4b.7 (la 4a generaliza el almacén
-    // por la compañía del contexto, sin necesidad de un segundo `IgnoreQueryFilters`), así que hasta entonces su entrada de la
-    // lista no tiene uso. La tolerancia caduca sola: en cuanto la entrada tenga uso, `TheTransitionalTolerance_ExpiresAsSoonAsAnEntryGetsAUse`
-    // falla hasta que la 4b.7 la retire y la lista quede con 2 sitios y ninguna entrada sin uso.
-    private static readonly string[] TransitionallyUnused = ["src/TimeTracker.Infrastructure/Persistence/AssistantSettingsStore.cs"];
 
     private static readonly string[] ProhibitedApis =
     [
@@ -47,7 +42,6 @@ public partial class IgnoreQueryFiltersClosedListTests
         Assert.True(unexpected.Count == 0, $"IgnoreQueryFilters fuera de la lista cerrada (DD-9): {string.Join(", ", unexpected)}");
 
         var wrongCount = Allowed
-            .Where(entry => !TransitionallyUnused.Contains(entry.Key) || usage.ContainsKey(entry.Key))
             .Where(entry => usage.GetValueOrDefault(entry.Key) != entry.Value)
             .Select(entry => $"{entry.Key} (esperado {entry.Value}, hay {usage.GetValueOrDefault(entry.Key)})")
             .ToList();
@@ -55,26 +49,14 @@ public partial class IgnoreQueryFiltersClosedListTests
     }
 
     [Fact]
-    public void ClosedList_HasNoEntryWithoutUse_ExceptTheDeclaredTransitionalOne()
+    public void ClosedList_HasTwoSitesAndNoEntryWithoutUse()
     {
         var usage = CountUsagePerFile();
 
-        var unused = Allowed.Keys.Where(file => !usage.ContainsKey(file)).Except(TransitionallyUnused).ToList();
+        Assert.Equal(2, Allowed.Count);
+        var unused = Allowed.Keys.Where(file => !usage.ContainsKey(file)).ToList();
 
         Assert.True(unused.Count == 0, $"Entradas de la lista cerrada sin uso: {string.Join(", ", unused)}");
-        Assert.Single(TransitionallyUnused);
-    }
-
-    [Fact]
-    public void TheTransitionalTolerance_ExpiresAsSoonAsAnEntryGetsAUse()
-    {
-        var usage = CountUsagePerFile();
-
-        var alreadyUsed = TransitionallyUnused.Where(usage.ContainsKey).ToList();
-
-        Assert.True(
-            alreadyUsed.Count == 0,
-            $"La entrada transitoria ya tiene uso: retire la tolerancia TransitionallyUnused de esta prueba (la lista queda con todas sus entradas en uso): {string.Join(", ", alreadyUsed)}");
     }
 
     [Fact]
