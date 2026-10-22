@@ -2,6 +2,8 @@ using System.Reflection;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 
+using static TimeTracker.ArchitectureTests.SourceText;
+
 namespace TimeTracker.ArchitectureTests;
 
 /// <summary>
@@ -28,6 +30,8 @@ public partial class CompanyGuardsTests
         "src/TimeTracker.Api/Authentication/JwtDefaults.cs",
         "src/TimeTracker.Api/Authentication/JwtAccessTokenIssuer.cs",
         "src/TimeTracker.Api/Authentication/AuthEndpoints.cs",
+        // La Web lee «cname» solo para mostrar el nombre de la compañía (WS «Estado de autenticación por claims»); nunca «cid».
+        "src/TimeTracker.Web/Auth/SessionClaims.cs",
     ];
 
     // Repositorio o almacén -> método permitido con un parámetro Guid de compañía. `FindLoginInfoAsync` lee `companies` por clave primaria.
@@ -223,12 +227,6 @@ public partial class CompanyGuardsTests
                 && !file.Contains($"{separator}bin{separator}", StringComparison.Ordinal));
     }
 
-    private static string StripComments(string source)
-        => string.Join('\n', source.Split('\n').Select(line =>
-        {
-            var comment = line.IndexOf("//", StringComparison.Ordinal);
-            return comment < 0 ? line : line[..comment];
-        }));
 
     [GeneratedRegex("\"cid\"")]
     private static partial Regex CidPattern();

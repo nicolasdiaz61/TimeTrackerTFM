@@ -51,4 +51,51 @@ internal sealed class InMemoryUserRepository : IUserRepository
         _users.Add(user);
         return Task.CompletedTask;
     }
+
+    public List<(UserAccount User, int MaxUsers)> AddWithinCapCalls { get; } = [];
+
+    /// <summary>Si se asigna, <see cref="AddWithinCapAsync"/> devuelve este resultado sin añadir nada.</summary>
+    public AddUserOutcome? ForcedOutcome { get; set; }
+
+    public int SaveChangesCalls { get; private set; }
+
+    /// <summary>Si se asigna, <see cref="SaveChangesAsync"/> lanza esta excepción (conflicto de concurrencia de la fila).</summary>
+    public Exception? SaveFailure { get; set; }
+
+    public Task<UserAccount?> FindForUpdateAsync(Guid userId, CancellationToken cancellationToken)
+        => Task.FromResult(_users.FirstOrDefault(user => user.Id == userId));
+
+    public Task<UserAccount?> FindDirectReportForUpdateAsync(Guid managerId, Guid memberId, CancellationToken cancellationToken)
+        => FindDirectReportAsync(managerId, memberId, cancellationToken);
+
+    public Task SaveChangesAsync(CancellationToken cancellationToken)
+    {
+        SaveChangesCalls++;
+        return SaveFailure is { } failure ? Task.FromException(failure) : Task.CompletedTask;
+    }
+
+    public Task<UserAccount?> FindByIdAsync(Guid userId, CancellationToken cancellationToken)
+        => Task.FromResult(_users.FirstOrDefault(user => user.Id == userId));
+
+    public Task<AddUserOutcome> AddWithinCapAsync(UserAccount user, int maxUsers, CancellationToken cancellationToken)
+    {
+        AddWithinCapCalls.Add((user, maxUsers));
+        if (ForcedOutcome is { } forced)
+        {
+            return Task.FromResult(forced);
+        }
+
+        if (_users.Any(existing => existing.Email == user.Email))
+        {
+            return Task.FromResult(AddUserOutcome.DuplicateEmail);
+        }
+
+        if (_users.Count(existing => existing.CompanyId == user.CompanyId) >= maxUsers)
+        {
+            return Task.FromResult(AddUserOutcome.CapReached);
+        }
+
+        _users.Add(user);
+        return Task.FromResult(AddUserOutcome.Created);
+    }
 }

@@ -14,6 +14,11 @@ public static class RegistrationServiceCollectionExtensions
             .ValidateOnStart();
 
         services.AddScoped<RegisterCompanyUseCase>();
+        services.AddSingleton(provider => new RegistrationPartitionTracker(provider.GetRequiredService<TimeProvider>(), RegistrationOptions.MaxTrackedPartitions, RegistrationOptions.LimitWindow));
+        services.AddSingleton(provider => new RegistrationGlobalLimiter(
+            provider.GetRequiredService<TimeProvider>(),
+            provider.GetRequiredService<IOptions<RegistrationOptions>>().Value.GlobalHourlyLimit,
+            RegistrationOptions.LimitWindow));
         services.AddHostedService<DemoUsersStartupGuard>();
 
         // Los códigos se resumen una sola vez; con el registro cerrado nadie resuelve el validador y los códigos no se leen.

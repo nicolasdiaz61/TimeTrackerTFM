@@ -1,6 +1,8 @@
 using TimeTracker.Api.Assistant;
 using TimeTracker.Api.Authentication;
+using TimeTracker.Api.Companies;
 using TimeTracker.Api.Configuration;
+using TimeTracker.Api.Employees;
 using TimeTracker.Api.Errors;
 using TimeTracker.Api.Health;
 using TimeTracker.Api.Registration;
@@ -25,8 +27,10 @@ builder.Services.AddDomainProblemDetails();
 builder.Services.AddTimeEntries();
 builder.Services.AddAuthorizationPolicies();
 builder.Services.AddTeam();
+builder.Services.AddEmployees();
 builder.Services.AddDemoSeeding();
 builder.Services.AddRegistration();
+builder.Services.AddCompanyLimits();
 builder.Services.AddAssistant();
 builder.Services.AddAssistantConfiguration();
 // Va después de la migración (DatabaseMigrationHostedService corre en StartingAsync) y antes de que Kestrel acepte peticiones:
@@ -56,6 +60,8 @@ app.UseCors();
 app.UseAuthentication();
 // La compañía sale solo del token ya validado y se fija antes de autorizar (V-10).
 app.UseCompanyContext();
+// El cambio de contraseña pendiente (claim mcp) se decide solo por el claim, antes de autorizar y de ejecutar ningún caso de uso (V-10).
+app.UsePasswordChangePending();
 app.UseAuthorization();
 app.UseRateLimiter();
 
@@ -69,6 +75,7 @@ app.MapHealthEndpoints();
 app.MapAuthEndpoints();
 app.MapTimeEntryEndpoints();
 app.MapTeamEndpoints();
+app.MapEmployeeEndpoints();
 app.MapAssistantEndpoints();
 app.MapAssistantConfigurationEndpoints();
 app.MapRegistrationEndpoint();

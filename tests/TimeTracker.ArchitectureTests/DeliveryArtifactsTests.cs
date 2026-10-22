@@ -143,6 +143,7 @@ public partial class DeliveryArtifactsTests
     [InlineData("Ai__DailyRequestsPerCompany", "500")]
     [InlineData("Ai__MaxLoadedCompanies", "100")]
     [InlineData("Ai__RuntimeIdleMinutes", "60")]
+    [InlineData("Registration__GlobalHourlyLimit", "30")]
     public void EnvExample_DocumentsTheCompanyLimitsCommentedWithTheirDefaults(string key, string defaultValue)
     {
         var example = ReadRepositoryFile(".env.example");
@@ -433,13 +434,13 @@ public partial class DeliveryArtifactsTests
     }
 
     [Fact]
-    public void AgentsMd_AllowsStoredConfigurationForTheAssistantProviderAndPointsToAdr0018()
+    public void AgentsMd_AllowsStoredConfigurationForTheAssistantProviderAndPointsToAdr0021()
     {
         var agents = ReadRepositoryFile("AGENTS.md");
 
-        Assert.Contains("configuración de entorno o guardada por un Manager", agents, StringComparison.Ordinal);
+        Assert.Contains("configuración de entorno o guardada por un Manager de su compañía (ADR 0021)", agents, StringComparison.Ordinal);
         Assert.Contains("configuración guardada", agents, StringComparison.Ordinal);
-        Assert.Contains("ADR 0018", agents, StringComparison.Ordinal);
+        Assert.DoesNotContain("guardada por un Manager (ADR 0018)", agents, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -610,6 +611,24 @@ public partial class DeliveryArtifactsTests
     }
 
     [Fact]
+    public void Adr0022_RecordsThePr6DecisionsOnTemporaryPasswordsTheCapAndTheAcceptedRisks()
+    {
+        var adr = ReadRepositoryFile("docs/adr/0022-autorregistro-con-codigo-de-invitacion-y-contrasenas.md");
+
+        string[] required =
+        [
+            "POST /api/employees", "temporary-password", "change-password", "no-store", "RandomNumberGenerator", "PasswordChangePendingMiddleware", "mcp",
+            "xmin", "Serializable", "40001", "3", "Company__MaxEmployees", "cerrojo en memoria", "no caduca", "no se invalida", "30 por minuto",
+            "5 por minuto", "responsable directo", "revisar periódicamente",
+        ];
+        var missing = required.Where(text => !adr.Contains(text, StringComparison.OrdinalIgnoreCase)).ToList();
+        Assert.True(missing.Count == 0, $"El ADR 0022 no menciona: {string.Join(", ", missing)}");
+        // La política de contraseñas del ADR ya no dice que el cambio de contraseña «llega» después: está aplicada.
+        Assert.Contains("el cambio de contraseña (`POST /api/auth/change-password`, PR 6", adr, StringComparison.Ordinal);
+        Assert.DoesNotMatch(@"temporaryPassword\s*[:=]\s*""[^""]+""", adr);
+    }
+
+    [Fact]
     public void Readme_IndexesAdr0022()
         => Assert.Contains("(docs/adr/0022-autorregistro-con-codigo-de-invitacion-y-contrasenas.md)", ReadRepositoryFile("README.md"), StringComparison.Ordinal);
 
@@ -678,6 +697,281 @@ public partial class DeliveryArtifactsTests
             .ToList();
 
         Assert.True(missing.Count == 0, $"Los ADR no mencionan: {string.Join(", ", missing)}");
+    }
+
+    // --- PR 8 (multi-compania): AGENTS.md, README, runbook, specs vigentes y cierre de V-n (SA «Decisiones y límites documentados») ---
+
+    private static string Section(string text, string startMarker, string endMarker)
+    {
+        text = text.Replace("\r\n", "\n", StringComparison.Ordinal);
+        var start = text.IndexOf(startMarker, StringComparison.Ordinal);
+        Assert.True(start >= 0, $"Falta la sección «{startMarker}».");
+        var end = text.IndexOf(endMarker, start + startMarker.Length, StringComparison.Ordinal);
+        Assert.True(end > start, $"Falta el final «{endMarker}» de la sección «{startMarker}».");
+        return text[start..end];
+    }
+
+    private static List<string> Missing(string text, IEnumerable<string> required)
+        => [.. required.Where(item => !text.Contains(item, StringComparison.Ordinal))];
+
+    [Fact]
+    public void AgentsMd_Section1_SaysOneInstanceServesSeveralCompaniesAndTheAssistantIsConfiguredPerCompany()
+    {
+        var agents = ReadRepositoryFile("AGENTS.md");
+        var section = Section(agents, "## 1. Proyecto", "## 2.");
+
+        var missing = Missing(section, ["varias compañías", "`company_id`", "ADR 0020", "por compañía", "ADR 0021"]);
+        Assert.True(missing.Count == 0, $"AGENTS.md §1 no menciona: {string.Join(", ", missing)}");
+        Assert.DoesNotContain("toda la instancia", agents, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("configuración única", agents, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void AgentsMd_Section6_FixesTheCompanyIsolationRules()
+    {
+        var section = Section(ReadRepositoryFile("AGENTS.md"), "## 6. Seguridad", "## 7.");
+
+        string[] required =
+        [
+            "`CompanyId` sale siempre del claim `cid`", "ICurrentUser.CompanyId", "nunca de la ruta, la consulta, el cuerpo ni una cabecera",
+            "filtro global", "`IgnoreQueryFilters` solo en la lista cerrada", "`CreateScope` solo desde su lista cerrada", "dos compañías",
+            "12 a 128 caracteres", "sin reglas de composición", "contraseña temporal", "un solo uso",
+        ];
+        var missing = Missing(section, required);
+        Assert.True(missing.Count == 0, $"AGENTS.md §6 no menciona: {string.Join(", ", missing)}");
+    }
+
+    [Fact]
+    public void AgentsMd_Section7_DescribesPerCompanyConfigurationMigrationsRollbackAndTheManualDeployment()
+    {
+        var section = Section(ReadRepositoryFile("AGENTS.md"), "## 7. Infraestructura y entrega", "## 8.");
+
+        string[] required =
+        [
+            "guardada por un Manager de su compañía (ADR 0021)", "expandir/contraer", "un rollback de código no revierte el esquema", "`Down` antes de redesplegar",
+            "`company_id` con clave foránea compuesta y filtro global", "`railway up`", "sin repositorio conectado", "el plan de despliegue por fases debe rehacerse",
+        ];
+        var missing = Missing(section, required);
+        Assert.True(missing.Count == 0, $"AGENTS.md §7 no menciona: {string.Join(", ", missing)}");
+        Assert.DoesNotContain("(ADR 0018)", section, StringComparison.Ordinal);
+    }
+
+    private static readonly string[] RunbookRequired =
+    [
+        "pg_dump -Fc", "ON_ERROR_STOP=1", "--single-transaction", "`railway up`", "sin repositorio conectado", "Database__ApplyMigrationsOnStartup",
+        "Registration__Enabled", "Registration__InviteCodes", "Company__MaxEmployees", "ForwardedHeaders__Enabled", "Hops", "/health",
+        "ensayo", "`Up A`", "`Down A`", "`Up B`", "`Down B`", "`Down` B → `Down` A", "ApplyMigrationsOnStartup=false", "corrección hacia delante",
+        "rollback de un clic", "pérdida de la separación", "sustituye la lista completa", "Seed__DemoUsers=false",
+        "must_change_password", "no caduca", "`mcp`", "30 minutos", "Ai__MasterKeys__1", "custodia", "/64", "V-3", "V-6", "V-7", "pendiente",
+    ];
+
+    [Fact]
+    public void Runbook_ExistsAndCoversBackupRehearsalRollbackFixForwardAndTheOperatorProcesses()
+    {
+        var runbook = ReadRepositoryFile("docs/runbook-railway.md");
+
+        var missing = Missing(runbook, RunbookRequired);
+        Assert.True(missing.Count == 0, $"El runbook no menciona: {string.Join(", ", missing)}");
+    }
+
+    [Fact]
+    public void Runbook_OpensTheRegistrationInTheDocumentedOrder()
+    {
+        var runbook = ReadRepositoryFile("docs/runbook-railway.md");
+        var section = Section(runbook, "## Apertura del registro", "\n## ");
+
+        string[] ordered =
+        [
+            "`Seed__DemoUsers=false`", "no se recrean", "retirar los usuarios demo", "`Registration__InviteCodes`", "`Registration__Enabled=true`",
+        ];
+        var positions = ordered.Select(step => section.IndexOf(step, StringComparison.Ordinal)).ToList();
+        Assert.DoesNotContain(-1, positions);
+        Assert.Equal(positions.Order(), positions);
+    }
+
+    [Fact]
+    public void Runbook_SaysThatTheProductionChecksOfTheOperatorAreStillPendingAndDoesNotClaimThemAsDone()
+    {
+        var runbook = ReadRepositoryFile("docs/runbook-railway.md");
+        var section = Section(runbook, "## Verificaciones de producción", "\n## ");
+
+        foreach (var check in new[] { "V-3", "V-6", "V-7" })
+        {
+            var line = section.Split('\n').Single(candidate => candidate.StartsWith($"- **{check}", StringComparison.Ordinal));
+            Assert.Contains("Pendiente del responsable", line, StringComparison.Ordinal);
+        }
+    }
+
+    // PR 5.1: procedimiento paso a paso tras abrir el registro y runbook autónomo.
+    [Fact]
+    public void Runbook_HasAStepByStepRestoreOrFixForwardProcedureAfterTheRegistrationIsOpen()
+    {
+        var runbook = ReadRepositoryFile("docs/runbook-railway.md");
+        var section = Section(runbook, "## Tras abrir el registro: restauración o corrección hacia delante", "\n## ");
+
+        string[] ordered =
+        [
+            "Parar las escrituras", "`Registration__Enabled=false`", "Copia de seguridad nueva de seguridad", "pg_dump -Fc", "__EFMigrationsHistory", "Restaurar con `pg_restore`",
+            "--single-transaction", "Qué versión de código desplegar", "GET <API>/health", "inicio de sesión con una cuenta Manager", "un fichaje completo",
+            "Reabrir el registro", "Cuándo borrar las copias",
+        ];
+        var positions = ordered.Select(step => section.IndexOf(step, StringComparison.Ordinal)).ToList();
+        Assert.True(positions.All(position => position >= 0), $"El procedimiento no menciona: {string.Join(", ", ordered.Where((step, index) => positions[index] < 0))}");
+        Assert.Equal(positions.Order(), positions);
+        Assert.Contains("rollback de un clic", section, StringComparison.Ordinal);
+        Assert.Contains("sustituye todos los datos", section, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Runbook_IsSelfContained_ExplainsItsPhasesAndQuestionsAndDoesNotPointToTheMovingOpenspecPath()
+    {
+        var runbook = ReadRepositoryFile("docs/runbook-railway.md");
+
+        Assert.DoesNotContain("openspec/changes", runbook, StringComparison.Ordinal);
+        var section = Section(runbook, "## Cómo leer este documento", "\n## ");
+        string[] required = ["**PR 1**", "**PR 1b**", "**PR 5**", "**PR 5.1**", "**tarea 9**", "**Q-1**", "**Q-8**", "**Q-10**", "**Q-12**", "`Q-n`", "`V-n`"];
+        var missing = Missing(section, required);
+        Assert.True(missing.Count == 0, $"La guía de lectura del runbook no explica: {string.Join(", ", missing)}");
+    }
+
+    [Fact]
+    public void Runbook_DocumentsTheRegistrationLimitsAndTheOperatorCheckOfTheForwardedHopsInV7()
+    {
+        var runbook = ReadRepositoryFile("docs/runbook-railway.md");
+
+        Assert.Contains("Registration__GlobalHourlyLimit", runbook, StringComparison.Ordinal);
+        var section = Section(runbook, "## Verificaciones de producción", "\n## ");
+        var v7 = section.Split('\n').Single(line => line.StartsWith("- **V-7", StringComparison.Ordinal));
+        Assert.Contains("no puede saber cuántos proxies", v7, StringComparison.Ordinal);
+        Assert.Contains("429", v7, StringComparison.Ordinal);
+        Assert.DoesNotContain("IPv6 `/64` queda pendiente", runbook, StringComparison.Ordinal);
+        Assert.DoesNotContain("Límite por IP del registro y IPv6", runbook, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Readme_ExplainsTheRegistrationTheTemporaryPasswordTheMasterKeyAndLinksTheRunbook()
+    {
+        var readme = ReadRepositoryFile("README.md");
+
+        string[] required =
+        [
+            "## Compañías, registro y alta de personas", "`Registration__Enabled`", "`Registration__InviteCodes`", "código de invitación", "cerrado por defecto",
+            "`/registro`", "contraseña temporal", "una sola vez", "`/equipo/alta`", "`Company__MaxEmployees`", "`/cambiar-contrasena`",
+            "La clave maestra vive solo en Railway", "docs/runbook-railway.md", "/64", "ForwardedHeaders", "seguimiento",
+        ];
+        var missing = Missing(readme, required);
+        Assert.True(missing.Count == 0, $"README.md no menciona: {string.Join(", ", missing)}");
+    }
+
+    [Fact]
+    public void Readme_NoLongerSaysTheAssistantConfigurationIsForTheWholeCompanyInstanceOrThatTheAutoDeployIsActive()
+    {
+        var readme = ReadRepositoryFile("README.md");
+
+        Assert.DoesNotContain("vale para toda la empresa", readme, StringComparison.Ordinal);
+        Assert.DoesNotContain("afecta a toda la empresa", readme, StringComparison.Ordinal);
+        Assert.DoesNotContain("Configuración única.", readme, StringComparison.Ordinal);
+        Assert.DoesNotContain("### Activar el autodespliegue desde GitHub", readme, StringComparison.Ordinal);
+        Assert.Contains("no tienen repositorio conectado", readme, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Readme_IndexesEveryAdrInTheDirectory()
+    {
+        var readme = ReadRepositoryFile("README.md");
+
+        foreach (var adr in Directory.GetFiles(Path.Combine(RepositoryRoot.Path, "docs", "adr"), "0*.md").Select(Path.GetFileName))
+        {
+            Assert.Contains($"(docs/adr/{adr})", readme, StringComparison.Ordinal);
+        }
+    }
+
+    [Fact]
+    public void DeliveryDocuments_NeverCarryASecretAnInviteCodeOrASessionLink()
+    {
+        string[] files =
+        [
+            "AGENTS.md", "README.md", ".env.example", "docker-compose.yml", "docs/runbook-railway.md",
+            "docs/adr/0020-aislamiento-multiempresa.md", "docs/adr/0021-configuracion-del-asistente-por-compania.md",
+            "docs/adr/0022-autorregistro-con-codigo-de-invitacion-y-contrasenas.md",
+            "openspec/changes/multi-compania/design.md", "openspec/changes/multi-compania/verify-report.md",
+        ];
+
+        foreach (var file in files)
+        {
+            var text = ReadRepositoryFile(file);
+            Assert.DoesNotMatch(@"Registration__InviteCodes[ \t]*[=:][ \t]*[^\s`|]", text);
+            Assert.DoesNotMatch(@"Ai__MasterKeys__\d+[ \t]*[=:][ \t]*[^\s`|]", text);
+            Assert.DoesNotMatch(@"Ai__ApiKey[ \t]*[=:][ \t]*[^\s`|]", text);
+            Assert.DoesNotMatch(@"\bsk-[A-Za-z0-9_-]{16,}", text);
+            Assert.DoesNotMatch(@"[A-Za-z0-9+/]{43}=", text);
+            Assert.DoesNotContain("claude.ai/code/session", text, StringComparison.Ordinal);
+        }
+    }
+
+    [Fact]
+    public void SolutionArchitectureSpec_NoLongerClaimsThereAreOnlySeventeenAdrs()
+    {
+        var spec = ReadRepositoryFile("openspec/specs/solution-architecture/spec.md");
+
+        Assert.DoesNotContain("diecisiete ADR", spec, StringComparison.Ordinal);
+        Assert.DoesNotContain("los ADR 0001 a 0017:", spec, StringComparison.Ordinal);
+        Assert.DoesNotContain("(13 ADR y README)", spec, StringComparison.Ordinal);
+        Assert.Contains("ADR 0001 a 0022", spec, StringComparison.Ordinal);
+        Assert.Contains("veintidós ADR", spec, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Design_ClosesEveryVerificationFromV1ToV18_AndKeepsThePendingOnesAsPendingOfTheOperator()
+    {
+        var design = ReadRepositoryFile("openspec/changes/multi-compania/design.md");
+        var lines = Section(design, "### Cierre de V-1 a V-18 (PR 8)", "\n### ").Split('\n');
+
+        for (var number = 1; number <= 18; number++)
+        {
+            Assert.Single(lines, line => line.StartsWith($"| V-{number} |", StringComparison.Ordinal));
+        }
+
+        foreach (var pending in new[] { 1, 3, 4, 6, 7 })
+        {
+            Assert.Contains("Pendiente del responsable", lines.Single(line => line.StartsWith($"| V-{pending} |", StringComparison.Ordinal)), StringComparison.Ordinal);
+        }
+
+        // La columna «Estado» (segunda) de las verificaciones hechas no puede decir que esperan al responsable.
+        foreach (var done in new[] { 2, 5, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18 })
+        {
+            var cells = lines.Single(line => line.StartsWith($"| V-{done} |", StringComparison.Ordinal)).Split('|');
+            Assert.DoesNotContain("Pendiente", cells[2], StringComparison.Ordinal);
+        }
+    }
+
+    [Theory]
+    [InlineData("### DD-7.", "### DD-8.", "AssistantRuntimeRegistry")]
+    [InlineData("### DD-16.", "### DD-17.", "IAssistantQuota.TryConsumeMinute")]
+    [InlineData("### DD-21.", "### DD-22.", "AddWithinCapAsync")]
+    [InlineData("### DD-23.", "### DD-24.", "Ai__RuntimeIdleMinutes")]
+    public void Design_RecordsInTheDecisionItselfWhatApplyClosed(string start, string end, string expected)
+    {
+        var design = ReadRepositoryFile("openspec/changes/multi-compania/design.md");
+        var decision = Section(design, start, end);
+
+        Assert.Contains("Cierre en apply", decision, StringComparison.Ordinal);
+        Assert.Contains(expected, decision, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Design_ListsTheCurrentRequirementsThatTheArchiveMustWarnAbout()
+    {
+        var design = ReadRepositoryFile("openspec/changes/multi-compania/design.md");
+        var section = Section(design, "### Requisitos vigentes que el informe de archivo debe advertir", "\n### ");
+
+        string[] required =
+        [
+            "Sin clave foránea de fichajes a usuarios", "TimeEntry.Start", "registro público", "fila única", "toda la instancia",
+            "Página Web de configuración", "Menú según el rol", "ADR y README", "veintidós",
+        ];
+        var missing = Missing(section, required);
+        Assert.True(missing.Count == 0, $"La lista de advertencias del archivo no menciona: {string.Join(", ", missing)}");
     }
 
     // --- README y config.yaml (SA-23, SA-24, SA-25, PE-14) ---

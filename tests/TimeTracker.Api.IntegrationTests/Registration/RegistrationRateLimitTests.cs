@@ -168,13 +168,81 @@ public class RegistrationRateLimitTests(PostgresFixture postgres)
         Assert.Equal(HttpStatusCode.Forbidden, (await WrongCodeAsync(otherClient)).StatusCode);
     }
 
-    private Microsoft.AspNetCore.Mvc.Testing.WebApplicationFactory<Program> CreateFactory(CountingInviteCodeValidator? codes = null, int? forwardedHops = null)
+    [Fact]
+    public async Task WithForwardedHeaders_RotatingIPv6AddressesInsideOne64_DoesNotGiveNewQuota()
+    {
+        using var factory = CreateFactory(forwardedHops: 1);
+        var client = factory.CreateAnonymousClient();
+        for (var attempt = 0; attempt < 5; attempt++)
+        {
+            Assert.Equal(HttpStatusCode.Forbidden, (await WrongCodeAsync(client, $"2001:db8:aaaa:bbbb::{attempt + 1}")).StatusCode);
+        }
+
+        var rotated = await WrongCodeAsync(client, "2001:db8:aaaa:bbbb:1234:5678:9abc:def0");
+        var otherPrefix = await WrongCodeAsync(client, "2001:db8:aaaa:bbbc::1");
+
+        Assert.Equal(HttpStatusCode.TooManyRequests, rotated.StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, otherPrefix.StatusCode);
+    }
+
+    [Fact]
+    public async Task TheGlobalCap_CountsOnlyCreatedAccounts_AndRejectsTheNextOneWithoutEvaluatingTheCode()
+    {
+        var codes = new CountingInviteCodeValidator(new InviteCodeValidator([Code]));
+        using var factory = CreateFactory(codes, forwardedHops: 1, globalLimit: 2);
+        var client = factory.CreateAnonymousClient();
+
+        // Los intentos con código incorrecto no gastan el tope global.
+        for (var attempt = 0; attempt < 4; attempt++)
+        {
+            Assert.Equal(HttpStatusCode.Forbidden, (await WrongCodeAsync(client, $"203.0.113.{attempt + 1}")).StatusCode);
+        }
+
+        Assert.Equal(HttpStatusCode.Created, (await PostWithAddressAsync(client, "198.51.100.1")).StatusCode);
+        Assert.Equal(HttpStatusCode.Created, (await PostWithAddressAsync(client, "198.51.100.2")).StatusCode);
+        var callsBefore = codes.Calls;
+        var capped = await PostWithAddressAsync(client, "198.51.100.3");
+
+        Assert.Equal(HttpStatusCode.TooManyRequests, capped.StatusCode);
+        Assert.True(capped.Headers.TryGetValues("Retry-After", out var retryAfter));
+        Assert.True(int.Parse(Assert.Single(retryAfter), CultureInfo.InvariantCulture) > 0);
+        Assert.Equal(callsBefore, codes.Calls);
+        using var body = await AccessErrorsTests.AssertProblemAsync(capped, 429, "Demasiadas solicitudes");
+        Assert.Equal("Ha realizado demasiados intentos de registro. Inténtelo de nuevo más tarde.", body.RootElement.GetProperty("detail").GetString());
+    }
+
+    [Fact]
+    public async Task TheGlobalCap_ReleasesTheSlotWhenTheRegistrationIsNotCreated()
+    {
+        using var factory = CreateFactory(forwardedHops: 1, globalLimit: 2);
+        var otherClient = factory.CreateAnonymousClient();
+        var body = Body();
+        Assert.Equal(HttpStatusCode.Created, (await PostWithAddressAsync(otherClient, "198.51.100.1", body)).StatusCode);
+        Assert.Equal(HttpStatusCode.Conflict, (await PostWithAddressAsync(otherClient, "198.51.100.2", body)).StatusCode);
+        // El 409 no consumió cupo: queda uno para un alta nueva.
+        Assert.Equal(HttpStatusCode.Created, (await PostWithAddressAsync(otherClient, "198.51.100.3")).StatusCode);
+        Assert.Equal(HttpStatusCode.TooManyRequests, (await PostWithAddressAsync(otherClient, "198.51.100.4")).StatusCode);
+    }
+
+    private static Task<HttpResponseMessage> PostWithAddressAsync(HttpClient client, string forwardedFor, Dictionary<string, object?>? body = null)
+    {
+        var request = new HttpRequestMessage(HttpMethod.Post, RegisterPath) { Content = JsonContent.Create(body ?? Body()) };
+        request.Headers.Add("X-Forwarded-For", forwardedFor);
+        return client.SendAsync(request, CancellationToken.None);
+    }
+
+    private Microsoft.AspNetCore.Mvc.Testing.WebApplicationFactory<Program> CreateFactory(CountingInviteCodeValidator? codes = null, int? forwardedHops = null, int? globalLimit = null)
     {
         var settings = new Dictionary<string, string?>();
         if (forwardedHops is not null)
         {
             settings["ForwardedHeaders:Enabled"] = "true";
             settings["ForwardedHeaders:Hops"] = forwardedHops.Value.ToString(CultureInfo.InvariantCulture);
+        }
+
+        if (globalLimit is not null)
+        {
+            settings["Registration:GlobalHourlyLimit"] = globalLimit.Value.ToString(CultureInfo.InvariantCulture);
         }
 
         var factory = new RegistrationApiFactory(postgres.ConnectionString, Code, settings);
