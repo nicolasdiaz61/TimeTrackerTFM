@@ -9,7 +9,7 @@ namespace TimeTracker.Web.Auth;
 /// Cliente de las rutas anónimas /api/auth/login y /api/auth/register-company. Se registra sin BearerTokenHandler: el 401 del
 /// login no redirige y el registro nunca lleva «Authorization» aunque haya sesión.
 /// </summary>
-public sealed class AuthApiClient(HttpClient http) : IRegistrationApi, IDisposable
+public sealed class AuthApiClient(HttpClient http) : ILoginApi, IRegistrationApi, IDisposable
 {
     public Task<LoginResponseDto> LoginAsync(string email, string password, CancellationToken cancellationToken = default)
         => ApiRequest.SendAsync<LoginResponseDto>(

@@ -12,8 +12,8 @@ namespace TimeTracker.Web.Registration;
 /// </summary>
 public sealed class RegisterForm(IRegistrationApi api, ISessionSignIn session)
 {
-    public const string ConfirmationField = "confirmPassword";
-    public const string ConfirmationMismatchMessage = "Las contraseñas no coinciden.";
+    public const string ConfirmationField = PasswordConfirmation.Field;
+    public const string ConfirmationMismatchMessage = PasswordConfirmation.MismatchMessage;
     public const string ReviewFieldsMessage = FormFeedback.ReviewFieldsMessage;
     public const string InvalidInviteCodeMessage = "El código de invitación no es válido.";
     public const string TooManyRequestsMessage = "Demasiados intentos de registro.";
@@ -55,7 +55,7 @@ public sealed class RegisterForm(IRegistrationApi api, ISessionSignIn session)
 
         feedback.Clear();
         NavigateTo = null;
-        if (!string.Equals(Password, ConfirmPassword, StringComparison.Ordinal))
+        if (!PasswordConfirmation.Matches(Password, ConfirmPassword))
         {
             feedback.ShowField(ConfirmationField, ConfirmationMismatchMessage);
             return;

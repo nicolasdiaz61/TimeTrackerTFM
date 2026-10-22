@@ -1,5 +1,5 @@
+using System.Globalization;
 using System.Security.Claims;
-using System.Text.Json;
 
 using Microsoft.AspNetCore.Components.Authorization;
 
@@ -47,53 +47,18 @@ public sealed class JwtAuthenticationStateProvider(TokenStore store, TimeProvide
         NotifyAuthenticationStateChanged(Task.FromResult(Anonymous));
     }
 
+    // Vigente: con «exp» entero y posterior al instante actual; cualquier otra cosa se trata como no autenticado.
     private static List<Claim>? TryReadClaims(string token, DateTimeOffset now)
     {
-        var parts = token.Split('.');
-        if (parts.Length != 3)
-        {
-            return null;
-        }
-
-        try
-        {
-            using var document = JsonDocument.Parse(DecodeBase64Url(parts[1]));
-            if (document.RootElement.ValueKind != JsonValueKind.Object
-                || !document.RootElement.TryGetProperty("exp", out var exp)
-                || !exp.TryGetInt64(out var expSeconds)
-                || DateTimeOffset.FromUnixTimeSeconds(expSeconds) <= now)
-            {
-                return null;
-            }
-
-            var claims = new List<Claim>();
-            foreach (var property in document.RootElement.EnumerateObject())
-            {
-                if (property.Value.ValueKind == JsonValueKind.Array)
-                {
-                    claims.AddRange(property.Value.EnumerateArray().Select(item => new Claim(property.Name, ValueOf(item))));
-                }
-                else
-                {
-                    claims.Add(new Claim(property.Name, ValueOf(property.Value)));
-                }
-            }
-
-            return claims;
-        }
-        catch (Exception exception) when (exception is JsonException or FormatException or ArgumentOutOfRangeException)
-        {
-            return null;
-        }
+        var claims = JwtPayload.TryReadClaims(token);
+        var exp = claims?.FirstOrDefault(claim => claim.Type == "exp")?.Value;
+        return claims is not null
+            && long.TryParse(exp, NumberStyles.None, CultureInfo.InvariantCulture, out var expSeconds)
+            && IsAfter(expSeconds, now)
+            ? claims
+            : null;
     }
 
-    private static string ValueOf(JsonElement element)
-        => element.ValueKind == JsonValueKind.String ? element.GetString() ?? string.Empty : element.GetRawText();
-
-    private static byte[] DecodeBase64Url(string segment)
-    {
-        var base64 = segment.Replace('-', '+').Replace('_', '/');
-        base64 = base64.PadRight(base64.Length + ((4 - (base64.Length % 4)) % 4), '=');
-        return Convert.FromBase64String(base64);
-    }
+    private static bool IsAfter(long expSeconds, DateTimeOffset now)
+        => expSeconds <= DateTimeOffset.MaxValue.ToUnixTimeSeconds() && DateTimeOffset.FromUnixTimeSeconds(expSeconds) > now;
 }
