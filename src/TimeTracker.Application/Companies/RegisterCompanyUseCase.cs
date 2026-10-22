@@ -65,7 +65,7 @@ public sealed class RegisterCompanyUseCase(
         }
         catch (Exception exception) when (exception is not OperationCanceledException)
         {
-            return new RegisterCompanyResult.CreatedWithoutSession(created.Id);
+            return new RegisterCompanyResult.CreatedWithoutSession(created.Id, exception.GetType().Name);
         }
     }
 

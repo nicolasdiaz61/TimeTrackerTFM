@@ -205,7 +205,8 @@ public class RegisterCompanyUseCaseTests
 
         var result = await useCase.ExecuteAsync(Command(), CancellationToken.None);
 
-        Assert.IsType<RegisterCompanyResult.CreatedWithoutSession>(result);
+        var withoutSession = Assert.IsType<RegisterCompanyResult.CreatedWithoutSession>(result);
+        Assert.Equal(RegisterCompanyResult.CreatedWithoutSession.SessionNotIssuedCause, withoutSession.Cause);
         Assert.Empty(_issuer.IssuedFor);
     }
 
@@ -218,6 +219,9 @@ public class RegisterCompanyUseCaseTests
 
         var created = Assert.IsType<RegisterCompanyResult.CreatedWithoutSession>(result);
         Assert.Equal(Assert.Single(_store.Calls).Company.Id, created.CompanyId);
+        // La causa es solo el nombre del tipo: el mensaje de la excepción puede llevar secretos o datos personales.
+        Assert.Equal(nameof(InvalidOperationException), created.Cause);
+        Assert.DoesNotContain("firmar", created.Cause, StringComparison.Ordinal);
     }
 
     [Fact]

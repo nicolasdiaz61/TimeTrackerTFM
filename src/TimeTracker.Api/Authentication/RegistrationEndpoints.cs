@@ -105,7 +105,7 @@ public static class RegistrationEndpoints
                 return TypedResults.Json(LoginResponse.From(created.Session), statusCode: StatusCodes.Status201Created);
             case RegisterCompanyResult.CreatedWithoutSession withoutSession:
                 // La cuenta existe: 409 con un detalle propio (el contrato no cambia y la Web ya muestra el detalle del 409) en lugar de un 500.
-                RegistrationLog.CreatedWithoutSession(logger, withoutSession.CompanyId, clock.GetUtcNow());
+                RegistrationLog.CreatedWithoutSession(logger, withoutSession.CompanyId, clock.GetUtcNow(), withoutSession.Cause);
                 return TypedResults.Problem(statusCode: StatusCodes.Status409Conflict, title: "Conflicto", detail: CreatedWithoutSessionDetail);
             case RegisterCompanyResult.InvalidInviteCode:
                 RegistrationLog.Rejected(logger, RegistrationAttemptResult.RejectedByInviteCode, clock.GetUtcNow());
