@@ -78,7 +78,7 @@ El cuerpo DEBE incluir `inviteCode`. El código DEBE compararse con cada código
 
 ### Requirement: Creación atómica de la compañía y su primer Manager
 
-Un registro válido DEBE crear, en una única transacción, la compañía (`Active`) y su primer usuario con rol `Manager`, sin responsable, con `must_change_password` = `false` y con la contraseña almacenada solo como hash. DEBE responder `201` con `application/json` y el mismo cuerpo que el inicio de sesión (`{ accessToken, expiresAt, user }`, ver `authentication`), de modo que la persona queda con sesión iniciada. Si cualquier paso falla, NO DEBE quedar ni compañía ni usuario. NO DEBE enviarse ningún correo ni exigirse verificación de correo. La compañía nueva NO DEBE tener fila de configuración del asistente (asistente deshabilitado; ver `assistant-settings`). El token de la respuesta DEBE emitirse con la misma regla que el inicio de sesión (la compañía creada es `Active`, ver `authentication`). El endpoint es anónimo y DEBE ignorar cualquier token que acompañe a la petición (no lee la identidad ni la compañía del usuario): la compañía y el usuario se crean en el ámbito de la compañía nueva (`CreateScope(nuevoId)`), y el contexto de compañía de la petición NO DEBE adoptar la compañía del token en esta ruta, de modo que una petición con un token vigente no provoque un error `500` ni escriba o lea datos de la compañía del token.
+Un registro válido DEBE crear, en una única transacción, la compañía (`Active`) y su primer usuario con rol `Manager`, sin responsable, con `must_change_password` = `false` y con la contraseña almacenada solo como hash. DEBE responder `201` con `application/json` y el mismo cuerpo que el inicio de sesión (`{ accessToken, expiresAt, user }`, ver `authentication`), de modo que la persona queda con sesión iniciada. Si cualquier paso falla, NO DEBE quedar ni compañía ni usuario. NO DEBE enviarse ningún correo ni exigirse verificación de correo. La compañía nueva NO DEBE tener fila de configuración del asistente (asistente deshabilitado; ver `assistant-settings`). El token de la respuesta DEBE emitirse con la misma regla que el inicio de sesión (la compañía creada es `Active`, ver `authentication`). Si la sesión no se puede emitir tras crear la compañía y el usuario (fallo del emisor), la respuesta NO DEBE ser un `500` que invite a reintentar: DEBE ser un `409` `application/problem+json` cuyo `detail` diga que la cuenta se ha creado, que no se repita el registro y que se inicie sesión con el correo y la contraseña; la compañía y el usuario permanecen creados. El endpoint es anónimo y DEBE ignorar cualquier token que acompañe a la petición (no lee la identidad ni la compañía del usuario): la compañía y el usuario se crean en el ámbito de la compañía nueva (`CreateScope(nuevoId)`), y el contexto de compañía de la petición NO DEBE adoptar la compañía del token en esta ruta, de modo que una petición con un token vigente no provoque un error `500` ni escriba o lea datos de la compañía del token.
 
 #### Scenario: Registro correcto
 - DADO un cuerpo válido con `companyName`, `managerName`, `email`, `password` e `inviteCode`
@@ -186,6 +186,8 @@ El nombre de compañía DEBE ser único según `name_normalized` (solo duplicado
 
 `POST /api/auth/register-company` DEBE limitarse a 5 peticiones por hora y por IP de origen (ventana fija, política `register-company` anónima y particionada por IP), contando todos los intentos, correctos o no, incluidos los rechazados por código. La petición excedida DEBE recibir `429` `application/problem+json` con `title` «Demasiadas solicitudes», `detail` en español, cabecera `Retry-After` y las cabeceras CORS y de seguridad. La IP DEBE ser la del cliente (con `ForwardedHeaders` activo según el ADR 0013). Las demás políticas (login, asistente) NO DEBEN afectar al registro ni a la inversa.
 
+La IP se agrupa para el límite así: IPv4 exacta e IPv6 por prefijo `/64` (rotar direcciones de un mismo `/64` NO DEBE dar cupo nuevo; una IPv4 incrustada en IPv6 usa su IPv4). El número de particiones vivas del limitador DEBE estar acotado (10 000): superado el tope, las claves nuevas comparten una partición de desbordamiento con el mismo límite. Además, un tope global de altas por ventana de una hora entre todas las IP (`Registration:GlobalHourlyLimit`, 30 por defecto, de 1 a 1000, validado al arrancar con el registro abierto) DEBE responder `429` con `Retry-After` y sin evaluar el código cuando se agota; solo cuentan las compañías creadas (los intentos rechazados liberan su cupo).
+
 #### Scenario: Cinco intentos permitidos
 - DADO la bandera encendida
 - CUANDO se envían 5 registros con código erróneo desde la misma IP
@@ -200,6 +202,16 @@ El nombre de compañía DEBE ser único según `name_normalized` (solo duplicado
 - DADO `ForwardedHeaders:Enabled` = `true` y 5 intentos de una IP
 - CUANDO llega un intento con otra IP en `X-Forwarded-For`
 - ENTONCES no recibe `429`
+
+#### Scenario: Rotación de direcciones IPv6 dentro de un /64
+- DADO `ForwardedHeaders:Enabled` = `true` y 5 intentos desde direcciones distintas de un mismo `/64`
+- CUANDO llega otro intento desde otra dirección de ese `/64`
+- ENTONCES recibe `429`, y uno desde otro `/64` no
+
+#### Scenario: Tope global de altas
+- DADO `Registration:GlobalHourlyLimit` = 2 y dos altas correctas desde IP distintas
+- CUANDO llega un tercer registro desde otra IP
+- ENTONCES recibe `429` con `Retry-After`, sin evaluar el código, y los intentos con código erróneo previos no gastaron el tope
 
 #### Scenario: Independiente del login
 - DADO el registro limitado

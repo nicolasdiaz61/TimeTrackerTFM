@@ -14,9 +14,9 @@ using static TimeTracker.Api.IntegrationTests.Assistant.AssistantConfigurationHt
 namespace TimeTracker.Api.IntegrationTests.Assistant;
 
 /// <summary>
-/// Puente transitorio de la PR 1b (DD-14): con la clave primaria <c>company_id</c> el almacén lee y guarda la fila de la compañía
-/// por defecto, y la configuración guardada sigue llegando al runtime singleton mediante el cargador y el poller. Sin llamadas
-/// a ningún proveedor real: el proveedor es una fábrica falsa que responde «respuesta de {modelo}».
+/// Compañía por defecto (la demo) de extremo a extremo: con la clave primaria <c>company_id</c> el almacén lee y guarda su fila y la
+/// configuración guardada llega al registro de instantáneas (el puente de la 1b se retiró en la 4b). Sin llamadas a ningún proveedor
+/// real: el proveedor es una fábrica falsa que responde «respuesta de {modelo}».
 /// </summary>
 [Collection("Postgres")]
 public sealed class AssistantBridgeTests(PostgresFixture postgres)

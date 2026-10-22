@@ -59,6 +59,11 @@ internal sealed class InMemorySettingsStore : IAssistantSettingsStore
         Audits.Add(audit);
         return Task.FromResult(DeleteOutcome.Deleted);
     }
+
+    public Task<IReadOnlyList<CompanyVersion>> ListVersionsAsync(CancellationToken cancellationToken)
+    {
+        throw new NotImplementedException();
+    }
 }
 
 /// <summary>Cifrado de juguete reversible (XOR, sin texto legible): el texto cifrado lleva proveedor y versión para poder simular fallos de autenticación.</summary>

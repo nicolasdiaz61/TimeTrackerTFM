@@ -8,6 +8,9 @@ internal sealed record DemoUser(string Email, string DisplayName, UserRole Role,
 
 internal static class DemoUsers
 {
+    /// <summary>Dominio de los correos de demostración: el validador de arranque busca usuarios con él cuando el registro está abierto (DD-22).</summary>
+    public const string EmailDomain = "@example.test";
+
     public static readonly DemoUser Manager = new("marta.responsable@example.test", "Marta Ejemplo", UserRole.Manager, DemoScheduleProfiles.Manager);
 
     /// <summary>Reportes directos de Marta.</summary>

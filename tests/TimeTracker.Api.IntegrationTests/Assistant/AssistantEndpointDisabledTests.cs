@@ -1,6 +1,8 @@
 using System.Net;
 using System.Net.Http.Headers;
 
+using Microsoft.Extensions.AI;
+
 using TimeTracker.Api.IntegrationTests.Postgres;
 using TimeTracker.Api.IntegrationTests.Support;
 using TimeTracker.Infrastructure.Tests.Fakes;
@@ -10,9 +12,9 @@ using static TimeTracker.Api.IntegrationTests.Assistant.AssistantClient;
 namespace TimeTracker.Api.IntegrationTests.Assistant;
 
 /// <summary>
-/// «Asistente deshabilitado por compañía» con el puente transitorio activo (PR 4a, DD-14): el runtime singleton solo sirve a la
-/// compañía de plataforma (la demo). Cualquier otra recibe el 503 genérico sin consultar al modelo, tenga o no fila propia, y
-/// jamás la instantánea ni la clave de plataforma. La 4b sustituye el puente por el registro de instantáneas por compañía.
+/// «Asistente deshabilitado por compañía» (DD-14): una compañía sin instantánea con proveedor recibe el 503 genérico sin consultar al
+/// modelo y la configuración de una compañía no la ve otra. Las pruebas con varias compañías y filas reales están en
+/// <c>AssistantRuntimeIsolationTests</c>.
 /// </summary>
 [Collection("Postgres")]
 public sealed class AssistantEndpointDisabledTests(PostgresFixture postgres)
@@ -31,7 +33,7 @@ public sealed class AssistantEndpointDisabledTests(PostgresFixture postgres)
     public async Task ACompanyWithoutPlatformAssistant_GetsTheGeneric503_AndTheModelIsNeverConsulted()
     {
         var model = new FakeChatClient(Reply("no debería llegar"));
-        using var factory = new AssistantApiFactory(model);
+        using var factory = new AssistantApiFactory(model, modelsByCompany: new Dictionary<Guid, IChatClient?> { [AnotherCompany] = null });
 
         var response = await ClientOf(factory, AnotherCompany).AskAsync("hola");
 
@@ -52,30 +54,6 @@ public sealed class AssistantEndpointDisabledTests(PostgresFixture postgres)
         using var body = await ReadAsync(response);
         Assert.Equal("Hola desde la demo", body.RootElement.GetProperty("reply").GetString());
         Assert.Single(model.Calls);
-    }
-
-    [Fact]
-    public async Task ACompanyWithItsOwnRow_StillGetsTheDisabled503_AndNeitherItsSnapshotNorThePlatformKeyIsBuilt()
-    {
-        var fixture = await TwoCompanyFixture.CreateAsync(postgres, freshDatabase: true);
-        using var factory = new AssistantConfigurationApiFactory(fixture.ConnectionString);
-        var managerA = TwoCompanyFixture.ClientFor(factory, fixture.A, fixture.A.Manager);
-        var employeeA = TwoCompanyFixture.ClientFor(factory, fixture.A, fixture.A.Employee1);
-        var saved = await managerA.PutAsync(
-            AssistantConfigurationHttp.Route,
-            AssistantConfigurationHttp.Json("""{"provider":"OpenAI","model":"modelo-a","concurrencyToken":"0","credential":"clave-prueba-123456"}"""),
-            CancellationToken.None);
-        Assert.Equal(HttpStatusCode.OK, saved.StatusCode);
-        var buildsBefore = factory.ChatFactory.Created.Count;
-
-        var asEmployee = await employeeA.AskAsync("hola");
-        var asManager = await managerA.AskAsync("hola");
-
-        Assert.Equal(HttpStatusCode.ServiceUnavailable, asEmployee.StatusCode);
-        Assert.Equal(HttpStatusCode.ServiceUnavailable, asManager.StatusCode);
-        Assert.Equal(DisabledDetail, await ProblemDetailAsync(asEmployee, 503));
-        Assert.Equal(buildsBefore, factory.ChatFactory.Created.Count);
-        Assert.DoesNotContain(factory.ChatFactory.Created, options => options.Model == "modelo-a" || options.ApiKey == "clave-prueba-123456");
     }
 
     [Fact]

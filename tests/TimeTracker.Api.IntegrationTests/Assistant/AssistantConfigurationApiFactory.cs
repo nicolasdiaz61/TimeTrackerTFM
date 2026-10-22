@@ -121,6 +121,9 @@ internal sealed class CountingSettingsStore : IAssistantSettingsStore
         return Task.FromResult<SaveOutcome>(new SaveOutcome.Saved("2"));
     }
 
+    public Task<IReadOnlyList<CompanyVersion>> ListVersionsAsync(CancellationToken cancellationToken)
+        => Task.FromResult<IReadOnlyList<CompanyVersion>>([]);
+
     public Task<DeleteOutcome> DeleteAsync(string expectedToken, AuditEntry audit, CancellationToken cancellationToken)
     {
         WriteCalls++;
@@ -141,6 +144,9 @@ internal sealed class RacingDeleteStore : IAssistantSettingsStore
     public Task<SaveOutcome> SaveAsync(AssistantSettings next, string expectedToken, AuditEntry audit, CancellationToken cancellationToken)
         => throw new NotSupportedException();
 
+    public Task<IReadOnlyList<CompanyVersion>> ListVersionsAsync(CancellationToken cancellationToken)
+        => Task.FromResult<IReadOnlyList<CompanyVersion>>([]);
+
     public Task<DeleteOutcome> DeleteAsync(string expectedToken, AuditEntry audit, CancellationToken cancellationToken)
         => Task.FromResult(DeleteOutcome.Conflict);
 }
@@ -158,4 +164,16 @@ internal sealed class DisplayNameFailingUserRepository : IUserRepository
     public Task<UserAccount?> FindDirectReportAsync(Guid managerId, Guid memberId, CancellationToken cancellationToken) => throw new NotSupportedException();
 
     public Task AddAsync(UserAccount user, CancellationToken cancellationToken) => throw new NotSupportedException();
+
+    public Task<bool> ExistsWithEmailDomainAsync(string domain, CancellationToken cancellationToken) => throw new NotSupportedException();
+
+    public Task<UserAccount?> FindByIdAsync(Guid userId, CancellationToken cancellationToken) => throw new NotSupportedException();
+
+    public Task<AddUserOutcome> AddWithinCapAsync(UserAccount user, int maxUsers, CancellationToken cancellationToken) => throw new NotSupportedException();
+
+    public Task<UserAccount?> FindForUpdateAsync(Guid userId, CancellationToken cancellationToken) => throw new NotSupportedException();
+
+    public Task<UserAccount?> FindDirectReportForUpdateAsync(Guid managerId, Guid memberId, CancellationToken cancellationToken) => throw new NotSupportedException();
+
+    public Task SaveChangesAsync(CancellationToken cancellationToken) => throw new NotSupportedException();
 }

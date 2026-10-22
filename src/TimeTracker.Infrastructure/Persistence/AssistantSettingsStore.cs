@@ -64,6 +64,25 @@ public sealed class AssistantSettingsStore(TimeTrackerDbContext context, ICompan
         }
     }
 
+    public async Task<IReadOnlyList<CompanyVersion>> ListVersionsAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            // company-filter-bypass: el sondeo global lee la versión de todas las compañías (DD-15); no hay compañía en su contexto y no lee datos de configuración.
+            var rows = await (
+                from company in context.Companies.AsNoTracking()
+                join settings in context.Set<AssistantSettingsRecord>().IgnoreQueryFilters().AsNoTracking() on company.Id equals settings.CompanyId into joined
+                from row in joined.DefaultIfEmpty()
+                select new { company.Id, company.UsesPlatformAssistant, Xmin = row == null ? (uint?)null : EF.Property<uint>(row, XminColumn) })
+                .ToListAsync(cancellationToken);
+            return [.. rows.Select(row => new CompanyVersion(row.Id, row.Xmin is { } xmin ? Token(xmin) : NoRowToken, row.UsesPlatformAssistant))];
+        }
+        catch (PostgresException exception) when (IsMissingTable(exception))
+        {
+            return [];
+        }
+    }
+
     public async Task<SaveOutcome> SaveAsync(AssistantSettings next, string expectedToken, AuditEntry audit, CancellationToken cancellationToken)
     {
         if (await TrackRowForSaveAsync(expectedToken, cancellationToken) is not { } row)

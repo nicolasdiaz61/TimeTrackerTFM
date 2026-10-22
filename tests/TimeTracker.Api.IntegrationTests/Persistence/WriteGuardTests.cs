@@ -147,7 +147,7 @@ public class WriteGuardTests(PostgresFixture postgres)
     }
 
     [Fact]
-    public async Task AViolationInARequest_Returns500WithNoDataAndTheLogCarriesNoPersonalData()
+    public async Task AViolationInARequest_Returns500FromTheGuardNotTheForeignKey_WithNoDataAndTheLogCarriesNoPersonalData()
     {
         using var employee = new PostgresApiFactory(postgres.ConnectionString);
         var foreignCompany = await CompanySeed.InsertAsync(postgres.ConnectionString);
@@ -167,7 +167,13 @@ public class WriteGuardTests(PostgresFixture postgres)
         Assert.Equal(HttpStatusCode.InternalServerError, response.StatusCode);
         Assert.DoesNotContain(foreignCompany.ToString(), body, StringComparison.Ordinal);
         Assert.DoesNotContain(employee.EmployeeId.ToString(), body, StringComparison.Ordinal);
+        // El 500 solo prueba la guarda si la causa es la guarda: sin ella, la clave foránea compuesta también daría 500. Por eso se
+        // exige el tipo de excepción de la guarda en el registro y que la clave foránea no haya llegado a actuar.
         var log = new StringBuilder().AppendJoin('\n', logs.Messages).ToString();
+        Assert.Contains(nameof(CompanyScopeViolationException), log, StringComparison.Ordinal);
+        Assert.DoesNotContain("DbUpdateException", log, StringComparison.Ordinal);
+        Assert.DoesNotContain("23503", log, StringComparison.Ordinal);
+        Assert.Equal(["0"], await MigrationDatabase.QueryAsync(postgres.ConnectionString, $"SELECT count(*)::text FROM time_entries WHERE company_id = '{foreignCompany}'"));
         Assert.DoesNotContain(foreignCompany.ToString(), log, StringComparison.Ordinal);
         Assert.DoesNotContain($"{employee.EmployeeId:N}@example.test", log, StringComparison.Ordinal);
     }

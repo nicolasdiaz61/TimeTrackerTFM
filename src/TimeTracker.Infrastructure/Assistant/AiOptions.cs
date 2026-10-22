@@ -51,6 +51,18 @@ public sealed class AiOptions
 
     public int DailyRequestsPerUser { get; set; } = 50;
 
+    /// <summary>Peticiones por minuto de toda una compañía (ventana fija, DD-16). Del entorno: el Manager no la edita.</summary>
+    public int RequestsPerMinutePerCompany { get; set; } = 30;
+
+    /// <summary>Peticiones por día natural de Europe/Madrid de toda una compañía (DD-16). Del entorno: el Manager no la edita.</summary>
+    public int DailyRequestsPerCompany { get; set; } = 500;
+
+    /// <summary>Número máximo de compañías con proveedor cargado a la vez en el registro de instantáneas (DD-14).</summary>
+    public int MaxLoadedCompanies { get; set; } = 100;
+
+    /// <summary>Minutos sin preguntas tras los que se descarga la instantánea de una compañía (DD-14).</summary>
+    public int RuntimeIdleMinutes { get; set; } = 60;
+
     /// <summary>Proveedor configurado, o <c>null</c> si el valor no se reconoce (vacío y <c>None</c> significan deshabilitado).</summary>
     public AiProvider? ResolvedProvider
         => string.IsNullOrWhiteSpace(Provider) ? AiProvider.None
