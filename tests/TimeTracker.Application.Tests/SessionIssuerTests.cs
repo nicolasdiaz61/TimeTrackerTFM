@@ -62,6 +62,20 @@ public class SessionIssuerTests
     }
 
     [Fact]
+    public async Task IsCompanyActiveAsync_IsTrueOnlyForAnExistingActiveCompany_AndIssuesNothing()
+    {
+        _companies.Seed(AcmeId, "Acme Norte");
+        var suspendedId = Guid.NewGuid();
+        _companies.Seed(suspendedId, "Suspendida", CompanyStatus.Suspended);
+        var issuer = CreateIssuer();
+
+        Assert.True(await issuer.IsCompanyActiveAsync(AcmeId, CancellationToken.None));
+        Assert.False(await issuer.IsCompanyActiveAsync(suspendedId, CancellationToken.None));
+        Assert.False(await issuer.IsCompanyActiveAsync(Guid.NewGuid(), CancellationToken.None));
+        Assert.Empty(_issuer.IssuedFor);
+    }
+
+    [Fact]
     public async Task IssueAsync_WithAMissingCompany_ReturnsNullAndIssuesNothing()
     {
         var result = await CreateIssuer().IssueAsync(User(AcmeId), CancellationToken.None);
