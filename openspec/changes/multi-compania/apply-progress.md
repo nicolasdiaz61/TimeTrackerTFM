@@ -1,6 +1,6 @@
 # Progreso de apply: multi-compania
 
-Fase: sdd-apply · Modo: openspec · **Strict TDD** · Rama de la PR 1: `feat/multi-compania-pr1-modelo` (sale de `main` 9e572b8) · Rama de la PR 1b: `feat/multi-compania-pr1b-contraer` (apilada sobre la anterior) · Rama de la PR 3: `feat/multi-compania-pr3-aislamiento` (apilada sobre la PR 2) · Fecha: 2026-10-21
+Fase: sdd-apply · Modo: openspec · **Strict TDD** · Rama de la PR 5: `feat/multi-compania-pr5-registro` (apilada sobre la PR 4b, `feat/multi-compania-pr4b-runtime`, PR #41) · Rama de la PR 1: `feat/multi-compania-pr1-modelo` (sale de `main` 9e572b8) · Rama de la PR 1b: `feat/multi-compania-pr1b-contraer` (apilada sobre la anterior) · Rama de la PR 3: `feat/multi-compania-pr3-aislamiento` (apilada sobre la PR 2) · Fecha: 2026-10-21
 
 ## Estado acumulado
 
@@ -14,7 +14,9 @@ Fase: sdd-apply · Modo: openspec · **Strict TDD** · Rama de la PR 1: `feat/mu
 | PR 3 | 3.1 a 3.12 | **Hechas** (12 de 12; ver la sección PR 3 al final; sin tareas de producción) |
 | PR 4a | 4a.1 a 4a.14 | **Hechas** (ver la sección PR 4a al final) |
 | PR 4b | 4b.1 a 4b.13 | **Hechas** (13 de 13; ver la sección PR 4b al final; sin tareas de producción) |
-| PR 5 a PR 8, tarea 9 | todas | Sin empezar |
+| PR 5 | 5.1 a 5.8 (con 5.6b y 5.7b), 5.10, 5.11, 5.11b, 5.12, 5.13, 5.14 | **Hechas** (16 de 17; ver la sección PR 5 al final) |
+| PR 5 | 5.9 (V-7, `ForwardedHeaders` en producción) | **Pendiente del responsable** (puerta previa a la apertura del registro; apply no accede a Railway) |
+| PR 6 a PR 8, tarea 9 | todas | Sin empezar |
 
 ## Lo que queda al responsable (puertas previas, sin marcar en `tasks.md`)
 
@@ -515,3 +517,93 @@ Avisos de la revisión de la PR 4a: (1) **resuelto** (la compañía que pierde `
 - Los contadores de cuota y las instantáneas son por instancia (ADR 0017): con réplicas, cada una cuenta aparte y converge por el sondeo.
 - Con mucha actividad simultánea el coste real son las conexiones abiertas al proveedor (V-8 mide en reposo).
 - Q-8 (custodia de la clave maestra) sigue abierta.
+
+---
+
+# PR 5 — Autorregistro con código de invitación
+
+Rama `feat/multi-compania-pr5-registro` (apilada sobre `feat/multi-compania-pr4b-runtime`, PR #41; cadena `stacked-to-main`) · Strict TDD · Copia previa en `..\TimeTracker.rollback\pr-mc5\` (82 archivos; la carpeta no existía y se creó) · `Registration__Enabled` **no se activa en ningún entorno**.
+
+## Lo que queda al responsable
+
+Nada de producción en esta PR (sin migración ni cambio de esquema; no se accede a Railway). Puertas previas a la **apertura del registro** (tarea 9.6), no al despliegue de esta PR:
+
+- **5.9 V-7** — confirmar en Railway `ForwardedHeaders__Enabled=true` y `ForwardedHeaders__Hops >= 1` (el valor por defecto en código es 2: «cliente, borde»). Sin ello el límite por IP es una partición global o falseable. El validador de arranque lo exige en `Production` con el registro abierto, así que la API no arrancaría; queda **sin marcar** en `tasks.md`.
+- Al desplegar con el registro cerrado (`Registration__Enabled` sin definir o `false`) la ruta **no existe**: `401` sin token y `404` con token. No hay que definir `Registration__InviteCodes` hasta abrirlo; entonces, de 16 a 128 caracteres por código, solo en Railway, y para rotarlos se sustituye la lista completa.
+- Orden de apertura (runbook, PR 8): `Seed__DemoUsers=false`, comprobar que no se recrean, retirar los usuarios demo, definir los códigos y, al final, `Registration__Enabled=true`. Q-1 (qué hacer con la compañía Demo si tiene usuarios reales) sigue siendo decisión previa del responsable; el validador de arranque (5.11b) impide abrir el registro en `Production` mientras haya correos `@example.test` en la compañía por defecto.
+
+## Commits de esta entrega
+
+| Commit | Mensaje | Contenido |
+|---|---|---|
+| `80fcb07` | `feat(multi-compania): política de contraseñas, código de invitación y caso de uso del autorregistro` | 5.2 a 5.4: `PasswordPolicy`, `InviteCodeValidator`, `RegisterCompanyUseCase`, puerto `ICompanyRegistrationStore`, predicados de dominio, pruebas de arquitectura |
+| `ac78cda` | `feat(multi-compania): almacén del autorregistro con compañía y Manager en un solo guardado` | 5.5: `CompanyRegistrationStore` y lista cerrada de `CreateScope` |
+| `a874dce` | `feat(multi-compania): validadores de arranque del registro y de los usuarios de demostración` | 5.10, 5.11, 5.11b |
+| `3d7baad` | `feat(multi-compania): endpoint de autorregistro con código de invitación, límite por IP y contrato` | 5.6, 5.6b, 5.7, 5.7b, 5.8 y `docs/api/openapi.json` |
+| `bbedb72` | `docs(multi-compania): claves del registro en .env.example y ADR 0022` | 5.12, 5.13 |
+| `83ee1ae` | `fix(multi-compania): el fallo de ForwardedHeaders:Hops explica por qué el límite por IP lo necesita` | mensaje de arranque (5.11) |
+| (este) | `docs(openspec): progreso de apply de la PR 5 de multi-compania` | `tasks.md`, `design.md` (V-7, V-12 y desviaciones), este archivo |
+
+Tamaño (`git diff 58f6557 HEAD` de los seis commits de código y documentación): 63 archivos, **+3 657 / -20**; producción (`src`) **+654 / -13** (30 archivos), pruebas **+2 822 / -6** (29 archivos), documentación (`.env.example`, README y ADR 0022) **+181 / -1**, y `docs/api/openapi.json` generado **+118**. La previsión era de 500-800 líneas: el código de producción cabe; el volumen son las pruebas de una superficie pública (privacidad, límites, arranque).
+
+## Evidencia de Strict TDD (ciclo por tarea)
+
+| Tarea | Archivo de prueba | Capa | Safety net | RED | GREEN | TRIANGULATE | REFACTOR |
+|---|---|---|---|---|---|---|---|
+| 5.1 | — | — | N/A (copia) | N/A | `..\TimeTracker.rollback\pr-mc5\` (82 archivos) | N/A | N/A |
+| 5.2 | `AT/PasswordPolicyTests`, `AT/LoginUseCaseTests` | Unitaria | 17/17 de login | CS0103 («`PasswordPolicy` no existe») | 15/15 y 18/18 | 11/12/13/128/129 caracteres, sin composición, solo espacios, espacios exteriores contados, nulo y vacío, campo nombrado y contraseña nunca repetida; el login acepta 8 caracteres. Mutación: aplicar la política en el login hace fallar 2 pruebas | `FieldError` común |
+| 5.3 | `AT/Companies/InviteCodeValidatorTests`, `AR/RegistrationApplicationTests` | Unitaria / arquitectura | N/A (nuevo) | CS0246 («`InviteCodeValidator` no existe») | 18/18 y 26/26 | Cada código, ausente, en blanco, incorrecto, mayúsculas, 127/128/129, recorte, vacío configurado, sin códigos, `MatchesAny` visita todos aunque coincida el primero. Mutaciones: cortocircuito (falla la prueba de recorrido), sin tope de 128 (falla la de código sobredimensionado) y `==` (falla el escáner de arquitectura) | `MatchesAny` pura e inyectable |
+| 5.4 | `AT/Companies/RegisterCompanyUseCaseTests`, `AR/RegistrationApplicationTests`, `DT` | Unitaria / dominio | suite de aplicación en verde | CS0246 (`RegisterCompanyUseCase`, `ICompanyRegistrationStore`) | 26/26 (+16 de dominio) | Orden código, campos, hash y almacén; cada campo inválido aislado y todos juntos; límites de nombres; duplicados distintos; fallo del almacén sin sesión; emisor común y compañía no activa. Mutaciones: sin comprobar el código y rol `Employee` hacen fallar 5 y 1 | Predicados `IsValid*` compartidos con `Create`; `Created` lleva `CompanyId` (RED: CS1061) |
+| 5.5 | `IT/Registration/CompanyRegistrationStoreTests` | Integración (Testcontainers) | N/A (nuevo) | CS0246 (`CompanyRegistrationStore`) | 7/7 | Un guardado, ámbito de la compañía nueva, nombre y correo duplicados con atomicidad, acento distinto, carrera de dos registros iguales, violación ajena no mapeada, Manager de otra compañía. Mutaciones: intercambiar `DuplicateName` y no añadir el Manager hacen fallar 1 y 3 | `CreateScopeClosedListTests` (RED: llamador fuera de la lista) |
+| 5.10 | `IT/Startup/RegistrationOptionsValidatorTests` | Integración (sin base de datos) | pruebas de arranque existentes en verde | CS0246 (`RegistrationOptions`) | 21/21 | Defecto, no booleano, sin códigos o en blanco, cortos, elemento en blanco, 129 caracteres, 16/128, varios, recorte, duplicados, cerrado ignora los códigos, valor no impreso (una prueba nació roja por la spec: ver desviación 1). Mutaciones: rango del código y validar con el registro cerrado hacen fallar 4 y 3 | — |
+| 5.11 | `IT/Startup/RegistrationStartupGuardsTests` | Integración | pruebas de opciones existentes en verde | 4 de 13 en rojo (sin guardas); la de `Hops = 0` nació «verde a la primera» (ya lo detenía `AddForwardedHeadersBehindProxy`; la ampliación del mensaje tuvo su propio RED antes del commit `83ee1ae`) | 13/13 | Siembra más registro, `DemoData`, solo siembra, solo registro, `Production` con y sin `ForwardedHeaders` (`Hops` 1, 2 y por defecto), fuera de `Production`, cerrado. Cada fallo se comprueba contra una base vacía con migraciones activadas que sigue sin tablas. Mutaciones: sin guarda de siembra y sin comprobar el entorno hacen fallar 2 y 2 | Lectura de las opciones al componer la aplicación |
+| 5.11b | `IT/Startup/DemoUsersStartupGuardTests`, `IT/Persistence/UserEmailDomainTests` | Integración | N/A (nuevo) | CS1061 (`ExistsWithEmailDomainAsync`) | 7/7 y 4/4 | Con usuario demo falla sin correos ni códigos; sin usuarios arranca (tras las migraciones); registro cerrado; fuera de `Production`; correo demo en otra compañía; otro dominio; ámbito de la compañía por defecto; comparación literal del final del correo y acotado por compañía. Mutaciones: guarda inactiva y `Contains` fijo hacen fallar 1 y 3 | `DemoUsers.EmailDomain` |
+| 5.6 | `IT/Registration/RegisterCompanyEndpointTests`, `RegistrationPrivacyTests` | Integración (Testcontainers; Kestrel para el `413`) | N/A (nuevo) | Compilación (el endpoint no existía) | 21/21 y 5/5 | `201` con el cuerpo del login y token de la compañía nueva; la persona queda dentro; hash con espacios y login real; ambos códigos y reutilización; `403` idéntico (cuatro causas) y antes que el `409`; nombre y correo repetidos; acento; carrera; campos aislados; 11/12/128/129; cuerpo ausente y roto; propiedades desconocidas; `413`; asistente `503` en la compañía nueva; privacidad de registros y respuestas con marcador; misma forma con el segundo código. Mutaciones: código en el registro, `403` distinto por causa, sin `AllowAnonymous` y sin tope de cuerpo hacen fallar 1, 1, 29 y 1 | `ProblemDetails` común |
+| 5.6b | `IT/Registration/RegisterWithTokenTests`, `AR/SkipCompanyContextTests` | Integración / arquitectura | suite de arquitectura en verde | CS0246 (`SkipCompanyContextMetadata`) | 5/5 y 7/7 | Token de A: compañía nueva distinta, datos de A intactos, único `Set` con la compañía nueva; sin token; marcador solo en el registro; middleware con y sin marcador. Mutación: sin `SkipCompanyContext` hace fallar 2 | — |
+| 5.7 | `IT/Registration/RegistrationClosedTests`, `AR/OpenApiContractTests` | Integración / arquitectura | pruebas de contrato existentes en verde | Compilación y contrato sin la ruta | 5/5 y 24/24 | Cerrado: `401` sin token y `404` problem+json con token, igual que una ruta inexistente, sin evaluar el código ni leer la base de datos; ruta ausente de la tabla de endpoints (sin definir y `false`); `Production`; abierto, la ruta existe solo con `POST`. Contrato: `post` anónimo con `201/400/403/409/429`, cinco propiedades, sin código ficticio ni ejemplo. Mutación: mapeo siempre activo hace fallar 5 | `DocumentGeneration` fuerza el registro solo al exportar |
+| 5.7b | `IT/Assistant/AssistantContractAndAuthorizationCoverageTests` | Integración | suite de asistente en verde | «Verde a la primera» (ajusta cobertura; el registro ya existía): anónimos tres con el registro cerrado y cuatro con él abierto, `GET /api/asistente` da `405`, contrato vivo de `/api/asistente`; mutación: quitar `AllowAnonymous` del registro hace fallar la cobertura | 5/5 | — | — |
+| 5.8 | `IT/Registration/RegistrationRateLimitTests` | Integración | pruebas de límites existentes en verde | Compilación | 7/7 | Cinco `403` y sexto `429` sin evaluar el código (contador); los éxitos también cuentan; CORS y cuatro cabeceras de seguridad; otra IP; `X-Forwarded-For` antepuesto con un salto; sin `ForwardedHeaders`, partición única; independiente del login. Mutación: límite 6 hace fallar 6 | — |
+| 5.12 | `AR/DeliveryArtifactsTests` | Arquitectura | 45 | 5 de 6 en rojo (claves y comentarios ausentes); la de compose nació «verde a la primera» (mutación: añadir `Registration__` al compose la hace fallar) | 51/51 | `Registration__Enabled=false` única línea activa, códigos y tope comentados sin valor, comentarios exigidos, sin valores de claves maestras, V-12 (`ExportedDocument_KeepsPasswordAndCompanyNameAsLegitimateNames`) | — |
+| 5.13 | `AR/DeliveryArtifactsTests` | Arquitectura | 45 | 3 en rojo (ADR inexistente, recuento de 22, índice) | 51/51 | Contenido del ADR, sin valores secretos, índice del README | — |
+| 5.14 | — | — | Suite completa | — | Puerta de la PR (abajo) | — | `dotnet format` sin cambios |
+
+### Resumen de pruebas
+
+- Total tras la PR: 111 + 426 + 288 + 473 + 268 + 889 = **2 455 pruebas** (antes 2 227; +228: dominio +16, aplicación +60, arquitectura +45, integración +107), todas en verde.
+- Ninguna llamada a un proveedor real de IA; valores inventados (`codigo-prueba-0123456789`, `contrasena-prueba-12345`, `ana@example.test`). Sin `Thread.Sleep` nuevo: la carrera se prueba con dos peticiones simultáneas y el límite sin esperar a que caduque la ventana.
+
+### Evidencia de unidad de trabajo
+
+| Evidencia | Valor |
+|---|---|
+| Prueba focalizada | `T-AT` (resultado y casos de uso del registro), `ASPNETCORE_URLS=http://127.0.0.1:0 T-IT --filter "FullyQualifiedName~Registration"` (todas en verde, Docker), `T-AR` (268) |
+| Arnés de ejecución | La API real con PostgreSQL (Testcontainers): registro con código, token de la compañía nueva usado en `me`, equipo y fichajes, dos compañías A/B con un token vigente de A, límite por IP con y sin `ForwardedHeaders`, Kestrel real para el `413`, arranque en `Production` contra una base vacía con migraciones. Nada contra producción |
+| Límite de reversión | `Registration__Enabled=false` cierra el alta al instante; revertir la PR (seis commits de código y documentación) y restaurar `..\TimeTracker.rollback\pr-mc5\` no toca datos ni esquema |
+
+## Puerta de la PR (todo en verde)
+
+| Paso | Resultado |
+|---|---|
+| DOCKER-CHECK | `docker info` responde (29.7.2); solo lectura |
+| Entorno limpio | Sin variables `Cors__`, `ConnectionStrings__`, `Database__`, `Jwt__`, `Seed__`, `Ai__`, `Registration__`, `Company__`, `ForwardedHeaders__`, `ASPNETCORE_`, `DOTNET_ENVIRONMENT` |
+| RESTORE | Correcto |
+| BUILD | `-warnaserror`: 0 advertencias, 0 errores |
+| TEST | Domain 111, Application 426, Web 288, Infrastructure 473, Architecture 268, Api.Integration 889: 0 fallos (con `ASPNETCORE_URLS=http://127.0.0.1:0` solo en ese comando) |
+| COV-A | Application: líneas 99,6 %, ramas 96,8 % (mínimo 80 %) |
+| COV-D | Domain: líneas 100,0 %, ramas 100,0 % (mínimo 100 %) |
+| FORMAT | `--verify-no-changes`: sin cambios |
+| VULN | Sin `has the following vulnerable packages` |
+| EF-PENDING | «No changes have been made to the model since the last migration»; sin modelo ni migración nuevos |
+| Contrato | `dotnet build src/TimeTracker.Api --no-incremental`: el `docs/api/openapi.json` conserva el mismo SHA-256 (comprobado a mano) |
+
+## Desviaciones
+
+Detalle en `design.md`, sección 9, «Desviaciones y aclaraciones del diseño surgidas en la PR 5»: el ejemplo `corto-secreto-prueba` de la spec mide 20 caracteres (la prueba usa uno de 15), `Hops < 1` ya lo detenía el registro de `ForwardedHeaders` (solo se amplía el mensaje), las opciones se validan al componer la aplicación, `Created` lleva `CompanyId` para el registro de metadatos, predicados de dominio compartidos, un `Content-Type` no JSON anónimo recibe `401` (no llega al endpoint, como el login), la comprobación del SHA-256 del contrato se hizo a mano, dos entradas nuevas en la lista cerrada de `CreateScope`, aislamiento del entorno de pruebas ampliado y registro del rechazo por límite.
+
+## Riesgos abiertos
+
+- **V-7 sin comprobar en Railway** (5.9): bloquea la apertura del registro, no el código ni su despliegue con el registro cerrado.
+- **Enumeración por `409`** y **registro sin verificación de correo** (aceptados, ADR 0022): un código filtrado permite altas hasta que se sustituya la lista completa.
+- **Los contadores del limitador son por instancia** (ADR 0017): con réplicas, cada una cuenta aparte y reinicia al desplegar.
+- **Límite de cuerpo de 4 KiB** (`413`) es una decisión de diseño no fijada por la spec.
+- Q-1, Q-8 y Q-10 (proceso operativo de apertura y rotación) siguen abiertas.
