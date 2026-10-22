@@ -1,4 +1,5 @@
 using System.Text.RegularExpressions;
+using static TimeTracker.ArchitectureTests.SourceText;
 
 namespace TimeTracker.ArchitectureTests;
 
@@ -42,12 +43,6 @@ public partial class PasswordChangePendingMarkerTests
 
     private static string Relative(string file) => Path.GetRelativePath(RepositoryRoot.Path, file).Replace('\\', '/');
 
-    private static string StripComments(string source)
-        => string.Join('\n', source.Split('\n').Select(line =>
-        {
-            var comment = line.IndexOf("//", StringComparison.Ordinal);
-            return comment < 0 ? line : line[..comment];
-        }));
 
     // Una llamada: «.AllowWhilePasswordChangePending(» sin la declaración (que lleva «<TBuilder>» tras el nombre).
     [GeneratedRegex(@"\.AllowWhilePasswordChangePending\s*\(")]

@@ -1,5 +1,6 @@
 using System.Reflection;
 using System.Text.RegularExpressions;
+using static TimeTracker.ArchitectureTests.SourceText;
 
 namespace TimeTracker.ArchitectureTests;
 
@@ -94,12 +95,6 @@ public partial class RegistrationApplicationTests
                 && !file.Contains($"{separator}bin{separator}", StringComparison.Ordinal));
     }
 
-    private static string StripComments(string source)
-        => string.Join('\n', source.Split('\n').Select(line =>
-        {
-            var comment = line.IndexOf("//", StringComparison.Ordinal);
-            return comment < 0 ? line : line[..comment];
-        }));
 
     [GeneratedRegex(@"==|!=|\.Equals\s*\(|\bEquals\s*\(|\.Compare\w*\s*\(|\bSequenceEqual\s*\(|\.StartsWith\s*\(|\.EndsWith\s*\(")]
     private static partial Regex ShortCircuitingComparisonPattern();

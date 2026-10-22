@@ -1,5 +1,6 @@
 using System.Reflection;
 using System.Text.RegularExpressions;
+using static TimeTracker.ArchitectureTests.SourceText;
 
 namespace TimeTracker.ArchitectureTests;
 
@@ -59,12 +60,6 @@ public partial class SkipCompanyContextTests
 
     private static string Relative(string file) => Path.GetRelativePath(RepositoryRoot.Path, file).Replace('\\', '/');
 
-    private static string StripComments(string source)
-        => string.Join('\n', source.Split('\n').Select(line =>
-        {
-            var comment = line.IndexOf("//", StringComparison.Ordinal);
-            return comment < 0 ? line : line[..comment];
-        }));
 
     // Una llamada: «.SkipCompanyContext(» sin tipo genérico delante ni declaración (la declaración lleva «<TBuilder>»).
     [GeneratedRegex(@"\.SkipCompanyContext\s*\(")]
