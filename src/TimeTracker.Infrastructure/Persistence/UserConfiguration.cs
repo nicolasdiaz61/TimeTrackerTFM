@@ -8,6 +8,9 @@ namespace TimeTracker.Infrastructure.Persistence;
 
 internal sealed class UserConfiguration : IEntityTypeConfiguration<UserAccount>
 {
+    // Compartido con la traducción del conflicto del autorregistro (CompanyRegistrationStore).
+    public const string EmailIndexName = "ux_users_email";
+
     public void Configure(EntityTypeBuilder<UserAccount> builder)
     {
         // Las FK usan NO ACTION (no RESTRICT): PostgreSQL rechaza el borrado con 23503 en vez de 23001; protege igual.
@@ -50,7 +53,7 @@ internal sealed class UserConfiguration : IEntityTypeConfiguration<UserAccount>
             .OnDelete(DeleteBehavior.NoAction)
             .HasConstraintName("fk_users_users_company_id_manager_id");
 
-        builder.HasIndex(user => user.Email).HasDatabaseName("ux_users_email").IsUnique();
+        builder.HasIndex(user => user.Email).HasDatabaseName(EmailIndexName).IsUnique();
         builder.HasIndex(user => new { user.CompanyId, user.ManagerId }).HasDatabaseName("ix_users_company_id_manager_id");
     }
 }
