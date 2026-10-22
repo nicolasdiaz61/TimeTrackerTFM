@@ -5,13 +5,19 @@ namespace TimeTracker.Application.Tests.Fakes;
 /// <summary>Hasher falso y determinista que cuenta las verificaciones y las hechas con hash nulo.</summary>
 internal sealed class FakePasswordHasher : IPasswordHasher
 {
+    public int HashCalls { get; private set; }
+
     public int VerifyCalls { get; private set; }
 
     public int NullHashVerifications { get; private set; }
 
     public string? LastVerifiedPassword { get; private set; }
 
-    public string Hash(string password) => HashOf(password);
+    public string Hash(string password)
+    {
+        HashCalls++;
+        return HashOf(password);
+    }
 
     public bool Verify(string? passwordHash, string password)
     {

@@ -116,25 +116,30 @@ public sealed class UserAccount
         }
     }
 
+    /// <summary>Indica si el correo cumple la regla de <see cref="Create"/> (no vacío, con arroba y de hasta 254 caracteres), para validar antes de crear.</summary>
+    public static bool IsValidEmail(string email)
+        => NormalizeEmail(email) is { Length: >= 1 and <= MaxEmailLength } normalized && normalized.Contains('@', StringComparison.Ordinal);
+
+    /// <summary>Indica si el nombre cumple la regla de <see cref="Create"/> (de 1 a 100 caracteres tras recortar), para validar antes de crear.</summary>
+    public static bool IsValidDisplayName(string displayName) => displayName.Trim().Length is >= 1 and <= MaxDisplayNameLength;
+
     private static string RequireValidEmail(string email)
     {
-        var normalized = NormalizeEmail(email);
-        if (normalized.Length == 0 || normalized.Length > MaxEmailLength || !normalized.Contains('@', StringComparison.Ordinal))
+        if (!IsValidEmail(email))
         {
             throw new ArgumentException("El correo debe ser válido y tener como máximo 254 caracteres.", nameof(email));
         }
 
-        return normalized;
+        return NormalizeEmail(email);
     }
 
     private static string RequireValidDisplayName(string displayName)
     {
-        var trimmed = displayName.Trim();
-        if (trimmed.Length == 0 || trimmed.Length > MaxDisplayNameLength)
+        if (!IsValidDisplayName(displayName))
         {
             throw new ArgumentException("El nombre debe tener entre 1 y 100 caracteres.", nameof(displayName));
         }
 
-        return trimmed;
+        return displayName.Trim();
     }
 }

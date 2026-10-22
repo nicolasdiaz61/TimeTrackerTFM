@@ -25,6 +25,7 @@ public static class AuthenticationServiceCollectionExtensions
         services.AddSingleton<IAccessTokenIssuer, JwtAccessTokenIssuer>();
         services.AddScoped<SessionIssuer>();
         services.AddScoped<LoginUseCase>();
+        services.AddScoped<ChangePasswordUseCase>();
 
         // La identidad del empleado sale del claim sub del token (DD-14); ya no existe identidad provisional.
         services.AddHttpContextAccessor();

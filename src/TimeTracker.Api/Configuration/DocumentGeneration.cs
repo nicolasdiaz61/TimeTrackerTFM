@@ -23,6 +23,10 @@ internal static class DocumentGeneration
         ["Jwt:SigningKey"] = "clave-ficticia-solo-para-exportar-openapi-0123456789",
         // La exportación del contrato nunca siembra usuarios (V21).
         ["Seed:DemoUsers"] = "false",
+        // Solo al exportar, el contrato documenta siempre el registro (DD-19): bandera abierta con un código ficticio que no es un secreto
+        // real y que el contrato no contiene. Fuera de la exportación el registro sigue apagado por defecto.
+        ["Registration:Enabled"] = "true",
+        ["Registration:InviteCodes"] = "codigo-ficticio-solo-para-exportar-openapi",
     };
 
     public static bool IsRunningUnderTool { get; } = Assembly.GetEntryAssembly()?.GetName().Name == ToolAssemblyName;

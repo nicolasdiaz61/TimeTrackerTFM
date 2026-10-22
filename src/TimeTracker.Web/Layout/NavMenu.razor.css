@@ -89,3 +89,14 @@
         overflow-y: auto;
     }
 }
+
+.session-user-text {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+}
+
+.session-company {
+    font-size: 0.8rem;
+    opacity: 0.75;
+}

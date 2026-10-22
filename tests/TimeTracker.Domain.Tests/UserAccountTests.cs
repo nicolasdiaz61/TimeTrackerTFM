@@ -238,4 +238,35 @@ public class UserAccountTests
         Assert.Equal(PasswordHash, user.PasswordHash);
         Assert.True(user.MustChangePassword);
     }
+
+    [Theory]
+    [InlineData("luis.empleado@example.test", true)]
+    [InlineData("  LUIS@Example.test  ", true)]
+    [InlineData("sin-arroba", false)]
+    [InlineData("", false)]
+    [InlineData("   ", false)]
+    public void IsValidEmail_AppliesTheSameRulesAsCreate(string email, bool expected)
+        => Assert.Equal(expected, UserAccount.IsValidEmail(email));
+
+    [Fact]
+    public void IsValidEmail_AcceptsExactly254CharactersAndRejects255()
+    {
+        Assert.True(UserAccount.IsValidEmail(new string('a', UserAccount.MaxEmailLength - "@example.test".Length) + "@example.test"));
+        Assert.False(UserAccount.IsValidEmail(new string('a', UserAccount.MaxEmailLength - "@example.test".Length + 1) + "@example.test"));
+    }
+
+    [Theory]
+    [InlineData("Luis Empleado", true)]
+    [InlineData("  x  ", true)]
+    [InlineData("", false)]
+    [InlineData("   ", false)]
+    public void IsValidDisplayName_RequiresAtLeastOneCharacterAfterTrimming(string name, bool expected)
+        => Assert.Equal(expected, UserAccount.IsValidDisplayName(name));
+
+    [Fact]
+    public void IsValidDisplayName_AcceptsExactly100CharactersAfterTrimmingAndRejects101()
+    {
+        Assert.True(UserAccount.IsValidDisplayName($" {new string('n', UserAccount.MaxDisplayNameLength)} "));
+        Assert.False(UserAccount.IsValidDisplayName(new string('n', UserAccount.MaxDisplayNameLength + 1)));
+    }
 }

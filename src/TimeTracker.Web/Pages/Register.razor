@@ -1,0 +1,79 @@
+@page "/registro"
+@using TimeTracker.Web.Registration
+@inject IRegistrationApi Api
+@inject ISessionSignIn Session
+@inject NavigationManager Navigation
+
+<PageTitle>Registrar compañía - TimeTracker</PageTitle>
+
+<h1>Registrar compañía</h1>
+
+<p>Cree su compañía y su cuenta de responsable. Necesita un código de invitación.</p>
+
+@* Todo texto del servidor se pinta con @ (Blazor lo escapa): nunca como HTML. La contraseña y el código se vacían tras cada respuesta. *@
+<EditForm Model="form" OnSubmit="SubmitAsync" FormName="register" class="registration-form">
+    <div class="mb-3">
+        <label for="company-name" class="form-label">Nombre de la compañía</label>
+        <InputText id="company-name" class="form-control" maxlength="100" autocomplete="organization" @bind-Value="form.CompanyName" />
+        <FieldErrors Messages="@(form.ErrorsFor("companyName"))" />
+    </div>
+    <div class="mb-3">
+        <label for="manager-name" class="form-label">Su nombre</label>
+        <InputText id="manager-name" class="form-control" maxlength="100" autocomplete="name" @bind-Value="form.ManagerName" />
+        <FieldErrors Messages="@(form.ErrorsFor("managerName"))" />
+    </div>
+    <div class="mb-3">
+        <label for="email" class="form-label">Correo electrónico</label>
+        <InputText id="email" class="form-control" type="email" autocomplete="username" @bind-Value="form.Email" />
+        <FieldErrors Messages="@(form.ErrorsFor("email"))" />
+    </div>
+    <div class="mb-3">
+        <label for="password" class="form-label">Contraseña</label>
+        <InputText id="password" class="form-control" type="password" autocomplete="new-password" @bind-Value="form.Password" />
+        <div class="form-text">Entre 12 y 128 caracteres.</div>
+        <FieldErrors Messages="@(form.ErrorsFor("password"))" />
+    </div>
+    <div class="mb-3">
+        <label for="confirm-password" class="form-label">Confirmar contraseña</label>
+        <InputText id="confirm-password" class="form-control" type="password" autocomplete="new-password" @bind-Value="form.ConfirmPassword" />
+        <FieldErrors Messages="@(form.ErrorsFor("confirmPassword"))" />
+    </div>
+    <div class="mb-3">
+        <label for="invite-code" class="form-label">Código de invitación</label>
+        <InputText id="invite-code" class="form-control" type="password" autocomplete="off" @bind-Value="form.InviteCode" />
+        <FieldErrors Messages="@(form.ErrorsFor("inviteCode"))" />
+    </div>
+
+    @if (form.ErrorMessage is not null)
+    {
+        <div class="alert alert-danger" role="alert" data-testid="registration-error">
+            @form.ErrorMessage
+            @if (form.OtherErrors.Count > 0)
+            {
+                <ul class="mb-0">
+                    @foreach (var message in form.OtherErrors)
+                    {
+                        <li>@message</li>
+                    }
+                </ul>
+            }
+        </div>
+    }
+
+    <button type="submit" class="btn btn-primary" disabled="@form.IsBusy">Crear compañía</button>
+</EditForm>
+
+@code {
+    private RegisterForm form = default!;
+
+    protected override void OnInitialized() => form = new RegisterForm(Api, Session);
+
+    private async Task SubmitAsync()
+    {
+        await form.SubmitAsync();
+        if (form.NavigateTo is { } target)
+        {
+            Navigation.NavigateTo(target);
+        }
+    }
+}
