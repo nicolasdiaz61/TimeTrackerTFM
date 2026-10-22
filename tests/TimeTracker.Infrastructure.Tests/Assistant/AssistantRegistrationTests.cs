@@ -10,8 +10,11 @@ using TimeTracker.Application.Team;
 using TimeTracker.Application.Tests.Fakes;
 using TimeTracker.Application.TimeTracking;
 using TimeTracker.Application.Users;
+using TimeTracker.Domain.Companies;
 using TimeTracker.Domain.Users;
 using TimeTracker.Infrastructure.Assistant;
+using TimeTracker.Infrastructure.Persistence;
+using TimeTracker.Infrastructure.Tests.Fakes;
 
 namespace TimeTracker.Infrastructure.Tests.Assistant;
 
@@ -33,7 +36,14 @@ public sealed class AssistantRegistrationTests
         services.AddScoped<GetTimeEntriesUseCase>();
         services.AddScoped<GetTeamMembersUseCase>();
         services.AddScoped<GetTeamMemberTimeEntriesUseCase>();
+        services.AddScoped<RecordingCompanyContext>();
+        services.AddScoped<ICompanyContextSetter>(scope => scope.GetRequiredService<RecordingCompanyContext>());
+        services.AddSingleton<ICompanyScopeFactory, CompanyScopeFactory>();
         services.AddAssistant();
+        // Sin base de datos: la compañía por defecto es la de plataforma (usa el entorno), como la demo.
+        var reader = new FakeCompanySettingsReader();
+        reader.Set(Company.DefaultId, stored: null, usesPlatform: true);
+        services.AddSingleton<ICompanySettingsReader>(reader);
         return services.BuildServiceProvider(new ServiceProviderOptions { ValidateScopes = true, ValidateOnBuild = true });
     }
 
@@ -55,7 +65,7 @@ public sealed class AssistantRegistrationTests
         await using var scope = provider.CreateAsyncScope();
         var engine = scope.ServiceProvider.GetRequiredService<IAssistantEngine>();
 
-        Assert.False(engine.IsEnabled);
+        Assert.Equal(AssistantAvailability.Disabled, await engine.GetAvailabilityAsync(CancellationToken.None));
         Assert.Null(await engine.ReplyAsync(new AssistantConversation([], "Hola"), CancellationToken.None));
     }
 
@@ -68,7 +78,7 @@ public sealed class AssistantRegistrationTests
 
         await using var scope = provider.CreateAsyncScope();
 
-        Assert.True(scope.ServiceProvider.GetRequiredService<IAssistantEngine>().IsEnabled);
+        Assert.Equal(AssistantAvailability.Enabled, await scope.ServiceProvider.GetRequiredService<IAssistantEngine>().GetAvailabilityAsync(CancellationToken.None));
     }
 
     [Theory]
@@ -80,18 +90,18 @@ public sealed class AssistantRegistrationTests
 
         await using var scope = provider.CreateAsyncScope();
 
-        Assert.True(scope.ServiceProvider.GetRequiredService<IAssistantEngine>().IsEnabled);
+        Assert.Equal(AssistantAvailability.Enabled, await scope.ServiceProvider.GetRequiredService<IAssistantEngine>().GetAvailabilityAsync(CancellationToken.None));
     }
 
     [Fact]
-    public async Task Lifetimes_ClientAndQuotaAreSingletonsAndEngineAndToolsetAreScoped()
+    public async Task Lifetimes_RegistryAndQuotaAreSingletonsAndEngineAndToolsetAreScoped()
     {
         await using var provider = Build(("Ai:Provider", "Ollama"), ("Ai:Model", "m"), ("Ai:Endpoint", "http://localhost:11434/"));
 
         await using var first = provider.CreateAsyncScope();
         await using var second = provider.CreateAsyncScope();
 
-        Assert.Same(first.ServiceProvider.GetRequiredService<AssistantChatClient>(), second.ServiceProvider.GetRequiredService<AssistantChatClient>());
+        Assert.Same(first.ServiceProvider.GetRequiredService<IAssistantRuntimeRegistry>(), second.ServiceProvider.GetRequiredService<IAssistantRuntimeRegistry>());
         Assert.Same(first.ServiceProvider.GetRequiredService<IAssistantQuota>(), second.ServiceProvider.GetRequiredService<IAssistantQuota>());
         Assert.IsType<InMemoryAssistantQuota>(first.ServiceProvider.GetRequiredService<IAssistantQuota>());
         Assert.NotSame(first.ServiceProvider.GetRequiredService<IAssistantEngine>(), second.ServiceProvider.GetRequiredService<IAssistantEngine>());
@@ -100,7 +110,7 @@ public sealed class AssistantRegistrationTests
     }
 
     [Fact]
-    public async Task TheReloadPieces_AreSingletonsAndTheReloaderSharesTheLoaderAndTheClient()
+    public async Task TheReloadPieces_AreSingletons()
     {
         await using var provider = Build(("Ai:Provider", "Ollama"), ("Ai:Model", "m"), ("Ai:Endpoint", "http://localhost:11434/"));
 
@@ -108,7 +118,6 @@ public sealed class AssistantRegistrationTests
         Assert.Same(provider.GetRequiredService<IAssistantEnvironment>(), provider.GetRequiredService<IAssistantEnvironment>());
         Assert.IsType<AssistantRuntimeReloader>(provider.GetRequiredService<IAssistantRuntimeReloader>());
         Assert.Same(provider.GetRequiredService<IAssistantRuntimeReloader>(), provider.GetRequiredService<IAssistantRuntimeReloader>());
-        Assert.Same(provider.GetRequiredService<IAssistantSettingsLoader>(), provider.GetRequiredService<IAssistantSettingsLoader>());
     }
 
     [Fact]

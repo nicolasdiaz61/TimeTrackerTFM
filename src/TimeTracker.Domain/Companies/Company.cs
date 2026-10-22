@@ -48,11 +48,12 @@ public sealed class Company
             throw new ArgumentException("El identificador de la compañía no puede estar vacío.", nameof(id));
         }
 
-        var trimmed = name.Trim();
-        if (trimmed.Length == 0 || trimmed.Length > MaxNameLength)
+        if (!IsValidName(name))
         {
             throw new ArgumentException("El nombre de la compañía debe tener entre 1 y 100 caracteres.", nameof(name));
         }
+
+        var trimmed = name.Trim();
 
         if (createdAt.Offset != TimeSpan.Zero)
         {
@@ -61,6 +62,9 @@ public sealed class Company
 
         return new(id, trimmed, NormalizeName(trimmed), CompanyStatus.Active, usesPlatformAssistant, createdAt);
     }
+
+    /// <summary>Indica si el nombre cumple la regla de <see cref="Create"/> (de 1 a 100 caracteres tras recortar), para validar antes de crear.</summary>
+    public static bool IsValidName(string name) => name.Trim().Length is >= 1 and <= MaxNameLength;
 
     // Recorta, colapsa los espacios internos y pasa a minúsculas invariantes; no pliega acentos ni aplica FormKC (decisión del usuario).
     public static string NormalizeName(string name)

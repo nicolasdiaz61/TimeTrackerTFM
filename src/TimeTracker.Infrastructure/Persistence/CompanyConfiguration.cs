@@ -10,6 +10,9 @@ internal sealed class CompanyConfiguration : IEntityTypeConfiguration<Company>
     // Nombre compartido con la traducción del conflicto de la compañía por defecto (CompanyRepository).
     public const string PrimaryKeyName = "PK_companies";
 
+    // Compartido con la traducción del conflicto del autorregistro (CompanyRegistrationStore).
+    public const string NormalizedNameIndexName = "ux_companies_name_normalized";
+
     public void Configure(EntityTypeBuilder<Company> builder)
     {
         // Las CHECK son defensa en profundidad: las reglas viven en Domain. El estado se guarda como texto.
@@ -27,6 +30,6 @@ internal sealed class CompanyConfiguration : IEntityTypeConfiguration<Company>
         builder.Property(company => company.UsesPlatformAssistant).HasColumnName("uses_platform_assistant").HasDefaultValue(false).IsRequired();
         builder.Property(company => company.CreatedAt).HasColumnName("created_at").HasColumnType("timestamp with time zone").IsRequired();
 
-        builder.HasIndex(company => company.NameNormalized).HasDatabaseName("ux_companies_name_normalized").IsUnique();
+        builder.HasIndex(company => company.NameNormalized).HasDatabaseName(NormalizedNameIndexName).IsUnique();
     }
 }

@@ -62,6 +62,26 @@ public class DemoSeedingCompanyTests(PostgresFixture postgres)
     }
 
     [Fact]
+    public async Task Seeding_WithTheFilterActiveAndOtherCompaniesPresent_IsIdempotentAndLeavesThemUntouched()
+    {
+        // TC-19: la siembra corre bajo el filtro (CreateScope + FindByEmailAsync); las compañías ajenas ni se ven ni se tocan.
+        var fixture = await TwoCompanyFixture.CreateAsync(postgres, freshDatabase: true);
+        var others = $"SELECT id || '|' || company_id || '|' || email FROM users WHERE company_id <> '{Company.DefaultId}' UNION ALL SELECT id || '|' || company_id || '|' || clock_in_at FROM time_entries WHERE company_id <> '{Company.DefaultId}' ORDER BY 1";
+        var before = await QueryAsync(fixture.ConnectionString, others);
+
+        for (var boot = 0; boot < 2; boot++)
+        {
+            using var factory = CreateFactory(fixture.ConnectionString, demoData: true);
+            _ = factory.CreateClient();
+        }
+
+        Assert.Equal(before, await QueryAsync(fixture.ConnectionString, others));
+        Assert.Equal(["4"], await QueryAsync(fixture.ConnectionString, $"SELECT count(*)::text FROM users WHERE company_id = '{Company.DefaultId}'"));
+        Assert.Equal([Company.DefaultId.ToString()], await QueryAsync(fixture.ConnectionString, $"SELECT DISTINCT company_id::text FROM time_entries WHERE company_id = '{Company.DefaultId}'"));
+        Assert.NotEqual(["0"], await QueryAsync(fixture.ConnectionString, $"SELECT count(*)::text FROM time_entries WHERE company_id = '{Company.DefaultId}'"));
+    }
+
+    [Fact]
     public async Task Seeding_WithADemoEmailInAnotherCompany_FailsStartupWithoutThePasswordAndChangesNothing()
     {
         var connectionString = await MigratedDatabaseAsync();
@@ -101,7 +121,7 @@ public class DemoSeedingCompanyTests(PostgresFixture postgres)
             .UseNpgsql(connectionString)
             .AddInterceptors(new RacingSqlInterceptor(connectionString, race))
             .Options;
-        await using var context = new TimeTrackerDbContext(options);
+        await using var context = new TimeTrackerDbContext(options, new TestCompanyContext(null));
 
         await new CompanyRepository(context, TimeProvider.System).EnsureDefaultAsync(CancellationToken.None);
 
@@ -130,6 +150,20 @@ public class DemoSeedingCompanyTests(PostgresFixture postgres)
 
     private static Task InsertOtherCompanyAsync(string connectionString)
         => ExecuteAsync(connectionString, $"INSERT INTO companies (id, name, name_normalized, status, uses_platform_assistant, created_at) VALUES ('{OtherCompany}', 'Otra', 'otra', 'Active', false, now())");
+
+    [Fact]
+    public async Task Seeding_ActsInsideTheScopeOfTheDefaultCompany()
+    {
+        var connectionString = await MigratedDatabaseAsync();
+        var recorder = new RecordingCompanyScopeFactory();
+
+        using var factory = CreateFactory(connectionString, demoData: true).WithWebHostBuilder(recorder.InstallOn);
+        _ = factory.CreateClient();
+
+        // Una petición por cada sembrador (usuarios y fichajes), siempre con la compañía por defecto.
+        Assert.Equal([Company.DefaultId, Company.DefaultId], recorder.Requested);
+        Assert.Equal([Company.DefaultId.ToString()], await QueryAsync(connectionString, "SELECT DISTINCT company_id::text FROM users"));
+    }
 
     private static WebApplicationFactory<Program> CreateFactory(string connectionString, bool demoData)
         => new ApiFactory().WithWebHostBuilder(builder =>

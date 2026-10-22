@@ -9,6 +9,14 @@ namespace TimeTracker.Infrastructure.Persistence;
 
 public sealed class CompanyRepository(TimeTrackerDbContext context, TimeProvider clock) : ICompanyRepository
 {
+    // Lectura por clave primaria de `companies`, que no lleva filtro de compañía (DD-8): no necesita IgnoreQueryFilters.
+    public Task<CompanyLoginInfo?> FindLoginInfoAsync(Guid companyId, CancellationToken cancellationToken)
+        => context.Companies
+            .AsNoTracking()
+            .Where(company => company.Id == companyId)
+            .Select(company => new CompanyLoginInfo(company.Name, company.Status, company.UsesPlatformAssistant))
+            .SingleOrDefaultAsync(cancellationToken);
+
     public async Task EnsureDefaultAsync(CancellationToken cancellationToken)
     {
         if (await context.Companies.AnyAsync(company => company.Id == Company.DefaultId, cancellationToken))

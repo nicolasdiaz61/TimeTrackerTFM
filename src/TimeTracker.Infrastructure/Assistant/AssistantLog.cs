@@ -22,4 +22,8 @@ internal static partial class AssistantLog
         Message = "Consulta del asistente por {EmployeeId} ({Provider}/{Model}): {Outcome} en {ElapsedMs} ms ({ExceptionType})")]
     public static partial void QueryFailed(
         ILogger logger, Guid employeeId, string? provider, string? model, string outcome, long elapsedMs, string exceptionType);
+
+    [LoggerMessage(EventId = 4, Level = LogLevel.Warning,
+        Message = "No se pudo cargar la configuración del asistente de la compañía ({ExceptionType}); la petición recibe «no disponible» y la siguiente reintenta.")]
+    public static partial void RuntimeLoadFailed(ILogger logger, string exceptionType);
 }

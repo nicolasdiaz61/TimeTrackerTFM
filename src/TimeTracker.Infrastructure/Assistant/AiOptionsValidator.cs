@@ -16,19 +16,34 @@ public sealed class AiOptionsValidator : IValidateOptions<AiOptions>
     public const int MaxRequestsPerMinute = 60;
     public const int MinDailyRequestsPerUser = 1;
     public const int MaxDailyRequestsPerUser = 1000;
+    public const int MinRequestsPerMinutePerCompany = 1;
+    public const int MaxRequestsPerMinutePerCompany = 600;
+    public const int MinDailyRequestsPerCompany = 1;
+    public const int MaxDailyRequestsPerCompany = 100000;
+    public const int MinLoadedCompanies = 1;
+    public const int MaxLoadedCompaniesLimit = 1000;
+    public const int MinRuntimeIdleMinutes = 1;
+    public const int MaxRuntimeIdleMinutes = 1440;
     private const int MinSettingsPollSeconds = 1;
     private const int MaxSettingsPollSeconds = 300;
 
     public ValidateOptionsResult Validate(string? name, AiOptions options)
     {
+        var failures = new List<string>();
         var provider = options.ResolvedProvider;
         if (provider is null)
         {
-            return ValidateOptionsResult.Fail("Ai:Provider: el valor no es válido. Use Anthropic, OpenAI, Gemini, Ollama o déjelo vacío para deshabilitar el asistente.");
+            failures.Add("Ai:Provider: el valor no es válido. Use Anthropic, OpenAI, Gemini, Ollama o déjelo vacío para deshabilitar el asistente.");
         }
 
-        var failures = new List<string>();
+        // Se validan siempre, aunque el entorno no tenga proveedor: limitan lo que cualquier compañía puede hacer.
         CheckAllowedProviders(failures, options);
+        CheckCompanyLimits(failures, options);
+        if (provider is null)
+        {
+            return ValidateOptionsResult.Fail(failures);
+        }
+
         if (provider == AiProvider.None)
         {
             return failures.Count == 0 ? ValidateOptionsResult.Success : ValidateOptionsResult.Fail(failures);
@@ -67,6 +82,14 @@ public sealed class AiOptionsValidator : IValidateOptions<AiOptions>
         CheckRange(failures, nameof(AiOptions.SettingsPollSeconds), options.SettingsPollSeconds, MinSettingsPollSeconds, MaxSettingsPollSeconds);
 
         return failures.Count == 0 ? ValidateOptionsResult.Success : ValidateOptionsResult.Fail(failures);
+    }
+
+    private static void CheckCompanyLimits(List<string> failures, AiOptions options)
+    {
+        CheckRange(failures, nameof(AiOptions.RequestsPerMinutePerCompany), options.RequestsPerMinutePerCompany, MinRequestsPerMinutePerCompany, MaxRequestsPerMinutePerCompany);
+        CheckRange(failures, nameof(AiOptions.DailyRequestsPerCompany), options.DailyRequestsPerCompany, MinDailyRequestsPerCompany, MaxDailyRequestsPerCompany);
+        CheckRange(failures, nameof(AiOptions.MaxLoadedCompanies), options.MaxLoadedCompanies, MinLoadedCompanies, MaxLoadedCompaniesLimit);
+        CheckRange(failures, nameof(AiOptions.RuntimeIdleMinutes), options.RuntimeIdleMinutes, MinRuntimeIdleMinutes, MaxRuntimeIdleMinutes);
     }
 
     // La lista limita lo que un Manager puede elegir aunque el entorno no tenga proveedor, así que se valida siempre.

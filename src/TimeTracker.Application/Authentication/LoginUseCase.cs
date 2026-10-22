@@ -3,7 +3,7 @@ using TimeTracker.Domain.Users;
 
 namespace TimeTracker.Application.Authentication;
 
-public sealed class LoginUseCase(IUserRepository users, IPasswordHasher hasher, IAccessTokenIssuer issuer)
+public sealed class LoginUseCase(IUserRepository users, IPasswordHasher hasher, SessionIssuer sessions)
 {
     // Tope de contraseña: evita hashear cadenas enormes (DoS, API4).
     public const int MaxPasswordLength = 128;
@@ -25,7 +25,8 @@ public sealed class LoginUseCase(IUserRepository users, IPasswordHasher hasher, 
             return null;
         }
 
-        return new LoginResult(issuer.Issue(user), UserSummary.From(user));
+        // La contraseña se verifica siempre antes: una compañía suspendida tarda lo mismo que unas credenciales erróneas (DD-6).
+        return await sessions.IssueAsync(user, cancellationToken);
     }
 
     // Una entrada inválida no consulta ni hashea nada y no revela nada del usuario (DD-7).

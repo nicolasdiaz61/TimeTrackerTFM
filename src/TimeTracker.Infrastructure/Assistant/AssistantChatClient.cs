@@ -3,8 +3,8 @@ using Microsoft.Extensions.AI;
 namespace TimeTracker.Infrastructure.Assistant;
 
 /// <summary>
-/// Soporte de la <see cref="AssistantSnapshot"/> vigente del asistente (DD-10): sin cliente si no hay proveedor configurado.
-/// Es singleton y desechable: el contenedor lo libera al cerrar y con él los clientes del proveedor, vigente y pendientes.
+/// Soporte de la <see cref="AssistantSnapshot"/> vigente de UNA compañía (DD-10, DD-14): sin cliente si no tiene proveedor configurado.
+/// Lo posee el registro de instantáneas, que lo libera al cerrar o al expulsar la compañía, y con él los clientes del proveedor, vigente y pendientes.
 /// </summary>
 public sealed class AssistantChatClient : IDisposable
 {
@@ -18,10 +18,10 @@ public sealed class AssistantChatClient : IDisposable
     private bool _disposed;
 
     /// <param name="inner">Cliente del proveedor, o <c>null</c> si el asistente está deshabilitado.</param>
-    public AssistantChatClient(IChatClient? inner, AiOptions options, TimeProvider? timeProvider = null)
+    public AssistantChatClient(IChatClient? inner, AiOptions options, TimeProvider? timeProvider = null, string? version = null)
     {
         _timeProvider = timeProvider ?? TimeProvider.System;
-        _current = AssistantSnapshot.Create(inner, options, AssistantSnapshot.EnvironmentVersion);
+        _current = AssistantSnapshot.Create(inner, options, version ?? AssistantSnapshot.EnvironmentVersion);
     }
 
     public bool IsEnabled => Current.Pipeline is not null;

@@ -161,7 +161,7 @@ Las pruebas del asistente **no llaman a ningún modelo real**: usan un `IChatCli
 
 ### Configuración del asistente por el responsable
 
-Además de las variables de entorno, un responsable (`Manager`) puede elegir el proveedor, el modelo, el tiempo máximo, los tokens de salida y el esfuerzo de razonamiento, aportar su propia clave de API, probar la conexión y deshabilitar el asistente desde la página `/asistente/configuracion` (enlace «Config. asistente» del menú, solo para responsables). Lo guardado se fusiona sobre el entorno, vale para toda la empresa y se restablece al entorno borrando la configuración. Las decisiones están en el [ADR 0018](docs/adr/0018-configuracion-del-asistente-por-el-responsable.md).
+Además de las variables de entorno, un responsable (`Manager`) puede elegir el proveedor, el modelo, el tiempo máximo, los tokens de salida y el esfuerzo de razonamiento, aportar su propia clave de API, probar la conexión y deshabilitar el asistente desde la página `/asistente/configuracion` (enlace «Config. asistente» del menú, solo para responsables). Lo guardado se fusiona sobre el entorno, vale para su compañía (cada compañía tiene la suya y ninguna afecta a otra) y se restablece al entorno borrando la configuración. Las decisiones están en el [ADR 0018](docs/adr/0018-configuracion-del-asistente-por-el-responsable.md), matizado para varias compañías por el [ADR 0021](docs/adr/0021-configuracion-del-asistente-por-compania.md): una compañía sin configuración guardada tiene el asistente deshabilitado, y la clave de plataforma (`Ai__ApiKey`) solo sirve a la compañía de demostración.
 
 Claves de entorno nuevas (todas opcionales; se documentan en `.env.example`):
 
@@ -177,7 +177,21 @@ Claves de entorno nuevas (todas opcionales; se documentan en `.env.example`):
 
 **Rotación de la clave maestra.** Añada `Ai__MasterKeys__2`, cambie `Ai__ActiveMasterKeyVersion` a `2` y redespliegue: las claves guardadas con la versión 1 siguen descifrándose mientras exista `Ai__MasterKeys__1`. Un guardado del responsable sin clave nueva recifra la conservada con la versión activa. Retire la versión 1 solo cuando ninguna fila la use (`credential_key_version` en `assistant_settings`). Defina la clave maestra **antes** de que un responsable guarde una clave de API y nunca la escriba en archivos del repositorio.
 
-> **Datos personales y alcance.** Con una clave aportada por el responsable, los nombres y las horas de los fichajes consultados se envían a ese proveedor externo (RGPD), y un cambio afecta a toda la empresa. Revise el tratamiento de datos antes de habilitar un proveedor en la nube con datos reales.
+> **Datos personales y alcance.** Con una clave aportada por el responsable, los nombres y las horas de los fichajes consultados se envían a ese proveedor externo (RGPD), y un cambio afecta a todas las personas de la compañía. Revise el tratamiento de datos antes de habilitar un proveedor en la nube con datos reales.
+
+## Compañías, registro y alta de personas
+
+Una misma instancia sirve a varias compañías, aisladas por `company_id` ([ADR 0020](docs/adr/0020-aislamiento-multiempresa.md)). El token lleva la compañía de la persona (`cid`, y `cname` para mostrar su nombre) y nunca se envía un identificador de compañía en una ruta, consulta, cuerpo ni cabecera.
+
+**Registro de una compañía con código de invitación.** `POST /api/auth/register-company` crea una compañía y a su primer responsable (`Manager`) y abre sesión. Está **cerrado por defecto**: solo se abre con `Registration__Enabled=true`, y exige un código de invitación de `Registration__InviteCodes` (lista separada por comas; cada código de 16 a 128 caracteres; reutilizables y rotables; **secretos**, solo en el entorno del despliegue). La Web lo ofrece en `/registro`, pero **no hay ningún enlace público a esa página**: se entrega por URL directa. Un código incorrecto da siempre el mismo mensaje genérico, hay un límite de 5 intentos por hora y por IP (las direcciones IPv6 se agrupan por prefijo `/64`), un tope global de altas por hora (`Registration__GlobalHourlyLimit`, 30 por defecto) y un correo ya registrado responde `409` (riesgo aceptado: enumeración de correos, [ADR 0022](docs/adr/0022-autorregistro-con-codigo-de-invitacion-y-contrasenas.md)). La API se niega a arrancar con el registro abierto si la siembra de usuarios de demostración sigue activa o, en `Production`, si faltan `ForwardedHeaders__Enabled=true` con `ForwardedHeaders__Hops` de 1 o más. Para rotar un código filtrado se **sustituye la lista completa** de `Registration__InviteCodes` (no se registra qué código se aceptó).
+
+**Alta de personas con contraseña temporal.** Un responsable da de alta a una persona en `/equipo/alta` (`POST /api/employees`) hasta el tope `Company__MaxEmployees`. El servidor genera una **contraseña temporal** que se muestra **una sola vez** (no se vuelve a ver ni se guarda en claro); el responsable directo puede regenerarla desde `/equipo` mientras la persona no haya entrado. En su primer inicio de sesión la persona es llevada a `/cambiar-contrasena` y no puede usar nada más hasta cambiarla. La política de contraseñas es de 12 a 128 caracteres, sin reglas de composición. La contraseña temporal **no caduca** y un token emitido antes de regenerarla no se invalida (caduca a los 30 minutos): el [runbook](docs/runbook-railway.md) incluye revisar periódicamente las cuentas con el cambio pendiente.
+
+**Clave maestra.** La clave maestra del asistente (`Ai__MasterKeys__1`) protege las claves de API de todas las compañías. La clave maestra vive solo en Railway: nunca en el repositorio, en `.env.example` ni en este documento.
+
+**Límites del registro y `ForwardedHeaders` (PR de seguimiento 5.1).** El límite por IP agrupa IPv6 por prefijo `/64` (rotar direcciones de un mismo `/64` no da cupo nuevo), el número de particiones del limitador está acotado y el tope global de altas limita el daño de un código de invitación filtrado. El número correcto de saltos de confianza de `ForwardedHeaders__Hops` depende de los proxies reales y no puede comprobarse en código: lo verifica el responsable (V-7 del [runbook](docs/runbook-railway.md)). Hasta entonces el registro se mantiene cerrado salvo apertura controlada.
+
+**Operación.** Despliegue manual con `railway up`, copia de seguridad, ensayo de migraciones, reversión y apertura del registro: [docs/runbook-railway.md](docs/runbook-railway.md).
 
 ## Docker y Docker Compose
 
@@ -235,6 +249,12 @@ Variables del servicio `api` (`railway variables set -s api --skip-deploys "CLAV
 | `Ai__Provider`, `Ai__Model` y `Ai__ApiKey` | Opcionales: habilitan el asistente (véase «Asistente de IA»). `Ai__ApiKey` es un secreto y se define con `railway variables set Ai__ApiKey --stdin -s api`; nunca en este repositorio. Para deshabilitarlo, quite `Ai__Provider`. |
 | `Ai__MasterKeys__1` y `Ai__ActiveMasterKeyVersion` | Opcionales, pero **imprescindibles antes de que un responsable guarde una clave de API** desde la Web (véase «Configuración del asistente por el responsable en Railway»). `Ai__MasterKeys__1` es un secreto y se define por `stdin`; `Ai__ActiveMasterKeyVersion=1`. |
 | `Ai__AllowedProviders` | Opcional: proveedores que el responsable puede elegir (`Anthropic`, `OpenAI`, `Gemini`, `Ollama`). Sin ella, solo el del entorno. |
+| `Registration__Enabled` | `false` por defecto (registro cerrado). Se abre solo siguiendo el orden de «Apertura del registro» del [runbook](docs/runbook-railway.md). |
+| `Registration__InviteCodes` | **Secreto**, solo en el entorno de Railway (lista separada por comas; 16 a 128 caracteres cada código). Se define por `stdin`; nunca en el repositorio. |
+| `Company__MaxEmployees` | Opcional: tope de personas por compañía (50 por defecto, de 1 a 1000). |
+| `Ai__RequestsPerMinutePerCompany`, `Ai__DailyRequestsPerCompany`, `Ai__MaxLoadedCompanies`, `Ai__RuntimeIdleMinutes` | Opcionales: topes del asistente por compañía (30, 500, 100 y 60 por defecto). Los fija el entorno; un responsable no los edita. |
+
+La demostración se despliega y se revierte siguiendo el [runbook de Railway](docs/runbook-railway.md): copia de seguridad previa, ensayo de las migraciones con datos copiados, orden de reversión y apertura controlada del registro.
 
 Variable del servicio `web`: `API_BASE_URL=https://<dominio de la API>` (sin barra final). Al arrancar, el contenedor genera `appsettings.json` con ella y abre la CSP (`connect-src`) solo a ese origen; si falta o no es una URL `http`/`https`, el contenedor no arranca. La URL de la API no se versiona.
 
@@ -268,8 +288,9 @@ Riesgos y decisiones pendientes de este despliegue (detalle en el [ADR 0019](doc
 
 - **Datos personales a un tercero.** Con un proveedor en la nube, los nombres y las horas de los fichajes consultados salen hacia ese tercero bajo la clave que aporta el responsable. Revise el contrato de tratamiento antes de usar datos reales.
 - **Riesgo de la API Responses de OpenAI.** La v1 usa solo la API de chat; algunos modelos de OpenAI exigen Responses para usar herramientas. La prueba de conexión no usa herramientas y puede dar `ok` aunque el chat falle con ese modelo.
-- **Configuración única.** Es una sola para toda la empresa y cualquier responsable de cualquier equipo puede leerla, cambiarla, restablecerla y probar conexiones.
-- **Pregunta abierta para el product owner: custodia de la clave maestra.** Quién la genera, dónde se guarda su copia de seguridad y quién puede leerla en Railway sigue sin decidirse. Si se pierde, las claves guardadas quedan ilegibles (el responsable las vuelve a introducir); el asistente sigue funcionando con el entorno.
+- **Alcance de la configuración.** Desde el [ADR 0021](docs/adr/0021-configuracion-del-asistente-por-compania.md) hay una configuración por compañía: cualquier responsable (`Manager`) de la compañía puede leerla, cambiarla, restablecerla y probar conexiones, pero no la de otra compañía (riesgo aceptado, acotado a la compañía).
+- **Pregunta abierta para el product owner: custodia de la clave maestra.** Quién la genera, dónde se guarda su copia de seguridad y quién puede leerla en Railway sigue sin decidirse (Q-8). Ahora protege las claves de **todas** las compañías. Si se pierde, las claves guardadas quedan ilegibles (cada responsable las vuelve a introducir); el asistente sigue funcionando con el entorno en la compañía de demostración.
+- **La clave maestra vive solo en Railway.** Su valor lo define usted en Railway por `stdin` (véase arriba); nunca se escribe en el repositorio, en `.env.example` ni en un documento.
 
 ### Regenerar la clave JWT
 
@@ -281,9 +302,11 @@ pwsh -NoProfile -Command "[Convert]::ToBase64String([Security.Cryptography.Rando
 
 El cambio redespliega la API e invalida los tokens emitidos (las sesiones abiertas piden iniciar sesión de nuevo).
 
-### Activar el autodespliegue desde GitHub
+### Despliegue manual y autodespliegue
 
-Lo activa una persona con acceso al repositorio, desde el panel de Railway (la CLI no puede autorizar la aplicación de GitHub): en cada servicio, `Settings` → `Source` → `Connect Repo` y elija el repositorio y la rama `main` (autorizando antes la aplicación de GitHub de Railway). Para que `api` y `web` usen su Dockerfile: `api` usa el de la raíz y `web` conserva la variable `RAILWAY_DOCKERFILE_PATH=deploy/web/Dockerfile`.
+**Hoy no hay autodespliegue:** los servicios de Railway no tienen repositorio conectado (`source.repo = null`), así que fusionar una PR no despliega nada; se despliega a mano con `railway up`, y cada despliegue pasa por las puertas previas del [runbook](docs/runbook-railway.md) (copia de seguridad, lectura del valor real de `Database__ApplyMigrationsOnStartup`, `/health`, rollback de código preparado y aprobación del responsable).
+
+**No conecte el repositorio sin rehacer antes el plan de despliegue por fases del runbook.** Con varias compañías, las migraciones A y B van en despliegues separados y observados; un autodespliegue desde `main` las aplicaría seguidas. Si se decide conectarlo (lo hace una persona con acceso al repositorio desde el panel de Railway: en cada servicio, `Settings` → `Source` → `Connect Repo`), `api` usa el Dockerfile de la raíz y `web` conserva `RAILWAY_DOCKERFILE_PATH=deploy/web/Dockerfile`.
 
 ### Apagar la siembra demo
 
@@ -343,6 +366,7 @@ src/
   TimeTracker.Web             Blazor WebAssembly (inicio con el reproductor de fichaje, /login, /fichajes y /equipo), independiente.
 tests/                        Pruebas de Domain, Application, Web (formato, sesión, hora local, meses y franjas), Api (integración con PostgreSQL) y de arquitectura.
 docs/adr/                     Registros de decisiones de arquitectura.
+docs/runbook-railway.md       Runbook de despliegue manual, copia de seguridad, reversión y apertura del registro.
 docs/api/openapi.json         Contrato OpenAPI generado (no se edita a mano).
 scripts/check-coverage.ps1    Comprobación del umbral de cobertura.
 docker-compose.yml            Entorno local: API y PostgreSQL.
@@ -369,8 +393,11 @@ openspec/                     Especificaciones y cambios (Spec Driven Developmen
 15. [Datos de demostración de un mes](docs/adr/0015-datos-de-demostracion-de-un-mes.md)
 16. [Vista mensual de fichajes y hora local en la Web](docs/adr/0016-vista-mensual-y-hora-local.md)
 17. [Asistente de IA con herramientas de solo lectura](docs/adr/0017-asistente-ia-con-herramientas-de-solo-lectura.md)
-18. [Configuración del asistente por el responsable](docs/adr/0018-configuracion-del-asistente-por-el-responsable.md)
-19. [Auditoría inmutable y despliegue de la configuración del asistente](docs/adr/0019-auditoria-inmutable-y-despliegue-de-la-configuracion-del-asistente.md)
+18. [Configuración del asistente por el responsable](docs/adr/0018-configuracion-del-asistente-por-el-responsable.md) (sustituido parcialmente por el 0021)
+19. [Auditoría inmutable y despliegue de la configuración del asistente](docs/adr/0019-auditoria-inmutable-y-despliegue-de-la-configuracion-del-asistente.md) (sustituido parcialmente por el 0021)
+20. [Aislamiento multiempresa en una base de datos compartida](docs/adr/0020-aislamiento-multiempresa.md)
+21. [Configuración del asistente por compañía](docs/adr/0021-configuracion-del-asistente-por-compania.md) (sustituye parcialmente al 0018 y al 0019)
+22. [Autorregistro con código de invitación y contraseñas](docs/adr/0022-autorregistro-con-codigo-de-invitacion-y-contrasenas.md)
 
 ## Integración continua
 

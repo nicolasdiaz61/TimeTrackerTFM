@@ -199,12 +199,20 @@ public class RepositoryConventionsTests
         Assert.Contains("data-testid=\"data-sharing-notice\"", page, StringComparison.Ordinal);
         Assert.Contains("tercero", page, StringComparison.Ordinal);
         Assert.Contains("data-testid=\"company-scope-notice\"", page, StringComparison.Ordinal);
-        Assert.Contains("toda la empresa", page, StringComparison.Ordinal);
+        // El alcance nombra la compañía de la sesión (DD-18): el literal «toda la empresa» ya no existe y el texto vive en una clase pura.
+        Assert.Contains("AssistantConfigurationNotice.Scope(SessionClaims.CompanyName(", page, StringComparison.Ordinal);
+        Assert.DoesNotContain("toda la empresa", page, StringComparison.Ordinal);
+        Assert.DoesNotContain("toda la instancia", page, StringComparison.Ordinal);
         Assert.Contains("Guardar", page, StringComparison.Ordinal);
         Assert.Contains("Probar conexión", page, StringComparison.Ordinal);
         Assert.Contains("Restablecer al entorno", page, StringComparison.Ordinal);
-        Assert.Contains("aunque otro responsable", page, StringComparison.Ordinal);
+        Assert.Contains("AssistantConfigurationNotice.ResetWarning(", page, StringComparison.Ordinal);
+        Assert.Contains("aunque otro responsable", ReadWeb("Assistant/AssistantConfigurationNotice.cs"), StringComparison.Ordinal);
         Assert.Contains("clave configurada", page, StringComparison.Ordinal);
+
+        // La página nunca muestra ni envía un identificador de compañía: el nombre sale del claim de la sesión.
+        Assert.DoesNotContain("companyId", page, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("\"cid\"", page, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -240,6 +248,166 @@ public class RepositoryConventionsTests
 
         Assert.Matches("""@onclick="ResetAsync" disabled="@\(!form\.CanConfirmReset\)">Sí, restablecer""", page);
         Assert.Contains("form.Fail(ConfigurationOperation.ReloadAfterReset, loadError)", page, StringComparison.Ordinal);
+    }
+
+    private static readonly string[] SecretStorage = ["MarkupString", "localStorage", "sessionStorage", "IJSRuntime", "innerHTML"];
+
+    [Fact]
+    public void Web_HasTheRegistrationPageAnonymousWithMaskedSecretsAndNoBrowserStorage()
+    {
+        var page = ReadWeb("Pages/Register.razor");
+
+        Assert.Contains("@page \"/registro\"", page, StringComparison.Ordinal);
+        Assert.DoesNotContain("@attribute [Authorize", page, StringComparison.Ordinal);
+        AssertNoSecretStorageOrUrl(page, ReadWeb("Registration/RegisterForm.cs"), ReadWeb("Registration/RegistrationContract.cs"));
+        AssertPasswordFieldsAreMasked(page, expectedPasswordFields: 3);
+        Assert.Contains("@inject IRegistrationApi", page, StringComparison.Ordinal);
+        Assert.Contains("new RegisterForm(", page, StringComparison.Ordinal);
+        AssertSpanishWithoutTechnicalData(page, "Crear compañía", "Contraseña", "Código de invitación");
+    }
+
+    [Fact]
+    public void Web_HasTheChangePasswordPageForAnySessionWithMaskedSecretsAndNoBrowserStorage()
+    {
+        var page = ReadWeb("Pages/ChangePassword.razor");
+
+        Assert.Contains("@page \"/cambiar-contrasena\"", page, StringComparison.Ordinal);
+        Assert.Contains("@attribute [Authorize]", page, StringComparison.Ordinal);
+        Assert.DoesNotContain("Roles", page, StringComparison.Ordinal);
+        AssertNoSecretStorageOrUrl(page, ReadWeb("Account/ChangePasswordForm.cs"), ReadWeb("Account/AccountApiClient.cs"));
+        AssertPasswordFieldsAreMasked(page, expectedPasswordFields: 3);
+        Assert.Contains("new ChangePasswordForm(", page, StringComparison.Ordinal);
+        Assert.Contains("ChangePasswordForm.MandatoryChangeNotice", page, StringComparison.Ordinal);
+        AssertSpanishWithoutTechnicalData(page, "Contraseña actual", "Contraseña nueva", "Cambiar contraseña");
+    }
+
+    [Fact]
+    public void Web_HasTheTeamCreationPageOnlyForManagersWithoutRemovalOrEditionControls()
+    {
+        var page = ReadWeb("Pages/TeamMemberCreate.razor");
+
+        Assert.Contains("@page \"/equipo/alta\"", page, StringComparison.Ordinal);
+        Assert.Contains("@attribute [Authorize(Roles = \"Manager\")]", page, StringComparison.Ordinal);
+        AssertNoSecretStorageOrUrl(page, ReadWeb("Team/TeamMemberCreationForm.cs"), ReadWeb("Team/TemporaryPasswordReveal.cs"), ReadWeb("Team/EmployeesApiClient.cs"));
+        Assert.Contains("new TeamMemberCreationForm(", page, StringComparison.Ordinal);
+        Assert.Contains("<TemporaryPasswordNotice", page, StringComparison.Ordinal);
+        AssertSpanishWithoutTechnicalData(page, "Alta de personas", "Correo electrónico", "Responsable");
+
+        // Solo alta: sin controles de baja ni de edición (WS «Solo alta»).
+        string[] removalOrEdition = ["Eliminar", "Borrar", "Dar de baja", "Editar", "Modificar", "Desactivar"];
+        Assert.DoesNotContain(removalOrEdition, word => page.Contains(word, StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void Web_TheTeamPageOffersToRegenerateTheTemporaryPasswordWithConfirmationAndTheSharedNotice()
+    {
+        var page = ReadWeb("Pages/Team.razor");
+        var notice = ReadWeb("Shared/TemporaryPasswordNotice.razor");
+
+        Assert.Contains("Regenerar contraseña temporal", page, StringComparison.Ordinal);
+        Assert.Contains("new TeamMemberTemporaryPassword(", page, StringComparison.Ordinal);
+        Assert.Contains("role=\"alertdialog\"", page, StringComparison.Ordinal);
+        Assert.Contains("<TemporaryPasswordNotice", page, StringComparison.Ordinal);
+        Assert.Contains("TemporaryPasswordReveal.Notice", notice, StringComparison.Ordinal);
+        AssertNoSecretStorageOrUrl(page, notice, ReadWeb("Team/TeamMemberTemporaryPassword.cs"));
+        AssertSpanishWithoutTechnicalData(page, "Regenerar contraseña temporal");
+    }
+
+    [Fact]
+    public void Web_NeverReadsOrSendsACompanyIdentifier()
+    {
+        var offenders = WebSourceFiles()
+            .Select(file => (file, text: File.ReadAllText(file)))
+            .Where(item => item.text.Contains("companyId", StringComparison.OrdinalIgnoreCase)
+                || item.text.Contains("\"cid\"", StringComparison.Ordinal)
+                || item.text.Contains("CompanyIdClaim", StringComparison.Ordinal))
+            .Select(item => Path.GetRelativePath(RepositoryRoot.Path, item.file))
+            .ToList();
+
+        // Solo se lee «cname» (nombre) y «mcp» (cambio pendiente); «cid» no se usa para ninguna decisión (WS «Sin identificador de compañía»).
+        Assert.True(offenders.Count == 0, $"La Web usa un identificador de compañía: {string.Join(", ", offenders)}");
+    }
+
+    [Fact]
+    public void Web_HasNoPublicLinkToTheRegistrationPage_AndTheMenuHidesEverythingButTheChangeAndSignOutWhilePending()
+    {
+        var offenders = WebSourceFiles()
+            .Where(file => Path.GetFileName(file) != "Register.razor")
+            .Select(file => (file, text: File.ReadAllText(file)))
+            .Where(item => item.text.Contains("href=\"registro\"", StringComparison.Ordinal)
+                || item.text.Contains("href=\"/registro\"", StringComparison.Ordinal)
+                || item.text.Contains("NavigateTo(\"registro\"", StringComparison.Ordinal)
+                || item.text.Contains("NavigateTo(\"/registro\"", StringComparison.Ordinal))
+            .Select(item => Path.GetRelativePath(RepositoryRoot.Path, item.file))
+            .ToList();
+        Assert.True(offenders.Count == 0, $"Enlace a /registro: {string.Join(", ", offenders)}");
+
+        var menu = ReadWeb("Layout/NavMenu.razor");
+        Assert.DoesNotContain("registro", menu, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("SessionClaims.IsPasswordChangePending(", menu, StringComparison.Ordinal);
+        Assert.Contains("SessionClaims.CompanyName(", menu, StringComparison.Ordinal);
+        Assert.Contains("href=\"cambiar-contrasena\"", menu, StringComparison.Ordinal);
+        Assert.Contains("Cambiar contraseña", menu, StringComparison.Ordinal);
+        Assert.Contains("Cerrar sesión", menu, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Web_TheMenuLinksTheTeamCreationOnlyInTheManagerBlock()
+    {
+        var menu = ReadWeb("Layout/NavMenu.razor");
+        var managerStart = menu.IndexOf("<AuthorizeView Roles=\"Manager\"", StringComparison.Ordinal);
+        var managerEnd = menu.IndexOf("</AuthorizeView>", managerStart, StringComparison.Ordinal);
+
+        Assert.True(managerStart >= 0, "Falta el bloque de menú del Manager.");
+        Assert.Single(System.Text.RegularExpressions.Regex.Matches(menu, "equipo/alta"));
+        Assert.Contains("href=\"equipo/alta\"", menu[managerStart..managerEnd], StringComparison.Ordinal);
+        Assert.Contains("Alta de personas", menu[managerStart..managerEnd], StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Web_TheServicesAreRegisteredAndEveryRouteIsGuardedByThePasswordChangeGate()
+    {
+        var program = ReadWeb("Program.cs");
+        string[] registrations = ["EmployeesApiClient", "AccountApiClient", "IRegistrationApi", "ILoginApi", "ISessionSignIn", "IPasswordChangeApi", "IEmployeesApi"];
+        Assert.All(registrations, name => Assert.Contains(name, program, StringComparison.Ordinal));
+
+        // Registro y login anónimos (sin BearerTokenHandler); cambio de contraseña y alta con él.
+        Assert.Contains("new AuthApiClient(new HttpClient { BaseAddress = apiBaseUri })", program, StringComparison.Ordinal);
+        Assert.Contains("new AccountApiClient(CreateAuthorizedClient(", program, StringComparison.Ordinal);
+        Assert.Contains("new EmployeesApiClient(CreateAuthorizedClient(", program, StringComparison.Ordinal);
+
+        var app = ReadWeb("App.razor");
+        Assert.Contains("<PasswordChangeGate>", app, StringComparison.Ordinal);
+        Assert.Contains("PasswordChangeRedirect.TargetFor(", ReadWeb("Shared/PasswordChangeGate.razor"), StringComparison.Ordinal);
+    }
+
+    private static void AssertNoSecretStorageOrUrl(params string[] sources)
+    {
+        Assert.All(sources, text =>
+        {
+            Assert.DoesNotContain(SecretStorage, word => text.Contains(word, StringComparison.Ordinal));
+
+            // La contraseña, el código y la contraseña temporal nunca viajan en la URL ni en una navegación.
+            Assert.DoesNotMatch(@"NavigateTo\([^)]*(Password|InviteCode|Temporary|Reveal)", text);
+            Assert.DoesNotContain("QueryString", text, StringComparison.Ordinal);
+        });
+    }
+
+    private static void AssertPasswordFieldsAreMasked(string page, int expectedPasswordFields)
+    {
+        Assert.Equal(expectedPasswordFields, System.Text.RegularExpressions.Regex.Matches(page, "type=\"password\"").Count);
+        Assert.Equal(expectedPasswordFields, System.Text.RegularExpressions.Regex.Matches(page, "autocomplete=\"(new|current)-password\"|autocomplete=\"off\"").Count);
+    }
+
+    private static void AssertSpanishWithoutTechnicalData(string page, params string[] expectedLabels)
+    {
+        Assert.All(expectedLabels, label => Assert.Contains(label, page, StringComparison.Ordinal));
+
+        // Solo el marcado visible: el bloque @code puede nombrar excepciones al capturarlas sin mostrarlas.
+        var codeStart = page.IndexOf("@code", StringComparison.Ordinal);
+        var markup = codeStart < 0 ? page : page[..codeStart];
+        string[] technical = ["Exception", "StackTrace", "Bearer", "access_token", "AccessToken", "InviteCodes", "companyId", "\"cid\""];
+        Assert.DoesNotContain(technical, word => markup.Contains(word, StringComparison.OrdinalIgnoreCase));
     }
 
     private static string ReadWeb(string relativePath)

@@ -79,7 +79,7 @@ public sealed class AssistantSettingsAuditTests(PostgresFixture postgres) : IAsy
         var token = await SaveAsync(stored, NoRow, previous: null, credentialChanged: true);
         var reset = new AuditEntry(Ana, Now, AuditAction.Reset, CredentialChanged: true, AuditSnapshot.From(stored), Current: null);
 
-        await new AssistantSettingsStore(postgres.CreateContext(_connectionString)).DeleteAsync(token, reset, CancellationToken.None);
+        await postgres.CreateAssistantStore(_connectionString).DeleteAsync(token, reset, CancellationToken.None);
 
         var audit = (await ReadAuditAsync())[1];
         Assert.Equal(("Reset", true), (audit.Action, audit.CredentialChanged));
@@ -111,7 +111,7 @@ public sealed class AssistantSettingsAuditTests(PostgresFixture postgres) : IAsy
     private async Task<string> SaveAsync(AssistantSettings next, string token, AssistantSettings? previous, bool credentialChanged)
     {
         var audit = new AuditEntry(Ana, Now, AuditAction.Saved, credentialChanged, AuditSnapshot.From(previous), AuditSnapshot.From(next));
-        var outcome = await new AssistantSettingsStore(postgres.CreateContext(_connectionString)).SaveAsync(next, token, audit, CancellationToken.None);
+        var outcome = await postgres.CreateAssistantStore(_connectionString).SaveAsync(next, token, audit, CancellationToken.None);
         return Assert.IsType<SaveOutcome.Saved>(outcome).Token;
     }
 
