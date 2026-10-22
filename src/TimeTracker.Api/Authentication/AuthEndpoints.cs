@@ -29,6 +29,7 @@ public static partial class AuthEndpoints
                 user.FindFirstValue("role")!,
                 user.FindFirstValue(JwtDefaults.CompanyNameClaim) ?? string.Empty,
                 user.FindFirstValue(JwtDefaults.PasswordChangePendingClaim) == JwtDefaults.PasswordChangePendingValue)))
+            .AllowWhilePasswordChangePending()
             .ProducesProblem(StatusCodes.Status401Unauthorized);
 
         return endpoints;
