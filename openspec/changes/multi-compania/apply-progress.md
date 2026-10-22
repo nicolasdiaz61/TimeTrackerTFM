@@ -816,3 +816,36 @@ RESTORE correcto; BUILD `-warnaserror` 0/0; TEST Domain 111, Application 470, We
 - README: la sección «Activar el autodespliegue» pasa a «Despliegue manual y autodespliegue» (no hay autodespliegue). `config.yaml` no se tocó.
 - Las specs vigentes solo se corrigen en la cifra de ADR; los demás deltas se listan en `design.md` para el informe de archivo.
 - Pendientes del responsable: V-1, V-3, V-4 (Railway), V-6, V-7, Q-1, Q-8; Q-9 queda resuelta por el ADR 0021 y el índice (confirmar con el usuario) y Q-10 descrita en el runbook. Seguimiento abierto: límite IPv6 /64 y `ForwardedHeaders` (PR aparte).
+
+## PR 5.1: límites del registro, fallo de sesión y runbook de restauración
+
+Rama `fix/multi-compania-pr5-1-registro-limites` (sobre `feat/multi-compania-pr8-docs`). Sin migraciones ni cambio de contrato (`openapi.json` sin cambios). Copia previa en `..\TimeTracker.rollback\pr-mc51\` (Registration, Security, Authentication, Companies, pruebas de registro, runbook, design, apply-progress y tasks). Decisiones y desviaciones: `design.md`, «PR 5.1: límites del registro, fallo de sesión y runbook (desviaciones)».
+
+### Commits
+
+| Commit | Mensaje | Contenido |
+|---|---|---|
+| `0bdd9b6` | `fix(registro): limite IPv6 por /64, tope global de altas, particiones acotadas y fallo de sesion sin 500` | Código y pruebas (A.1 a A.4, A.6) |
+| `da93335` | `docs(runbook): restauracion y correccion hacia delante ...` | Runbook, README, `.env.example`, `DeliveryArtifactsTests` (B, A.5) |
+| (este) | `docs(openspec): ...` | design.md, spec delta, tasks.md y este archivo |
+
+### Evidencia de Strict TDD
+
+| Tarea | Prueba | RED | GREEN | Notas |
+|---|---|---|---|---|
+| A.1 /64 | `RegistrationClientKeyTests` (6), `RegistrationRateLimitTests.WithForwardedHeaders_RotatingIPv6AddressesInsideOne64...` | Sin tipo/comportamiento (no compilaba) | verde | Mutación `PrefixBytes` 8 a 7: detectada |
+| A.2 tope global | `RegistrationGlobalLimiterTests` (4), `TheGlobalCap_*` (2), validador (`GlobalHourlyLimit` 1..1000, 6 casos) | Sin tipo | verde | Mutación «no liberar en no-creado»: detectada (5 pruebas rojas con las otras dos mutaciones) |
+| A.3 particiones | `RegistrationPartitionTrackerTests` (4) | Sin tipo | verde | Mutación de la poda (`now < _nextPrune`): detectada |
+| A.4 sesión | `RegisterCompanyUseCaseTests` (+2, una reescrita), `RegistrationSessionFailureTests` (2) | 2 rojas en Application (`InvalidOperationException` en lugar de `CreatedWithoutSession`) | verde | Cancelación propagada |
+| A.5 / B docs | `DeliveryArtifactsTests` (+3 y una fila de teoría) | 4 rojas con los documentos anteriores | 310/310 | Ningún marcador debilitado; ADR 0018/0019 intactos |
+
+### Puerta
+
+RESTORE correcto; BUILD `-warnaserror` 0/0; TEST Domain 111, Application 472, Web 420, Infrastructure 473, Architecture 310, Api.Integration 1011, todo en verde (`ASPNETCORE_URLS=http://127.0.0.1:0` solo en ese comando); COV-D 100,0 %/100,0 %; COV-A 99,5 %/96,7 %; FORMAT sin cambios; VULN sin vulnerables; EF-PENDING sin cambios de modelo.
+
+### Pendientes y riesgos
+
+- V-7 sigue siendo del responsable (el número correcto de saltos no es observable desde el código).
+- El tope global y el límite por IP son por instancia (memoria): válido con la instancia única actual.
+- El login conserva el agrupamiento por dirección completa (fuera de alcance).
+- Con un código filtrado, el tope global puede agotarse y bloquear altas legítimas hasta que acabe la ventana; la rotación de códigos lo corta.
