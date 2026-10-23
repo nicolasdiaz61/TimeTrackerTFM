@@ -2,11 +2,11 @@
 
 ## Purpose
 
-Define la sesión en `TimeTracker.Web` (Blazor WebAssembly): página `/login`, almacenamiento del token en `sessionStorage` con copia en memoria, estado de autenticación derivado de los claims sin validar la firma, rutas protegidas, envío del token a la API y redirección a `/login` ante un `401` o una expiración, menú según el rol, página `/equipo` solo para el responsable y cierre de sesión. Capacidad NUEVA; todos los requisitos son `ADDED`. La Web solo oculta interfaz: los permisos reales viven en la API (`authentication`, `team-access`).
+Define la sesión en `TimeTracker.Web` (Blazor WebAssembly): página `/login`, almacenamiento del token en el almacenamiento local compartido entre pestañas (`localStorage`) con copia en memoria y sincronización por el evento `storage`, estado de autenticación derivado de los claims sin validar la firma, rutas protegidas, envío del token a la API y redirección a `/login` ante un `401` o una expiración, menú según el rol, página `/equipo` solo para el responsable y cierre de sesión. Capacidad NUEVA; todos los requisitos son `ADDED`. La Web solo oculta interfaz: los permisos reales viven en la API (`authentication`, `team-access`).
 
-Decisiones aceptadas (D16 a D19, Q3, Q4): token en `sessionStorage` con copia en memoria y riesgo XSS aceptado y documentado en el ADR 0012; `JwtAuthenticationStateProvider` decodifica el payload y comprueba `exp` pero no valida la firma; `BearerTokenHandler` compartido por los clientes de fichajes y de equipo (el cliente de autenticación no lo usa); roles en inglés en el código y textos de interfaz en español.
+Decisiones aceptadas (D16 a D19, Q3, Q4): token en el almacenamiento local compartido (ADR 0028, que sustituye el `sessionStorage` del ADR 0012) con copia en memoria y riesgo XSS aceptado y documentado; `JwtAuthenticationStateProvider` decodifica el payload y comprueba `exp` pero no valida la firma; `BearerTokenHandler` compartido por los clientes de fichajes y de equipo (el cliente de autenticación no lo usa); roles en inglés en el código y textos de interfaz en español.
 
-Verificación: sin bUnit ni E2E; la lógica de presentación y de estado sin interfaz (formato de duraciones, hora local, meses y franjas, aviso de sesión caducada, estado de autenticación) se cubre con xUnit en `TimeTracker.Web.Tests`; los escenarios de esta capacidad se verifican manualmente en el navegador (flujo de empleado y de responsable) y la evidencia se registra en `verify-report.md`. Solo la compilación, el formato y las pruebas de arquitectura de la Web (sin URL fija ni referencias de proyecto) son automáticos. Los escenarios que exigirían esperar 30 minutos se comprueban editando el token de `sessionStorage` con las herramientas del navegador.
+Verificación: sin bUnit ni E2E; la lógica de presentación y de estado sin interfaz (formato de duraciones, hora local, meses y franjas, aviso de sesión caducada, estado de autenticación) se cubre con xUnit en `TimeTracker.Web.Tests`; los escenarios de esta capacidad se verifican manualmente en el navegador (flujo de empleado y de responsable) y la evidencia se registra en `verify-report.md`. Solo la compilación, el formato y las pruebas de arquitectura de la Web (sin URL fija ni referencias de proyecto) son automáticos. Los escenarios que exigirían esperar 30 minutos se comprueban editando el token del almacenamiento local con las herramientas del navegador.
 
 Fuera de alcance: refresh token, renovación silenciosa, «recordarme», registro, recuperación de contraseña, alta o edición de usuarios, hosting estático de la Web con CSP y la Web en compose.
 
@@ -53,12 +53,12 @@ La ruta `/login` DEBE ser accesible sin sesión y mostrar un formulario con corr
 
 ### Requirement: Almacenamiento del token de sesión
 
-La Web DEBE guardar el token en `sessionStorage` (no en `localStorage`, cookies ni URL) y mantener una copia en memoria para los envíos a la API. Cerrar la pestaña DEBE terminar la sesión; recargar la página DEBE conservarla. El token NO DEBE mostrarse en mensajes de la interfaz ni escribirse en la consola.
+La Web DEBE guardar el token en el almacenamiento local del navegador (`localStorage`, compartido por todas las pestañas; no en cookies ni URL) y mantener una copia en memoria para los envíos a la API (ADR 0028). Recargar la página o abrir otra pestaña DEBE conservar la sesión; cerrar la sesión en una pestaña DEBE cerrarla en todas. Si el almacenamiento está bloqueado, la sesión DEBE vivir solo en memoria sin errores. El token NO DEBE mostrarse en mensajes de la interfaz ni escribirse en la consola.
 
-#### Scenario: Token en sessionStorage
+#### Scenario: Token en el almacenamiento local
 - DADO un inicio de sesión correcto
 - CUANDO se inspecciona el almacenamiento del navegador
-- ENTONCES el token está en `sessionStorage` y no hay token en `localStorage` ni en cookies
+- ENTONCES el token está en `localStorage` (y no queda ninguna copia en `sessionStorage` ni en cookies)
 
 #### Scenario: Recarga de la página
 - DADO una sesión iniciada
@@ -66,7 +66,7 @@ La Web DEBE guardar el token en `sessionStorage` (no en `localStorage`, cookies 
 - ENTONCES la sesión sigue activa sin volver a pedir credenciales
 
 #### Scenario: Copia en memoria
-- DADO una sesión iniciada en la que se borra la clave del token de `sessionStorage` con las herramientas del navegador
+- DADO una sesión iniciada en la que se borra la clave del token del almacenamiento con las herramientas del navegador
 - CUANDO se pulsa «Fichar entrada» sin recargar
 - ENTONCES la petición sigue llevando el token
 
@@ -85,7 +85,7 @@ El estado de autenticación DEBE derivarse del payload del token (claims `sub`, 
 - ENTONCES el usuario figura autenticado con su nombre y el rol `Manager`
 
 #### Scenario: Token caducado al cargar
-- DADO un token en `sessionStorage` cuyo `exp` ya pasó
+- DADO un token en el almacenamiento cuyo `exp` ya pasó
 - CUANDO se carga `/fichajes`
 - ENTONCES se elimina el token y se navega a `/login`
 
@@ -240,12 +240,12 @@ La ruta `/` DEBE presentar TimeTracker en español: qué es la aplicación y, se
 
 ### Requirement: Cierre de sesión
 
-La acción «Cerrar sesión» DEBE eliminar el token de `sessionStorage` y de la memoria, actualizar el estado de autenticación y navegar a `/login`. Después, las rutas protegidas DEBEN redirigir a `/login` y ninguna petición DEBE llevar el token anterior.
+La acción «Cerrar sesión» DEBE eliminar el token del almacenamiento compartido y de la memoria, actualizar el estado de autenticación y navegar a `/login`. Después, las rutas protegidas DEBEN redirigir a `/login` y ninguna petición DEBE llevar el token anterior.
 
 #### Scenario: Cierre de sesión
 - DADO una sesión iniciada
 - CUANDO se pulsa «Cerrar sesión»
-- ENTONCES `sessionStorage` no contiene el token, se navega a `/login` y el menú vuelve al estado sin sesión
+- ENTONCES el almacenamiento no contiene el token (y las demás pestañas vuelven a `/login`), se navega a `/login` y el menú vuelve al estado sin sesión
 
 #### Scenario: Ruta protegida tras cerrar
 - DADO la sesión cerrada

@@ -381,14 +381,14 @@ public partial class DeliveryArtifactsTests
     // --- ADR (SA-20, SA-21, SA-22) ---
 
     [Fact]
-    public void Adr_Directory_HasTwentySevenAdrsWithFourSections()
+    public void Adr_Directory_HasTwentyEightAdrsWithFourSections()
     {
         string[] sections = ["## Contexto", "## Decisión", "## Consecuencias", "## Alternativas"];
         var adrs = Directory.GetFiles(Path.Combine(RepositoryRoot.Path, "docs", "adr"), "0*.md")
             .Order(StringComparer.Ordinal)
             .ToList();
 
-        int[] numbers = [.. Enumerable.Range(1, 27)];
+        int[] numbers = [.. Enumerable.Range(1, 28)];
         Assert.Equal(numbers.Length, adrs.Count);
         for (var index = 0; index < adrs.Count; index++)
         {
@@ -707,6 +707,29 @@ public partial class DeliveryArtifactsTests
             .ToList();
 
         Assert.True(missing.Count == 0, $"Los ADR no mencionan: {string.Join(", ", missing)}");
+    }
+
+    [Fact]
+    public void Adr0028_SupersedesTheSessionStorageDecisionAndRecordsItsTradeoff()
+    {
+        var adr = ReadRepositoryFile("docs/adr/0028-sesion-compartida-entre-pestañas.md");
+
+        string[] required = ["sustituye", "0012", "XSS", "BroadcastChannel", "HttpOnly", "CSP", "storage", "try/catch"];
+        var missing = required.Where(text => !adr.Contains(text, StringComparison.Ordinal)).ToList();
+        Assert.True(missing.Count == 0, $"El ADR 0028 no menciona: {string.Join(", ", missing)}");
+
+        // El 0012 no se reescribe: conserva su texto original sobre sessionStorage.
+        Assert.Contains("sessionStorage", ReadRepositoryFile("docs/adr/0012-sesion-web-y-riesgo-xss.md"), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void SessionStorageScript_IsTinyAndUsesNoEvalNorExternalResources()
+    {
+        var script = ReadRepositoryFile("src/TimeTracker.Web/wwwroot/js/session-storage.js");
+
+        Assert.DoesNotContain("eval(", script, StringComparison.Ordinal);
+        Assert.DoesNotContain("http", script, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("js/session-storage.js", ReadRepositoryFile("src/TimeTracker.Web/wwwroot/index.html"), StringComparison.Ordinal);
     }
 
     // --- PR 8 (multi-compania): AGENTS.md, README, runbook, specs vigentes y cierre de V-n (SA «Decisiones y límites documentados») ---

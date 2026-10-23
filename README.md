@@ -387,7 +387,7 @@ openspec/                     Especificaciones y cambios (Spec Driven Developmen
 9. [Identidad provisional](docs/adr/0009-identidad-provisional.md) (sustituido por el 0011)
 10. [Tiempo en UTC y minutos truncados](docs/adr/0010-tiempo-utc-y-minutos.md)
 11. [Autenticación con JWT propio, roles y equipo](docs/adr/0011-autenticacion-jwt-roles-y-equipo.md)
-12. [Sesión en la Web: token en sessionStorage y riesgo XSS](docs/adr/0012-sesion-web-y-riesgo-xss.md)
+12. [Sesión en la Web: token en sessionStorage y riesgo XSS](docs/adr/0012-sesion-web-y-riesgo-xss.md) (almacenamiento sustituido por el 0028)
 13. [Despliegue de la demostración en Railway](docs/adr/0013-despliegue-en-railway.md)
 14. [Tipos de marcaje: pausas y pausas de comida](docs/adr/0014-tipos-de-marcaje-pausas-y-comida.md)
 15. [Datos de demostración de un mes](docs/adr/0015-datos-de-demostracion-de-un-mes.md)
@@ -403,6 +403,7 @@ openspec/                     Especificaciones y cambios (Spec Driven Developmen
 25. [Resumen de equipo del asistente](docs/adr/0025-resumen-de-equipo-del-asistente.md)
 26. [Tablas y CSV en el asistente](docs/adr/0026-tablas-y-csv-en-el-asistente.md)
 27. [Horas extra en el resumen de equipo](docs/adr/0027-horas-extra-en-el-resumen-de-equipo.md)
+28. [Sesión compartida entre pestañas del navegador](docs/adr/0028-sesion-compartida-entre-pestañas.md) (sustituye el almacenamiento del 0012)
 
 ## Integración continua
 
