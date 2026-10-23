@@ -16,7 +16,8 @@ public sealed class WorkSchedulesState(IWorkSchedulesApi api, bool isManager)
     public const string NotFoundMessage = "La jornada o la persona ya no existen. Recargue la página.";
     public const string TooManyRequestsMessage = "Demasiadas peticiones seguidas.";
 
-    private const string TimeFormat = "HH:mm";
+    // Un campo type="time" entrega «HH:mm», pero Blazor lo recibe con segundos («HH:mm:ss») al enlazarlo.
+    private static readonly string[] TimeFormats = ["HH:mm", "HH:mm:ss"];
 
     private static readonly string[] ShownFields = ["name", "startTime", "lunchStart", "lunchMinutes", "expectedBreakMinutes", "days"];
 
@@ -243,5 +244,5 @@ public sealed class WorkSchedulesState(IWorkSchedulesApi api, bool isManager)
 
     // Un valor vacío o ilegible viaja como nulo: la API responde con el error del campo.
     private static TimeOnly? ParseTime(string text)
-        => TimeOnly.TryParseExact(text, TimeFormat, CultureInfo.InvariantCulture, DateTimeStyles.None, out var time) ? time : null;
+        => TimeOnly.TryParseExact(text, TimeFormats, CultureInfo.InvariantCulture, DateTimeStyles.None, out var time) ? time : null;
 }
