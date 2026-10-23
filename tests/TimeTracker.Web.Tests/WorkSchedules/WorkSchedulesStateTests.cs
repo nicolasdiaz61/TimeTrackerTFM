@@ -144,6 +144,21 @@ public class WorkSchedulesStateTests
     }
 
     [Fact]
+    public async Task Submit_AcceptsTimesWithSeconds_BecauseTheBrowserFieldCanReportThem()
+    {
+        var api = new FakeApi();
+        var state = Filled(api);
+        state.StartTime = "09:30:00";
+        state.LunchStart = "13:15:00";
+
+        await state.SubmitAsync();
+
+        var request = Assert.Single(api.Created);
+        Assert.Equal(new TimeOnly(9, 30), request.StartTime);
+        Assert.Equal(new TimeOnly(13, 15), request.LunchStart);
+    }
+
+    [Fact]
     public async Task Submit_WithAnUnparseableTime_SendsNullSoTheServerReportsTheField()
     {
         var api = new FakeApi();
