@@ -1,0 +1,251 @@
+@page "/jornadas"
+@attribute [Authorize(Roles = "Manager")]
+@using TimeTracker.Web.Http
+@using TimeTracker.Web.Team
+@using TimeTracker.Web.WorkSchedules
+@inject IWorkSchedulesApi Schedules
+@inject TeamApiClient Team
+
+<PageTitle>Jornadas - TimeTracker</PageTitle>
+
+<h1>Jornadas</h1>
+
+<p>Configure las jornadas de su compañía y asígnelas a las personas de su equipo. Las horas son horas locales.</p>
+
+@if (state is null)
+{
+    <p><em>Cargando...</em></p>
+}
+else
+{
+    @if (state.Notice is not null)
+    {
+        <div class="alert alert-success" role="status" data-testid="work-schedule-notice">@state.Notice</div>
+    }
+
+    @if (state.ErrorMessage is not null)
+    {
+        <div class="alert alert-danger" role="alert" data-testid="work-schedule-error">
+            @state.ErrorMessage
+            @if (state.OtherErrors.Count > 0)
+            {
+                <ul class="mb-0">
+                    @foreach (var message in state.OtherErrors)
+                    {
+                        <li>@message</li>
+                    }
+                </ul>
+            }
+        </div>
+    }
+
+    <h2 class="h4">@(state.EditingId is null ? "Nueva jornada" : "Editar jornada")</h2>
+    <EditForm Model="state" OnSubmit="SubmitAsync" FormName="work-schedule" class="work-schedule-form">
+        <div class="mb-3">
+            <label for="schedule-name" class="form-label">Nombre</label>
+            <InputText @ref="nameInput" id="schedule-name" class="form-control" maxlength="100" autocomplete="off" @bind-Value="state.Name" />
+            <FieldErrors Messages="@(state.ErrorsFor("name"))" />
+        </div>
+        <div class="row">
+            <div class="col-12 col-md-6 mb-3">
+                <label for="schedule-start" class="form-label">Hora de entrada</label>
+                <InputText id="schedule-start" class="form-control" type="time" @bind-Value="state.StartTime" />
+                <FieldErrors Messages="@(state.ErrorsFor("startTime"))" />
+            </div>
+            <div class="col-12 col-md-6 mb-3">
+                <label for="schedule-lunch-start" class="form-label">Inicio del almuerzo</label>
+                <InputText id="schedule-lunch-start" class="form-control" type="time" @bind-Value="state.LunchStart" />
+                <FieldErrors Messages="@(state.ErrorsFor("lunchStart"))" />
+            </div>
+            <div class="col-12 col-md-6 mb-3">
+                <label for="schedule-lunch-minutes" class="form-label">Duración del almuerzo (minutos)</label>
+                <InputNumber id="schedule-lunch-minutes" class="form-control" min="0" max="480" @bind-Value="state.LunchMinutes" />
+                <FieldErrors Messages="@(state.ErrorsFor("lunchMinutes"))" />
+            </div>
+            <div class="col-12 col-md-6 mb-3">
+                <label for="schedule-break-minutes" class="form-label">Pausa esperada por día (minutos)</label>
+                <InputNumber id="schedule-break-minutes" class="form-control" min="0" max="480" @bind-Value="state.ExpectedBreakMinutes" />
+                <FieldErrors Messages="@(state.ErrorsFor("expectedBreakMinutes"))" />
+            </div>
+        </div>
+        <fieldset class="mb-3">
+            <legend class="form-label fs-6">Días de la semana</legend>
+            @foreach (var day in WorkSchedulePresentation.WeekOrder)
+            {
+                var captured = day;
+                <div class="form-check form-check-inline">
+                    <input class="form-check-input" type="checkbox" id="@($"schedule-day-{(int)day}")"
+                           checked="@state.SelectedDays.Contains(day)"
+                           @onchange="@(args => state.SetDay(captured, args.Value is true))" />
+                    <label class="form-check-label" for="@($"schedule-day-{(int)day}")">@WorkSchedulePresentation.DayName(day)</label>
+                </div>
+            }
+            <FieldErrors Messages="@(state.ErrorsFor("days"))" />
+        </fieldset>
+
+        <button type="submit" class="btn btn-primary" disabled="@state.IsBusy">@(state.EditingId is null ? "Crear jornada" : "Guardar cambios")</button>
+        @if (state.EditingId is not null)
+        {
+            <button type="button" class="btn btn-outline-secondary" @onclick="CancelEdit">Cancelar edición</button>
+        }
+    </EditForm>
+
+    <h2 class="h4 mt-4">Jornadas de la compañía</h2>
+    @if (state.Items.Count == 0)
+    {
+        <p>Todavía no hay jornadas.</p>
+    }
+    else
+    {
+        <div class="table-responsive">
+            <table class="table align-middle" data-testid="work-schedule-list">
+                <caption class="visually-hidden">Jornadas de la compañía</caption>
+                <thead>
+                    <tr>
+                        <th scope="col">Nombre</th>
+                        <th scope="col">Entrada</th>
+                        <th scope="col">Almuerzo</th>
+                        <th scope="col">Pausa esperada</th>
+                        <th scope="col">Días</th>
+                        <th scope="col">Personas</th>
+                        <th scope="col"><span class="visually-hidden">Acciones</span></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var schedule in state.Items)
+                    {
+                        var current = schedule;
+                        <tr>
+                            <th scope="row">@schedule.Name</th>
+                            <td>@WorkSchedulePresentation.Time(schedule.StartTime)</td>
+                            <td>@WorkSchedulePresentation.Time(schedule.LunchStart) (@schedule.LunchMinutes min)</td>
+                            <td>@schedule.ExpectedBreakMinutes min</td>
+                            <td>@WorkSchedulePresentation.DaysLabel(schedule.Days)</td>
+                            <td>@schedule.AssignedCount</td>
+                            <td class="text-nowrap">
+                                <button type="button" class="btn btn-sm btn-outline-primary" aria-label="@($"Editar la jornada {schedule.Name}")" @onclick="() => EditAsync(current)">Editar</button>
+                                <button type="button" class="btn btn-sm btn-outline-danger" aria-label="@($"Borrar la jornada {schedule.Name}")" disabled="@state.IsBusy" @onclick="() => state.DeleteAsync(current.Id)">Borrar</button>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+
+    <h2 class="h4 mt-4">Asignación de personas</h2>
+    @if (loadError is not null)
+    {
+        <div class="alert alert-warning" role="alert">@loadError</div>
+    }
+    else if (state.Members.Count == 0)
+    {
+        <p>No hay personas a su cargo.</p>
+    }
+    else
+    {
+        <div class="table-responsive">
+            <table class="table align-middle" data-testid="work-schedule-assignments">
+                <caption class="visually-hidden">Jornada de cada persona del equipo</caption>
+                <thead>
+                    <tr>
+                        <th scope="col">Persona</th>
+                        <th scope="col">Jornada</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var member in state.Members)
+                    {
+                        var current = member;
+                        <tr>
+                            <th scope="row">@member.DisplayName</th>
+                            <td>
+                                <select class="form-select" aria-label="@($"Jornada de {member.DisplayName}")" disabled="@state.IsBusy"
+                                        @onchange="args => AssignAsync(current.Id, args.Value?.ToString())">
+                                    <option value="" selected="@(member.WorkScheduleId is null)">Sin jornada</option>
+                                    @foreach (var schedule in state.Items)
+                                    {
+                                        <option value="@schedule.Id" selected="@(member.WorkScheduleId == schedule.Id)">@schedule.Name</option>
+                                    }
+                                </select>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+}
+
+@code {
+    private WorkSchedulesState? state;
+    private string? loadError;
+    private InputText? nameInput;
+    private bool focusName;
+
+    [CascadingParameter]
+    private Task<AuthenticationState>? AuthenticationStateTask { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        var isManager = AuthenticationStateTask is not null && (await AuthenticationStateTask).User.IsInRole("Manager");
+        var created = new WorkSchedulesState(Schedules, isManager);
+        if (isManager)
+        {
+            await created.LoadAsync();
+            try
+            {
+                created.SetMembers((await Team.GetMembersAsync()).Items);
+            }
+            catch (ApiRequestException exception) when (exception.StatusCode != System.Net.HttpStatusCode.Unauthorized)
+            {
+                loadError = "No se pudo cargar la lista de personas del equipo.";
+            }
+            catch (ApiRequestException)
+            {
+                // El 401 lo trata el BearerTokenHandler (sesión cerrada y redirección a /login).
+            }
+        }
+
+        state = created;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        // Al editar, el foco pasa al primer campo para quien usa teclado o lector de pantalla.
+        if (focusName && nameInput?.Element is { } element)
+        {
+            focusName = false;
+            await element.FocusAsync();
+        }
+    }
+
+    private async Task SubmitAsync()
+    {
+        if (state is not null)
+        {
+            await state.SubmitAsync();
+        }
+    }
+
+    private Task EditAsync(WorkScheduleDto schedule)
+    {
+        state?.Edit(schedule);
+        focusName = true;
+        return Task.CompletedTask;
+    }
+
+    private void CancelEdit()
+    {
+        state?.NewSchedule();
+        focusName = true;
+    }
+
+    private async Task AssignAsync(Guid memberId, string? value)
+    {
+        if (state is not null)
+        {
+            await state.AssignAsync(memberId, Guid.TryParse(value, out var id) ? id : null);
+        }
+    }
+}
