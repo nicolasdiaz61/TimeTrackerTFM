@@ -49,5 +49,23 @@ public static class WorkSchedulePresentation
             + $"pausa esperada {schedule.ExpectedBreakMinutes} min, {DaysLabel(schedule.Days)}";
     }
 
+    /// <summary>Lo previsto para un día: «09:00 · almuerzo 14:00 (60 min) · pausa 15 min», o «No laborable» si ese día no aplica.</summary>
+    public static string PlannedFor(WorkScheduleDto schedule, DateOnly date)
+    {
+        ArgumentNullException.ThrowIfNull(schedule);
+
+        return schedule.Days.Contains(date.DayOfWeek)
+            ? $"{Time(schedule.StartTime)} · almuerzo {Time(schedule.LunchStart)} ({schedule.LunchMinutes} min) · pausa {schedule.ExpectedBreakMinutes} min"
+            : "No laborable";
+    }
+
+    /// <summary>La jornada asignada a un miembro dentro de la lista de la compañía; nula si no tiene o ya no existe.</summary>
+    public static WorkScheduleDto? Resolve(IEnumerable<WorkScheduleDto> schedules, Guid? workScheduleId)
+    {
+        ArgumentNullException.ThrowIfNull(schedules);
+
+        return workScheduleId is { } id ? schedules.FirstOrDefault(schedule => schedule.Id == id) : null;
+    }
+
     public static string Time(TimeOnly time) => time.ToString("HH:mm", System.Globalization.CultureInfo.InvariantCulture);
 }
