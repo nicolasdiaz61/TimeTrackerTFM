@@ -363,7 +363,7 @@ src/
   TimeTracker.Application     Casos de uso (fichar, listar, iniciar sesión, equipo) y puertos. Depende de Domain.
   TimeTracker.Infrastructure  EF Core, migraciones, repositorios PostgreSQL y asistente de IA (herramientas, bucle, proveedores). Depende de Application.
   TimeTracker.Api             Endpoints, autenticación JWT, autorización y composición. Depende de Application e Infrastructure.
-  TimeTracker.Web             Blazor WebAssembly (inicio con el reproductor de fichaje, /login, /fichajes y /equipo), independiente.
+  TimeTracker.Web             Blazor WebAssembly (inicio con el reproductor de fichaje, /login, /fichajes, /equipo y /jornadas, con pestañas y un diálogo reutilizable; ADR 0029), independiente.
 tests/                        Pruebas de Domain, Application, Web (formato, sesión, hora local, meses y franjas), Api (integración con PostgreSQL) y de arquitectura.
 docs/adr/                     Registros de decisiones de arquitectura.
 docs/runbook-railway.md       Runbook de despliegue manual, copia de seguridad, reversión y apertura del registro.
@@ -404,6 +404,7 @@ openspec/                     Especificaciones y cambios (Spec Driven Developmen
 26. [Tablas y CSV en el asistente](docs/adr/0026-tablas-y-csv-en-el-asistente.md)
 27. [Horas extra en el resumen de equipo](docs/adr/0027-horas-extra-en-el-resumen-de-equipo.md)
 28. [Sesión compartida entre pestañas del navegador](docs/adr/0028-sesion-compartida-entre-pestañas.md) (sustituye el almacenamiento del 0012)
+29. [Navegación por pestañas, diálogo reutilizable y sistema visual](docs/adr/0029-navegacion-por-pestanas-y-sistema-visual.md)
 
 ## Integración continua
 
