@@ -2,11 +2,12 @@
 
 <PageTitle>TimeTracker</PageTitle>
 
-<h1>TimeTracker</h1>
-
-<p class="lead">
-    Control de tiempos para su empresa: registre su jornada con un clic y consulte el tiempo trabajado.
-</p>
+<header class="page-header">
+    <div>
+        <h1>TimeTracker</h1>
+        <p class="page-subtitle">Control de tiempos para su empresa: registre su jornada con un clic y consulte el tiempo trabajado.</p>
+    </div>
+</header>
 
 <AuthorizeView>
     <Authorized>
@@ -16,24 +17,27 @@
 
         <ClockPlayer />
 
-        <div class="row g-3 home-actions">
-            <div class="col-12 col-md-6 col-xl-4">
-                <div class="card h-100">
-                    <div class="card-body">
-                        <h2 class="h5 card-title">Fichajes</h2>
-                        <p class="card-text">Revise su historial mes a mes, con las franjas de trabajo, pausas y comidas de cada día.</p>
-                        <a class="btn btn-primary" href="fichajes">Ir a Fichajes</a>
-                    </div>
+        <div class="home-grid home-actions">
+            <div class="card">
+                <div class="card-body">
+                    <h2 class="card-title">Fichajes</h2>
+                    <p class="card-text">Revise su historial mes a mes, con las franjas de trabajo, pausas y comidas de cada día.</p>
+                    <a class="btn btn-primary" href="fichajes">Ir a Fichajes</a>
                 </div>
             </div>
             <AuthorizeView Roles="Manager" Context="manager">
-                <div class="col-12 col-md-6 col-xl-4">
-                    <div class="card h-100">
-                        <div class="card-body">
-                            <h2 class="h5 card-title">Equipo</h2>
-                            <p class="card-text">Consulte los fichajes de las personas a su cargo.</p>
-                            <a class="btn btn-primary" href="equipo">Ir a Equipo</a>
-                        </div>
+                <div class="card">
+                    <div class="card-body">
+                        <h2 class="card-title">Equipo</h2>
+                        <p class="card-text">Consulte las personas a su cargo y sus fichajes.</p>
+                        <a class="btn btn-primary" href="equipo">Ir a Equipo</a>
+                    </div>
+                </div>
+                <div class="card">
+                    <div class="card-body">
+                        <h2 class="card-title">Jornadas</h2>
+                        <p class="card-text">Configure las jornadas y asígnelas a su equipo.</p>
+                        <a class="btn btn-primary" href="jornadas">Ir a Jornadas</a>
                     </div>
                 </div>
             </AuthorizeView>

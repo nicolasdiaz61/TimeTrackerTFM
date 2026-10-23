@@ -8,7 +8,37 @@
 }
 
 .navbar-brand {
-    font-size: 1.1rem;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 1.15rem;
+    font-weight: 700;
+    letter-spacing: 0.01em;
+}
+
+.brand-mark {
+    width: 1.5rem;
+    height: 1.5rem;
+    fill: none;
+    stroke: #fff;
+    stroke-width: 1.5;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+
+.nav-section-title {
+    margin: 1rem 0 0.25rem;
+    padding: 0 1.5rem;
+    color: #c9c4dc;
+    font-size: 0.7rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+}
+
+nav.nav {
+    min-height: 100%;
+    padding-bottom: 0.5rem;
 }
 
 /* Iconos SVG en línea (trazo con el color del texto): sin dependencias externas ni imágenes remotas. */
@@ -29,10 +59,6 @@
     padding-bottom: 0.5rem;
 }
 
-    .nav-item:first-of-type {
-        padding-top: 1rem;
-    }
-
     .nav-item:last-of-type {
         padding-bottom: 1rem;
     }
@@ -41,8 +67,9 @@
     .nav-item ::deep a,
     .nav-item ::deep button.nav-link,
     .nav-item .session-user-row {
-        color: #d7d7d7;
-        border-radius: 4px;
+        color: #e4e1ee;
+        border-radius: 8px;
+        transition: background-color 0.15s ease;
         min-height: 3rem;
         padding: 0.5rem 1rem;
         display: flex;
@@ -57,8 +84,20 @@
     }
 
 .nav-item ::deep a.active {
-    background-color: rgba(255,255,255,0.37);
+    background-color: rgba(255,255,255,0.22);
+    box-shadow: inset 3px 0 0 #fff;
     color: white;
+    font-weight: 600;
+}
+
+.nav-item ::deep a:focus-visible,
+.nav-item ::deep button.nav-link:focus-visible {
+    outline: 3px solid #fff;
+    outline-offset: -3px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .nav-item ::deep a, .nav-item ::deep button.nav-link { transition: none; }
 }
 
 .nav-item ::deep a:hover,
@@ -67,7 +106,13 @@
     color: white;
 }
 
+.session-info {
+    margin-top: auto;
+    padding-top: 0.5rem;
+}
+
 .session-info .session-user-row {
+    background-color: rgba(255,255,255,0.08);
     cursor: default;
     overflow-wrap: anywhere;
     line-height: 1.25;

@@ -3,7 +3,7 @@
 
 <div class="top-row ps-3 navbar navbar-dark">
     <div class="container-fluid">
-        <a class="navbar-brand" href="">TimeTracker</a>
+        <a class="navbar-brand" href=""><svg class="brand-mark" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6.5" /><path d="M8 4.5V8l2.5 1.5" /></svg>TimeTracker</a>
         <button type="button" title="Menú de navegación" aria-label="Menú de navegación" aria-expanded="@(!collapseNavMenu)" class="navbar-toggler" @onclick="ToggleNavMenu">
             <span class="navbar-toggler-icon"></span>
         </button>
@@ -22,6 +22,7 @@
                 }
                 else
                 {
+                    <p class="nav-section-title" aria-hidden="true">General</p>
                     @HomeLink
                     <div class="nav-item px-3">
                         <NavLink class="nav-link" href="fichajes">
@@ -35,6 +36,7 @@
                         </NavLink>
                     </div>
                     <AuthorizeView Roles="Manager" Context="manager">
+                        <p class="nav-section-title" aria-hidden="true">Gestión</p>
                         <div class="nav-item px-3">
                             <NavLink class="nav-link" href="equipo" Match="NavLinkMatch.All">
                                 <svg class="nav-icon" viewBox="0 0 16 16" aria-hidden="true"><circle cx="6" cy="5.5" r="2.2" /><path d="M1.8 13c0-2.3 1.9-4 4.2-4s4.2 1.7 4.2 4" /><path d="M10.6 3.6a2 2 0 0 1 0 3.8M12 9.3c1.5.5 2.4 1.7 2.4 3.7" /></svg> Equipo
