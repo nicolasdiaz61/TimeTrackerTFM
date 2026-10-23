@@ -529,13 +529,58 @@ code {
 .tick-k-24 { --k: 24; }
 
 /* Asistente (/asistente): la respuesta se muestra como texto plano; pre-wrap conserva los saltos de línea. */
-.assistant-conversation { display: flex; flex-direction: column; gap: 0.75rem; margin-bottom: 1rem; }
-.assistant-turn { max-width: 48rem; padding: 0.5rem 0.75rem; border-radius: 0.5rem; border: 1px solid #dee2e6; }
-.assistant-turn-user { align-self: flex-end; background-color: #e7f1ff; }
-.assistant-turn-assistant { align-self: flex-start; background-color: #f8f9fa; }
-.assistant-author { display: block; font-size: 0.8rem; font-weight: 600; color: #495057; }
+/* Altura = ventana - relleno superior del contenido (1.1rem) - margen inferior (1rem); en móvil además la barra superior (3.5rem). */
+.assistant-page {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    height: calc(100vh - 3.5rem - 1.1rem - 1rem);
+    height: calc(100dvh - 3.5rem - 1.1rem - 1rem);
+    min-height: 22rem;
+    max-width: 60rem;
+    margin-bottom: 1rem;
+}
+@media (min-width: 641px) {
+    .assistant-page { height: calc(100vh - 1.1rem - 1rem); height: calc(100dvh - 1.1rem - 1rem); }
+}
+.assistant-header { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: 0.5rem; }
+.assistant-header h1 { font-size: 1.5rem; margin: 0 0 0.25rem; }
+.assistant-header p { font-size: 0.9rem; }
+.assistant-messages {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    padding: 0.75rem;
+    border: 1px solid #dee2e6;
+    border-radius: 0.5rem;
+    background-color: #fff;
+}
+.assistant-turn { max-width: 75%; padding: 0.5rem 0.75rem; border-radius: 1rem; border: 1px solid #dee2e6; }
+.assistant-turn-user { align-self: flex-end; background-color: #1b6ec2; border-color: #1b6ec2; color: #fff; border-bottom-right-radius: 0.25rem; }
+.assistant-turn-assistant { align-self: flex-start; background-color: #f1f3f5; color: #212529; border-bottom-left-radius: 0.25rem; }
+.assistant-turn-error { align-self: flex-start; background-color: #f8d7da; border-color: #f1aeb5; color: #58151c; border-bottom-left-radius: 0.25rem; }
+.assistant-author { display: block; font-size: 0.75rem; font-weight: 600; opacity: 0.85; }
 .assistant-text { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
-.assistant-form { max-width: 48rem; }
+.assistant-welcome { margin: auto; text-align: center; max-width: 36rem; }
+.assistant-welcome-title { font-size: 1.15rem; font-weight: 600; margin-bottom: 0.25rem; }
+.assistant-chips { display: flex; flex-wrap: wrap; justify-content: center; gap: 0.5rem; }
+.assistant-chip { border-radius: 1rem; white-space: normal; }
+.assistant-dots span { animation: assistant-blink 1.2s infinite both; }
+.assistant-dots span:nth-child(2) { animation-delay: 0.2s; }
+.assistant-dots span:nth-child(3) { animation-delay: 0.4s; }
+@keyframes assistant-blink { 0%, 80%, 100% { opacity: 0.2; } 40% { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .assistant-dots span { animation: none; } }
+.assistant-form { flex: 0 0 auto; }
+.assistant-input-row { display: flex; gap: 0.5rem; align-items: flex-end; }
+.assistant-input-row textarea { resize: none; max-height: 8rem; }
+.assistant-input-meta { display: flex; justify-content: space-between; gap: 0.5rem; margin-top: 0.25rem; }
+.assistant-counter { color: #495057; }
+.assistant-counter-warning { color: #8a5a00; font-weight: 600; }
+.assistant-counter-danger { color: #b02a37; font-weight: 700; }
+@media (max-width: 640.98px) { .assistant-turn { max-width: 90%; } }
 .assistant-config-form { max-width: 40rem; }
 .assistant-config-actions { display: flex; flex-wrap: wrap; gap: 0.5rem; }
 .registration-form, .change-password-form, .team-member-form { max-width: 32rem; }

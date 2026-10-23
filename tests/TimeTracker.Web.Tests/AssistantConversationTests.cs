@@ -301,4 +301,49 @@ public class AssistantConversationTests
 
         Assert.Null(conversation.ErrorMessage);
     }
+
+    [Fact]
+    public void Reset_ClearsTurnsErrorsNoticeAndBusyState()
+    {
+        var conversation = new AssistantConversation();
+        Exchange(conversation, "Uno", "Respuesta uno");
+        Begin(conversation, "Dos");
+        conversation.Fail(new ApiRequestException(ApiRequest.GenericErrorMessage, HttpStatusCode.ServiceUnavailable));
+
+        conversation.Reset();
+
+        Assert.Empty(conversation.Turns);
+        Assert.False(conversation.IsBusy);
+        Assert.Null(conversation.ErrorMessage);
+        Assert.Null(conversation.Notice);
+        Assert.Empty(Begin(conversation, "Nueva").History);
+    }
+
+    [Fact]
+    public void ExampleQuestions_AreThreeForEmployeesAndIncludeTheManagerQuestionForManagers()
+    {
+        var employee = AssistantConversation.ExampleQuestions(isManager: false);
+        var manager = AssistantConversation.ExampleQuestions(isManager: true);
+
+        Assert.Equal(3, employee.Count);
+        Assert.Equal(3, manager.Count);
+        Assert.DoesNotContain("¿Quién hace más pausas que el promedio?", employee);
+        Assert.Contains("¿Quién hace más pausas que el promedio?", manager);
+        Assert.All(employee.Concat(manager), question => Assert.Null(new AssistantConversation().Validate(question)));
+    }
+
+    [Theory]
+    [InlineData(null, 0)]
+    [InlineData("  hola  ", 4)]
+    public void MessageLength_CountsTheTrimmedText(string? message, int expected)
+        => Assert.Equal(expected, AssistantConversation.MessageLength(message));
+
+    [Theory]
+    [InlineData(0, CounterLevel.Normal)]
+    [InlineData(399, CounterLevel.Normal)]
+    [InlineData(400, CounterLevel.Warning)]
+    [InlineData(500, CounterLevel.Warning)]
+    [InlineData(501, CounterLevel.Danger)]
+    public void CounterLevel_TurnsToWarningNearAndDangerOverTheLimit(int length, CounterLevel expected)
+        => Assert.Equal(expected, AssistantConversation.CounterLevelFor(length));
 }
