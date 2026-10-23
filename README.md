@@ -399,6 +399,7 @@ openspec/                     Especificaciones y cambios (Spec Driven Developmen
 21. [Configuración del asistente por compañía](docs/adr/0021-configuracion-del-asistente-por-compania.md) (sustituye parcialmente al 0018 y al 0019)
 22. [Autorregistro con código de invitación y contraseñas](docs/adr/0022-autorregistro-con-codigo-de-invitacion-y-contrasenas.md)
 23. [Proveedor Groq para el asistente](docs/adr/0023-proveedor-groq.md)
+24. [Alcance del asistente](docs/adr/0024-alcance-del-asistente.md)
 
 ## Integración continua
 
