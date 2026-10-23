@@ -35,6 +35,7 @@ builder.Services.AddAuthorizationCore();
 builder.Services.AddCascadingAuthenticationState();
 builder.Services.AddScoped<ChatViewport>();
 builder.Services.AddScoped<ISessionStorage, BrowserSessionStorage>();
+builder.Services.AddScoped<DialogFocus>();
 builder.Services.AddScoped<TokenStore>();
 builder.Services.AddScoped<SessionSynchronizer>();
 builder.Services.AddScoped<SessionNotice>();

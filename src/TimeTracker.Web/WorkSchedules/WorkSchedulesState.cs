@@ -75,6 +75,13 @@ public sealed class WorkSchedulesState(IWorkSchedulesApi api, bool isManager)
         }
     }
 
+    /// <summary>Abre un alta limpia: vacía el formulario y descarta los mensajes anteriores.</summary>
+    public void StartNew()
+    {
+        ClearMessages();
+        NewSchedule();
+    }
+
     public void NewSchedule()
     {
         EditingId = null;

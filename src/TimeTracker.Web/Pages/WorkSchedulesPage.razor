@@ -1,20 +1,25 @@
 @page "/jornadas"
 @attribute [Authorize(Roles = "Manager")]
 @using TimeTracker.Web.Http
+@using TimeTracker.Web.Tabs
 @using TimeTracker.Web.Team
 @using TimeTracker.Web.WorkSchedules
 @inject IWorkSchedulesApi Schedules
 @inject TeamApiClient Team
+@inject NavigationManager Navigation
 
 <PageTitle>Jornadas - TimeTracker</PageTitle>
 
-<h1>Jornadas</h1>
+<header class="page-header">
+    <div>
+        <h1>Jornadas</h1>
+        <p class="page-subtitle">Configure las jornadas de su compañía y asígnelas a las personas de su equipo. Las horas son horas locales.</p>
+    </div>
+</header>
 
-<p>Configure las jornadas de su compañía y asígnelas a las personas de su equipo. Las horas son horas locales.</p>
-
-@if (state is null)
+@if (state is null || dialogs is null)
 {
-    <p><em>Cargando...</em></p>
+    <p class="loading-note" aria-busy="true"><em>Cargando...</em></p>
 }
 else
 {
@@ -23,7 +28,7 @@ else
         <div class="alert alert-success" role="status" data-testid="work-schedule-notice">@state.Notice</div>
     }
 
-    @if (state.ErrorMessage is not null)
+    @if (state.ErrorMessage is not null && dialogs.Current != WorkScheduleDialog.Form)
     {
         <div class="alert alert-danger" role="alert" data-testid="work-schedule-error">
             @state.ErrorMessage
@@ -39,152 +44,219 @@ else
         </div>
     }
 
-    <h2 class="h4">@(state.EditingId is null ? "Nueva jornada" : "Editar jornada")</h2>
-    <EditForm Model="state" OnSubmit="SubmitAsync" FormName="work-schedule" class="work-schedule-form">
-        <div class="mb-3">
-            <label for="schedule-name" class="form-label">Nombre</label>
-            <InputText @ref="nameInput" id="schedule-name" class="form-control" maxlength="100" autocomplete="off" @bind-Value="state.Name" />
-            <FieldErrors Messages="@(state.ErrorsFor("name"))" />
-        </div>
-        <div class="row">
-            <div class="col-12 col-md-6 mb-3">
-                <label for="schedule-start" class="form-label">Hora de entrada</label>
-                <InputText id="schedule-start" class="form-control" type="time" @bind-Value="state.StartTime" />
-                <FieldErrors Messages="@(state.ErrorsFor("startTime"))" />
+    <TabList Tabs="Tabs" Selected="activeTab" Label="Secciones de jornadas" SelectedChanged="SelectTab" />
+
+    @if (activeTab == SchedulesTab)
+    {
+        <section class="card tt-tabpanel" role="tabpanel" id="panel-jornadas" aria-labelledby="tab-jornadas" tabindex="0">
+            <div class="card-header">
+                <h2>Jornadas de la compañía</h2>
+                <button type="button" class="btn btn-primary" data-testid="new-work-schedule" @onclick="dialogs.OpenCreate">Nueva jornada</button>
             </div>
-            <div class="col-12 col-md-6 mb-3">
-                <label for="schedule-lunch-start" class="form-label">Inicio del almuerzo</label>
-                <InputText id="schedule-lunch-start" class="form-control" type="time" @bind-Value="state.LunchStart" />
-                <FieldErrors Messages="@(state.ErrorsFor("lunchStart"))" />
-            </div>
-            <div class="col-12 col-md-6 mb-3">
-                <label for="schedule-lunch-minutes" class="form-label">Duración del almuerzo (minutos)</label>
-                <InputNumber id="schedule-lunch-minutes" class="form-control" min="0" max="480" @bind-Value="state.LunchMinutes" />
-                <FieldErrors Messages="@(state.ErrorsFor("lunchMinutes"))" />
-            </div>
-            <div class="col-12 col-md-6 mb-3">
-                <label for="schedule-break-minutes" class="form-label">Pausa esperada por día (minutos)</label>
-                <InputNumber id="schedule-break-minutes" class="form-control" min="0" max="480" @bind-Value="state.ExpectedBreakMinutes" />
-                <FieldErrors Messages="@(state.ErrorsFor("expectedBreakMinutes"))" />
-            </div>
-        </div>
-        <fieldset class="mb-3">
-            <legend class="form-label fs-6">Días de la semana</legend>
-            @foreach (var day in WorkSchedulePresentation.WeekOrder)
+            @if (state.Items.Count == 0)
             {
-                var captured = day;
-                <div class="form-check form-check-inline">
-                    <input class="form-check-input" type="checkbox" id="@($"schedule-day-{(int)day}")"
-                           checked="@state.SelectedDays.Contains(day)"
-                           @onchange="@(args => state.SetDay(captured, args.Value is true))" />
-                    <label class="form-check-label" for="@($"schedule-day-{(int)day}")">@WorkSchedulePresentation.DayName(day)</label>
+                <div class="card-body"><p class="empty-state mb-0">Todavía no hay jornadas. Cree la primera con «Nueva jornada».</p></div>
+            }
+            else
+            {
+                <div class="table-wrap">
+                    <table class="table align-middle mb-0" data-testid="work-schedule-list">
+                        <caption class="visually-hidden">Jornadas de la compañía</caption>
+                        <thead>
+                            <tr>
+                                <th scope="col">Nombre</th>
+                                <th scope="col">Entrada</th>
+                                <th scope="col">Almuerzo</th>
+                                <th scope="col">Pausa esperada</th>
+                                <th scope="col">Días</th>
+                                <th scope="col">Personas</th>
+                                <th scope="col"><span class="visually-hidden">Acciones</span></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var schedule in state.Items)
+                            {
+                                var current = schedule;
+                                <tr>
+                                    <th scope="row">@schedule.Name</th>
+                                    <td>@WorkSchedulePresentation.Time(schedule.StartTime)</td>
+                                    <td>@WorkSchedulePresentation.Time(schedule.LunchStart) (@schedule.LunchMinutes min)</td>
+                                    <td>@schedule.ExpectedBreakMinutes min</td>
+                                    <td>@WorkSchedulePresentation.DaysLabel(schedule.Days)</td>
+                                    <td>@schedule.AssignedCount</td>
+                                    <td>
+                                        <div class="row-actions">
+                                            <button type="button" class="btn btn-sm btn-outline-primary" aria-label="@($"Editar la jornada {schedule.Name}")" @onclick="() => dialogs.OpenEdit(current)">Editar</button>
+                                            <button type="button" class="btn btn-sm btn-outline-danger" aria-label="@($"Borrar la jornada {schedule.Name}")" disabled="@state.IsBusy" @onclick="() => dialogs.RequestDelete(current)">Borrar</button>
+                                        </div>
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
                 </div>
             }
-            <FieldErrors Messages="@(state.ErrorsFor("days"))" />
-        </fieldset>
-
-        <button type="submit" class="btn btn-primary" disabled="@state.IsBusy">@(state.EditingId is null ? "Crear jornada" : "Guardar cambios")</button>
-        @if (state.EditingId is not null)
-        {
-            <button type="button" class="btn btn-outline-secondary" @onclick="CancelEdit">Cancelar edición</button>
-        }
-    </EditForm>
-
-    <h2 class="h4 mt-4">Jornadas de la compañía</h2>
-    @if (state.Items.Count == 0)
-    {
-        <p>Todavía no hay jornadas.</p>
+        </section>
     }
     else
     {
-        <div class="table-responsive">
-            <table class="table align-middle" data-testid="work-schedule-list">
-                <caption class="visually-hidden">Jornadas de la compañía</caption>
-                <thead>
-                    <tr>
-                        <th scope="col">Nombre</th>
-                        <th scope="col">Entrada</th>
-                        <th scope="col">Almuerzo</th>
-                        <th scope="col">Pausa esperada</th>
-                        <th scope="col">Días</th>
-                        <th scope="col">Personas</th>
-                        <th scope="col"><span class="visually-hidden">Acciones</span></th>
-                    </tr>
-                </thead>
-                <tbody>
-                    @foreach (var schedule in state.Items)
-                    {
-                        var current = schedule;
-                        <tr>
-                            <th scope="row">@schedule.Name</th>
-                            <td>@WorkSchedulePresentation.Time(schedule.StartTime)</td>
-                            <td>@WorkSchedulePresentation.Time(schedule.LunchStart) (@schedule.LunchMinutes min)</td>
-                            <td>@schedule.ExpectedBreakMinutes min</td>
-                            <td>@WorkSchedulePresentation.DaysLabel(schedule.Days)</td>
-                            <td>@schedule.AssignedCount</td>
-                            <td class="text-nowrap">
-                                <button type="button" class="btn btn-sm btn-outline-primary" aria-label="@($"Editar la jornada {schedule.Name}")" @onclick="() => EditAsync(current)">Editar</button>
-                                <button type="button" class="btn btn-sm btn-outline-danger" aria-label="@($"Borrar la jornada {schedule.Name}")" disabled="@state.IsBusy" @onclick="() => state.DeleteAsync(current.Id)">Borrar</button>
-                            </td>
-                        </tr>
-                    }
-                </tbody>
-            </table>
-        </div>
+        <section class="card tt-tabpanel" role="tabpanel" id="panel-asignacion" aria-labelledby="tab-asignacion" tabindex="0">
+            <div class="card-header"><h2>Asignación de personas</h2></div>
+            @if (loadError is not null)
+            {
+                <div class="card-body"><div class="alert alert-warning mb-0" role="alert">@loadError</div></div>
+            }
+            else if (state.Members.Count == 0)
+            {
+                <div class="card-body"><p class="empty-state mb-0">No hay personas a su cargo.</p></div>
+            }
+            else
+            {
+                <div class="table-wrap">
+                    <table class="table align-middle mb-0" data-testid="work-schedule-assignments">
+                        <caption class="visually-hidden">Jornada de cada persona del equipo</caption>
+                        <thead>
+                            <tr>
+                                <th scope="col">Persona</th>
+                                <th scope="col">Jornada</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var member in state.Members)
+                            {
+                                var current = member;
+                                <tr>
+                                    <th scope="row">@member.DisplayName</th>
+                                    <td>
+                                        <select class="form-select" aria-label="@($"Jornada de {member.DisplayName}")" disabled="@state.IsBusy"
+                                                @onchange="args => AssignAsync(current.Id, args.Value?.ToString())">
+                                            <option value="" selected="@(member.WorkScheduleId is null)">Sin jornada</option>
+                                            @foreach (var schedule in state.Items)
+                                            {
+                                                <option value="@schedule.Id" selected="@(member.WorkScheduleId == schedule.Id)">@schedule.Name</option>
+                                            }
+                                        </select>
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+        </section>
     }
 
-    <h2 class="h4 mt-4">Asignación de personas</h2>
-    @if (loadError is not null)
+    @if (dialogs.Current == WorkScheduleDialog.Form)
     {
-        <div class="alert alert-warning" role="alert">@loadError</div>
+        <Dialog Title="@dialogs.FormTitle" TitleId="work-schedule-dialog-title" OnClose="dialogs.Close">
+            <ChildContent>
+                @if (state.ErrorMessage is not null)
+                {
+                    <div class="alert alert-danger" role="alert" data-testid="work-schedule-error">
+                        @state.ErrorMessage
+                        @if (state.OtherErrors.Count > 0)
+                        {
+                            <ul class="mb-0">
+                                @foreach (var message in state.OtherErrors)
+                                {
+                                    <li>@message</li>
+                                }
+                            </ul>
+                        }
+                    </div>
+                }
+                <EditForm Model="state" OnSubmit="@(() => dialogs.SubmitAsync())" FormName="work-schedule" id="work-schedule-form" class="work-schedule-form">
+                    <div class="mb-3">
+                        <label for="schedule-name" class="form-label">Nombre</label>
+                        <InputText id="schedule-name" class="form-control" maxlength="100" autocomplete="off" @bind-Value="state.Name" />
+                        <FieldErrors Messages="@(state.ErrorsFor("name"))" />
+                    </div>
+                    <div class="row">
+                        <div class="col-12 col-md-6 mb-3">
+                            <label for="schedule-start" class="form-label">Hora de entrada</label>
+                            <InputText id="schedule-start" class="form-control" type="time" @bind-Value="state.StartTime" />
+                            <FieldErrors Messages="@(state.ErrorsFor("startTime"))" />
+                        </div>
+                        <div class="col-12 col-md-6 mb-3">
+                            <label for="schedule-lunch-start" class="form-label">Inicio del almuerzo</label>
+                            <InputText id="schedule-lunch-start" class="form-control" type="time" @bind-Value="state.LunchStart" />
+                            <FieldErrors Messages="@(state.ErrorsFor("lunchStart"))" />
+                        </div>
+                        <div class="col-12 col-md-6 mb-3">
+                            <label for="schedule-lunch-minutes" class="form-label">Duración del almuerzo (minutos)</label>
+                            <InputNumber id="schedule-lunch-minutes" class="form-control" min="0" max="480" @bind-Value="state.LunchMinutes" />
+                            <FieldErrors Messages="@(state.ErrorsFor("lunchMinutes"))" />
+                        </div>
+                        <div class="col-12 col-md-6 mb-3">
+                            <label for="schedule-break-minutes" class="form-label">Pausa esperada por día (minutos)</label>
+                            <InputNumber id="schedule-break-minutes" class="form-control" min="0" max="480" @bind-Value="state.ExpectedBreakMinutes" />
+                            <FieldErrors Messages="@(state.ErrorsFor("expectedBreakMinutes"))" />
+                        </div>
+                    </div>
+                    <fieldset class="mb-0">
+                        <legend class="form-label">Días de la semana</legend>
+                        @foreach (var day in WorkSchedulePresentation.WeekOrder)
+                        {
+                            var captured = day;
+                            <div class="form-check form-check-inline">
+                                <input class="form-check-input" type="checkbox" id="@($"schedule-day-{(int)day}")"
+                                       checked="@state.SelectedDays.Contains(day)"
+                                       @onchange="@(args => state.SetDay(captured, args.Value is true))" />
+                                <label class="form-check-label" for="@($"schedule-day-{(int)day}")">@WorkSchedulePresentation.DayName(day)</label>
+                            </div>
+                        }
+                        <FieldErrors Messages="@(state.ErrorsFor("days"))" />
+                    </fieldset>
+                </EditForm>
+            </ChildContent>
+            <Footer>
+                <button type="button" class="btn btn-outline-secondary" @onclick="dialogs.Close">Cancelar</button>
+                <button type="submit" form="work-schedule-form" class="btn btn-primary" disabled="@state.IsBusy">@(dialogs.IsEditing ? "Guardar cambios" : "Crear jornada")</button>
+            </Footer>
+        </Dialog>
     }
-    else if (state.Members.Count == 0)
+    else if (dialogs.Current == WorkScheduleDialog.ConfirmDelete && dialogs.PendingDelete is { } pending)
     {
-        <p>No hay personas a su cargo.</p>
-    }
-    else
-    {
-        <div class="table-responsive">
-            <table class="table align-middle" data-testid="work-schedule-assignments">
-                <caption class="visually-hidden">Jornada de cada persona del equipo</caption>
-                <thead>
-                    <tr>
-                        <th scope="col">Persona</th>
-                        <th scope="col">Jornada</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    @foreach (var member in state.Members)
-                    {
-                        var current = member;
-                        <tr>
-                            <th scope="row">@member.DisplayName</th>
-                            <td>
-                                <select class="form-select" aria-label="@($"Jornada de {member.DisplayName}")" disabled="@state.IsBusy"
-                                        @onchange="args => AssignAsync(current.Id, args.Value?.ToString())">
-                                    <option value="" selected="@(member.WorkScheduleId is null)">Sin jornada</option>
-                                    @foreach (var schedule in state.Items)
-                                    {
-                                        <option value="@schedule.Id" selected="@(member.WorkScheduleId == schedule.Id)">@schedule.Name</option>
-                                    }
-                                </select>
-                            </td>
-                        </tr>
-                    }
-                </tbody>
-            </table>
-        </div>
+        <Dialog Title="Borrar jornada" TitleId="work-schedule-delete-title" Small="true" Alert="true" OnClose="dialogs.Close">
+            <ChildContent>
+                <p class="mb-0" data-testid="work-schedule-delete-confirmation">¿Borrar la jornada <strong>@pending.Name</strong>? Esta acción no se puede deshacer.</p>
+            </ChildContent>
+            <Footer>
+                <button type="button" class="btn btn-outline-secondary" @onclick="dialogs.Close">Cancelar</button>
+                <button type="button" class="btn btn-danger" disabled="@state.IsBusy" @onclick="@(() => dialogs.ConfirmDeleteAsync())">Sí, borrar</button>
+            </Footer>
+        </Dialog>
     }
 }
 
 @code {
+    private const string SchedulesTab = "jornadas";
+    private const string AssignmentTab = "asignacion";
+
+    private static readonly IReadOnlyList<TabList.TabItem> Tabs =
+    [
+        new(SchedulesTab, "Jornadas"),
+        new(AssignmentTab, "Asignación de personas"),
+    ];
+
+    private static readonly string[] TabKeys = [SchedulesTab, AssignmentTab];
+
     private WorkSchedulesState? state;
+    private WorkScheduleDialogs? dialogs;
     private string? loadError;
-    private InputText? nameInput;
-    private bool focusName;
+    private string activeTab = SchedulesTab;
+
+    [SupplyParameterFromQuery(Name = TabSelection.QueryParameter)]
+    public string? TabParameter { get; set; }
 
     [CascadingParameter]
     private Task<AuthenticationState>? AuthenticationStateTask { get; set; }
+
+    protected override void OnParametersSet() => activeTab = TabSelection.Resolve(TabParameter, TabKeys);
+
+    // La pestaña vive en la URL (?tab=): sobrevive a recargar y se puede enlazar; sin apilar historial por cada cambio.
+    private void SelectTab(string key)
+        => Navigation.NavigateTo(Navigation.GetUriWithQueryParameter(TabSelection.QueryParameter, key), replace: true);
 
     protected override async Task OnInitializedAsync()
     {
@@ -208,37 +280,7 @@ else
         }
 
         state = created;
-    }
-
-    protected override async Task OnAfterRenderAsync(bool firstRender)
-    {
-        // Al editar, el foco pasa al primer campo para quien usa teclado o lector de pantalla.
-        if (focusName && nameInput?.Element is { } element)
-        {
-            focusName = false;
-            await element.FocusAsync();
-        }
-    }
-
-    private async Task SubmitAsync()
-    {
-        if (state is not null)
-        {
-            await state.SubmitAsync();
-        }
-    }
-
-    private Task EditAsync(WorkScheduleDto schedule)
-    {
-        state?.Edit(schedule);
-        focusName = true;
-        return Task.CompletedTask;
-    }
-
-    private void CancelEdit()
-    {
-        state?.NewSchedule();
-        focusName = true;
+        dialogs = new WorkScheduleDialogs(created);
     }
 
     private async Task AssignAsync(Guid memberId, string? value)

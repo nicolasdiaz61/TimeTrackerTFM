@@ -1,0 +1,53 @@
+@using TimeTracker.Web.Tabs
+
+@* Barra de pestañas accesible (patrón WAI-ARIA): tablist/tab, aria-selected, tabindex itinerante y flechas izquierda/derecha. El panel lo pinta la página con id "panel-{clave}" y aria-labelledby "tab-{clave}". *@
+<div class="tt-tabs" role="tablist" aria-label="@Label">
+    @foreach (var tab in Tabs)
+    {
+        var captured = tab.Key;
+        var selected = captured == Selected;
+        <button type="button" role="tab" id="@($"tab-{captured}")" class="tt-tab" aria-selected="@(selected ? "true" : "false")"
+                aria-controls="@($"panel-{captured}")" tabindex="@(selected ? 0 : -1)"
+                @ref="buttons[captured]" @onclick="() => SelectAsync(captured)" @onkeydown="args => OnKeyDown(args, captured)">@tab.Label</button>
+    }
+</div>
+
+@code {
+    private readonly Dictionary<string, ElementReference> buttons = [];
+    private string? focusKey;
+
+    [Parameter, EditorRequired]
+    public IReadOnlyList<TabItem> Tabs { get; set; } = default!;
+
+    [Parameter, EditorRequired]
+    public string Selected { get; set; } = default!;
+
+    [Parameter]
+    public string Label { get; set; } = "Secciones";
+
+    [Parameter]
+    public EventCallback<string> SelectedChanged { get; set; }
+
+    private Task SelectAsync(string key) => SelectedChanged.InvokeAsync(key);
+
+    private async Task OnKeyDown(KeyboardEventArgs args, string current)
+    {
+        var target = TabSelection.Move(current, [.. Tabs.Select(tab => tab.Key)], args.Key);
+        if (target != current)
+        {
+            focusKey = target;
+            await SelectAsync(target);
+        }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (focusKey is { } key && buttons.TryGetValue(key, out var button))
+        {
+            focusKey = null;
+            await button.FocusAsync();
+        }
+    }
+
+    public sealed record TabItem(string Key, string Label);
+}

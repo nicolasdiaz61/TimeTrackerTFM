@@ -1,0 +1,68 @@
+@implements IAsyncDisposable
+@inject DialogFocus Focus
+
+@* Diálogo modal reutilizable: se muestra mientras el componente está en el árbol. Esc y el clic en el fondo piden cerrarlo (OnClose). *@
+<div class="dialog-backdrop" data-testid="dialog-backdrop" @onclick="OnClose" @onkeydown="OnKeyDown">
+    <div @ref="dialogElement" class="dialog @(Small ? "dialog-sm" : null)" role="@(Alert ? "alertdialog" : "dialog")" aria-modal="true"
+         aria-labelledby="@TitleId" tabindex="-1" @onclick:stopPropagation="true">
+        <div class="dialog-header">
+            <h2 id="@TitleId" class="dialog-title">@Title</h2>
+            <button type="button" class="btn btn-ghost dialog-close" aria-label="Cerrar" @onclick="OnClose">&times;</button>
+        </div>
+        <div class="dialog-body">
+            @ChildContent
+        </div>
+        @if (Footer is not null)
+        {
+            <div class="dialog-footer">
+                @Footer
+            </div>
+        }
+    </div>
+</div>
+
+@code {
+    private ElementReference dialogElement;
+    private bool opened;
+
+    [Parameter, EditorRequired]
+    public string Title { get; set; } = default!;
+
+    [Parameter]
+    public string TitleId { get; set; } = "dialog-title";
+
+    [Parameter]
+    public bool Small { get; set; }
+
+    /// <summary>Diálogo de confirmación que exige respuesta: lo anuncia como alertdialog.</summary>
+    [Parameter]
+    public bool Alert { get; set; }
+
+    [Parameter]
+    public RenderFragment? ChildContent { get; set; }
+
+    [Parameter]
+    public RenderFragment? Footer { get; set; }
+
+    [Parameter]
+    public EventCallback OnClose { get; set; }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!opened)
+        {
+            opened = true;
+            await Focus.OpenAsync(dialogElement);
+        }
+    }
+
+    private Task OnKeyDown(KeyboardEventArgs args) => args.Key == "Escape" ? OnClose.InvokeAsync() : Task.CompletedTask;
+
+    public async ValueTask DisposeAsync()
+    {
+        if (opened)
+        {
+            await Focus.CloseAsync();
+        }
+    }
+}
