@@ -1,3 +1,5 @@
+@inject TimeTracker.Web.Auth.SessionSynchronizer SessionSync
+
 <Router AppAssembly="@typeof(App).Assembly" NotFoundPage="typeof(Pages.NotFound)">
     <Found Context="routeData">
         <PasswordChangeGate>
@@ -20,3 +22,8 @@
         <FocusOnNavigate RouteData="@routeData" Selector="h1" />
     </Found>
 </Router>
+
+@code {
+    // Sesión compartida entre pestañas (ADR 0028): escucha los cambios que otra pestaña hace en el almacenamiento.
+    protected override Task OnInitializedAsync() => SessionSync.StartAsync();
+}

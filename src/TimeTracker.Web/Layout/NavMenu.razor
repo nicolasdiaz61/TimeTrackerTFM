@@ -120,7 +120,7 @@
     private static string RoleLabel(System.Security.Claims.ClaimsPrincipal user)
         => user.IsInRole("Manager") ? "Responsable" : "Empleado";
 
-    // Borra el token de sessionStorage y de memoria, actualiza el estado y lleva a /login (WS-34).
+    // Borra el token del almacenamiento compartido y de memoria (las demás pestañas cierran sesión por el evento «storage»), actualiza el estado y lleva a /login (WS-34).
     private async Task SignOutAsync()
     {
         await Authentication.SignOutAsync();
