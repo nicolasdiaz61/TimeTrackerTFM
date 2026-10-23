@@ -84,8 +84,8 @@ public class GetTeamSummaryUseCaseTests
 
         var result = await RunAsync();
 
-        var luis = result.Members.Single(member => member.Id == LuisId);
-        var ana = result.Members.Single(member => member.Id == AnaId);
+        var luis = result.Members.Single(member => member.MemberId == LuisId);
+        var ana = result.Members.Single(member => member.MemberId == AnaId);
         Assert.Equal((20, 4), (luis.BreakMinutes, luis.BreakCount));
         Assert.Equal((60, 1), (ana.BreakMinutes, ana.BreakCount));
         Assert.False(luis.AboveAverageBreakMinutes);
@@ -113,7 +113,7 @@ public class GetTeamSummaryUseCaseTests
         Assert.Equal(33, result.Averages.BreakMinutes);
         Assert.Equal(1.5, result.Averages.BreakCount);
         Assert.Equal("0 h 33 min", result.Averages.BreakText);
-        Assert.Equal([LuisId, AnaId], result.Members.Select(member => member.Id));
+        Assert.Equal([LuisId, AnaId], result.Members.Select(member => member.MemberId));
         Assert.Equal(12, result.Members[0].BreakMinutesVsAverage);
         Assert.Equal(-0.5, result.Members[0].BreakCountVsAverage);
         Assert.Equal(-12, result.Members[1].BreakMinutesVsAverage);
@@ -138,7 +138,7 @@ public class GetTeamSummaryUseCaseTests
             Assert.False(member.AboveAverageBreakCount);
             Assert.Equal(0, member.BreakMinutesVsAverage);
         });
-        Assert.Equal(["Ana", "Luis"], result.Members.Select(member => member.DisplayName));
+        Assert.Equal(["Ana", "Luis"], result.Members.Select(member => member.Name));
     }
 
     [Fact]
@@ -171,7 +171,7 @@ public class GetTeamSummaryUseCaseTests
 
         var result = await RunAsync();
 
-        Assert.Equal([LuisId], result.Members.Select(member => member.Id));
+        Assert.Equal([LuisId], result.Members.Select(member => member.MemberId));
         Assert.Equal(10, result.Averages.BreakMinutes);
         Assert.Equal(1, result.MemberCount);
     }

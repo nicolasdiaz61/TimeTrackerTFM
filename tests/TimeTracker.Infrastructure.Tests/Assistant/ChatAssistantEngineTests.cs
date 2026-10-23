@@ -186,7 +186,7 @@ public sealed class ChatAssistantEngineTests
 
         Assert.Equal([MyTool], employeeModel.Calls[0].Options!.Tools!.Select(tool => tool.Name));
         Assert.Equal(
-            ["get_my_time_entries", "get_team_member_time_entries", "get_team_members"],
+            ["get_my_time_entries", "get_team_member_time_entries", "get_team_members", "get_team_summary"],
             managerModel.Calls[0].Options!.Tools!.Select(tool => tool.Name).Order());
         Assert.Contains("Rol del usuario: Manager", managerModel.Calls[0].Messages[0].Text);
         Assert.Contains("Rol del usuario: Employee", employeeModel.Calls[0].Messages[0].Text);

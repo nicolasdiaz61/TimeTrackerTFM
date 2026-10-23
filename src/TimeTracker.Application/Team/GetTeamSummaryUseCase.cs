@@ -62,7 +62,7 @@ public sealed class GetTeamSummaryUseCase(IUserRepository users, ITimeEntryRepos
                 member.Summary.Open,
                 member.Summary.Truncated))
             .OrderByDescending(member => member.BreakMinutes)
-            .ThenBy(member => member.DisplayName, StringComparer.Ordinal)
+            .ThenBy(member => member.Name, StringComparer.Ordinal)
             .ToList();
 
         return new TeamSummaryResult(range.From, range.To, count, truncated, Rounded(averages), members);

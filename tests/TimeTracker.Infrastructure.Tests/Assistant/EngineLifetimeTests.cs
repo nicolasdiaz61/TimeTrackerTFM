@@ -36,6 +36,7 @@ public sealed class EngineLifetimeTests
         services.AddScoped<GetTimeEntriesUseCase>();
         services.AddScoped<GetTeamMembersUseCase>();
         services.AddScoped<GetTeamMemberTimeEntriesUseCase>();
+        services.AddScoped<GetTeamSummaryUseCase>();
         services.AddScoped<AssistantToolset>();
         registerEngine(services);
         return services.BuildServiceProvider(new ServiceProviderOptions { ValidateScopes = true, ValidateOnBuild = true });

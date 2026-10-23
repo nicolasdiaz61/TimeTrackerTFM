@@ -10,12 +10,12 @@ namespace TimeTracker.Infrastructure.Tests.Assistant;
 public class ToolsetRegistrationTests
 {
     [Fact]
-    public void Manager_GetsExactlyTheThreeReadOnlyTools()
+    public void Manager_GetsExactlyTheFourReadOnlyTools()
     {
         var harness = new ToolHarness(ToolHarness.Marta, UserRole.Manager);
 
         Assert.Equal(
-            ["get_my_time_entries", "get_team_member_time_entries", "get_team_members"],
+            ["get_my_time_entries", "get_team_member_time_entries", "get_team_members", "get_team_summary"],
             harness.Tools.Select(tool => tool.Name).Order(StringComparer.Ordinal));
     }
 
@@ -68,6 +68,7 @@ public class ToolsetRegistrationTests
         Assert.Equal(["fromDate", "toDate"], parameters["get_my_time_entries"]);
         Assert.Empty(parameters["get_team_members"]);
         Assert.Equal(["memberId", "fromDate", "toDate"], parameters["get_team_member_time_entries"]);
+        Assert.Equal(["fromDate", "toDate"], parameters["get_team_summary"]);
     }
 
     [Fact]
@@ -80,6 +81,7 @@ public class ToolsetRegistrationTests
 
         await harness.InvokeAsync("get_my_time_entries", ("fromDate", "2026-10-12"), ("toDate", "2026-10-18"));
         await harness.InvokeAsync("get_team_members");
+        await harness.InvokeAsync("get_team_summary", ("fromDate", "2026-10-12"), ("toDate", "2026-10-18"));
         await harness.InvokeAsync(
             "get_team_member_time_entries",
             ("memberId", ToolHarness.Luis.ToString()),

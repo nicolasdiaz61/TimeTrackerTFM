@@ -29,8 +29,8 @@ public sealed record TeamAverages(double WorkedMinutes, double BreakMinutes, dou
 /// posición respecto a la media del equipo. <see cref="EntriesTruncated"/> indica que alcanzó el tope de intervalos.
 /// </summary>
 public sealed record TeamMemberSummary(
-    Guid Id,
-    string DisplayName,
+    Guid MemberId,
+    string Name,
     int WorkedMinutes,
     int BreakMinutes,
     int MealBreakMinutes,

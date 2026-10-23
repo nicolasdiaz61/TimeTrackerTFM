@@ -14,6 +14,7 @@ public static class TeamEndpoints
     {
         services.AddScoped<GetTeamMembersUseCase>();
         services.AddScoped<GetTeamMemberTimeEntriesUseCase>();
+        services.AddScoped<GetTeamSummaryUseCase>();
 
         return services;
     }
