@@ -78,6 +78,15 @@ public class WorkScheduleTests
         Assert.Contains(errors, error => error.Field == "lunchStart");
     }
 
+
+    [Fact]
+    public void Validate_WithoutStartTime_DoesNotCompareTheLunchStart()
+    {
+        var errors = WorkSchedule.Validate(Valid() with { StartTime = null, LunchStart = new TimeOnly(1, 0) });
+
+        Assert.Contains(errors, error => error.Field == "startTime");
+        Assert.DoesNotContain(errors, error => error.Field == "lunchStart");
+    }
     [Theory]
     [InlineData(-1, false)]
     [InlineData(0, true)]

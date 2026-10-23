@@ -112,7 +112,7 @@ public sealed class WorkSchedule
         {
             errors.Add(new("lunchStart", "La hora de inicio del almuerzo es obligatoria."));
         }
-        else if (details.StartTime is { } start && details.LunchStart <= start)
+        else if (details.StartTime is { } start && details.LunchStart.Value <= start)
         {
             errors.Add(new("lunchStart", "El almuerzo debe empezar después de la hora de entrada."));
         }
