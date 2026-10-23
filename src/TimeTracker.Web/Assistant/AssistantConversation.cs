@@ -10,6 +10,13 @@ public enum TurnRole
     Assistant,
 }
 
+public enum CounterLevel
+{
+    Normal,
+    Warning,
+    Danger,
+}
+
 public sealed record ConversationTurn(TurnRole Role, string Text);
 
 /// <summary>
@@ -31,6 +38,16 @@ public sealed class AssistantConversation
     public const string TooManyRequestsFallback = "Demasiadas consultas al asistente. Inténtelo de nuevo en unos minutos.";
     public const string UnavailableFallback = "El asistente no está disponible en este momento. Inténtelo de nuevo más tarde.";
 
+    private const int WarningThreshold = 80;
+    private const string ManagerExample = "¿Quién hace más pausas que el promedio?";
+
+    private static readonly string[] EmployeeExamples =
+    [
+        "¿Cuántas horas trabajé esta semana?",
+        "¿Cuál fue mi última entrada?",
+        "¿Cuántas horas extra llevo este mes?",
+    ];
+
     private readonly List<ConversationTurn> turns = [];
 
     public IReadOnlyList<ConversationTurn> Turns => turns;
@@ -42,6 +59,32 @@ public sealed class AssistantConversation
 
     /// <summary>Aviso persistente del 503: sigue visible hasta que llega una respuesta correcta.</summary>
     public string? Notice { get; private set; }
+
+    /// <summary>Preguntas de ejemplo del estado vacío; el responsable ve además una sobre pausas de su equipo.</summary>
+    public static IReadOnlyList<string> ExampleQuestions(bool isManager)
+        => isManager ? [.. EmployeeExamples[..2], ManagerExample] : EmployeeExamples;
+
+    /// <summary>Longitud del mensaje tal como se enviará (sin espacios en los extremos).</summary>
+    public static int MessageLength(string? message) => message?.Trim().Length ?? 0;
+
+    public static CounterLevel CounterLevelFor(int length)
+    {
+        if (length > MaxMessageLength)
+        {
+            return CounterLevel.Danger;
+        }
+
+        return length >= MaxMessageLength * WarningThreshold / 100 ? CounterLevel.Warning : CounterLevel.Normal;
+    }
+
+    /// <summary>Empieza una conversación nueva: descarta turnos, errores, aviso y estado ocupado.</summary>
+    public void Reset()
+    {
+        turns.Clear();
+        ErrorMessage = null;
+        Notice = null;
+        IsBusy = false;
+    }
 
     /// <summary>Motivo en español por el que el mensaje no se puede enviar, o <see langword="null"/> si es válido.</summary>
     public string? Validate(string? message)
