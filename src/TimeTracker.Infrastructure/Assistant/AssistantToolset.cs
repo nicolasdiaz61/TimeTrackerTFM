@@ -1,6 +1,7 @@
 using System.ComponentModel;
 using System.Diagnostics;
 using System.Globalization;
+using System.Text.Json.Serialization;
 
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Logging;
@@ -9,6 +10,7 @@ using TimeTracker.Application.Identity;
 using TimeTracker.Application.Team;
 using TimeTracker.Application.Time;
 using TimeTracker.Application.TimeTracking;
+using TimeTracker.Application.WorkSchedules;
 using TimeTracker.Domain.Users;
 
 namespace TimeTracker.Infrastructure.Assistant;
@@ -22,6 +24,8 @@ public sealed class AssistantToolset(
     GetTeamMembersUseCase teamMembers,
     GetTeamMemberTimeEntriesUseCase teamMemberTimeEntries,
     GetTeamSummaryUseCase teamSummary,
+    GetMyWorkScheduleUseCase myWorkSchedule,
+    ListWorkSchedulesUseCase workSchedules,
     ICurrentUser currentUser,
     TimeProvider timeProvider,
     ILogger<AssistantToolset> logger)
@@ -30,6 +34,9 @@ public sealed class AssistantToolset(
     private const string TeamMembersTool = "get_team_members";
     private const string TeamMemberTimeEntriesTool = "get_team_member_time_entries";
     private const string TeamSummaryTool = "get_team_summary";
+    private const string MyWorkScheduleTool = "get_my_work_schedule";
+    private const string WorkSchedulesTool = "get_work_schedules";
+    private const string NoWorkScheduleMessage = "No tiene una jornada asignada.";
     private const string FromDescription = "Primer día del periodo, formato yyyy-MM-dd (hora de España).";
     private const string ToDescription = "Último día del periodo, formato yyyy-MM-dd (hora de España).";
     private const string DateFormat = "yyyy-MM-dd";
@@ -51,6 +58,10 @@ public sealed class AssistantToolset(
                 GetMyTimeEntriesAsync,
                 MyTimeEntriesTool,
                 $"Devuelve un resumen por día, en hora de España, de los fichajes del propio usuario {DateRangeSuffix}"),
+            Create(
+                GetMyWorkScheduleAsync,
+                MyWorkScheduleTool,
+                "Devuelve la jornada asignada al propio usuario (nombre, hora de entrada, inicio y minutos del almuerzo, minutos de pausa esperados por día y días de la semana). Úsala para «¿qué jornada tengo?» o «¿a qué hora entro?»."),
         ];
 
         // Defensa en profundidad (DD-7): un empleado no puede ni nombrar las herramientas de equipo.
@@ -59,7 +70,11 @@ public sealed class AssistantToolset(
             tools.Add(Create(
                 GetTeamMembersAsync,
                 TeamMembersTool,
-                "Lista los miembros del equipo del usuario (sus reportes directos) con su identificador (GUID) y nombre. Llámala siempre antes de consultar fichajes de un miembro."));
+                "Lista los miembros del equipo del usuario (sus reportes directos) con su identificador (GUID), nombre y jornada (workSchedule, null si no tiene). Llámala siempre antes de consultar fichajes de un miembro."));
+            tools.Add(Create(
+                GetWorkSchedulesAsync,
+                WorkSchedulesTool,
+                "Lista las jornadas de la compañía con su configuración y assignedCount (personas que la tienen). Úsala para «¿qué jornadas hay?» o «¿cuánta gente tiene la jornada X?»."));
             tools.Add(Create(
                 GetTeamMemberTimeEntriesAsync,
                 TeamMemberTimeEntriesTool,
@@ -95,7 +110,40 @@ public sealed class AssistantToolset(
         => RunAsync(TeamMembersTool, async () =>
         {
             var members = await teamMembers.ExecuteAsync(cancellationToken);
-            return (ToolOutcome.Ok, (object)members.Select(member => new TeamMemberView(member.Id, DisplayNameSanitizer.Sanitize(member.DisplayName))).ToList());
+
+            // Una sola consulta de jornadas por petición (nunca por miembro), y solo si alguien tiene una asignada.
+            var byId = new Dictionary<Guid, WorkScheduleToolView>();
+            if (members.Any(member => member.WorkScheduleId is not null))
+            {
+                foreach (var view in await workSchedules.ExecuteAsync(cancellationToken))
+                {
+                    byId[view.Schedule.Id] = WorkScheduleToolView.From(view.Schedule);
+                }
+            }
+
+            return (ToolOutcome.Ok, (object)members
+                .Select(member => new TeamMemberView(
+                    member.Id,
+                    DisplayNameSanitizer.Sanitize(member.DisplayName),
+                    member.WorkScheduleId is { } id && byId.TryGetValue(id, out var schedule) ? schedule : null))
+                .ToList());
+        });
+
+    private Task<object> GetMyWorkScheduleAsync(CancellationToken cancellationToken)
+        => RunAsync(MyWorkScheduleTool, async () =>
+        {
+            var schedule = await myWorkSchedule.ExecuteAsync(cancellationToken);
+            return (ToolOutcome.Ok, (object)(schedule is null
+                ? new MyWorkScheduleView(null, NoWorkScheduleMessage)
+                : new MyWorkScheduleView(WorkScheduleToolView.From(schedule), null)));
+        });
+
+    private Task<object> GetWorkSchedulesAsync(CancellationToken cancellationToken)
+        => RunAsync(WorkSchedulesTool, async () =>
+        {
+            var list = await workSchedules.ExecuteAsync(cancellationToken);
+            return (ToolOutcome.Ok, (object)new WorkSchedulesView(
+                [.. list.Take(WorkScheduleLimits.MaxPerCompany).Select(view => WorkScheduleToolView.From(view.Schedule, view.AssignedCount))]));
         });
 
     // Los nombres se sanean igual que en get_team_members: son datos no confiables para el modelo.
@@ -196,5 +244,11 @@ public sealed class AssistantToolset(
     }
 }
 
-/// <summary>Mínima exposición al modelo: identificador y nombre saneado; sin correo, hash, rol ni responsable.</summary>
-internal sealed record TeamMemberView(Guid Id, string DisplayName);
+/// <summary>Mínima exposición al modelo: identificador, nombre saneado y jornada; sin correo, hash, rol ni responsable.</summary>
+internal sealed record TeamMemberView(Guid Id, string DisplayName, [property: JsonIgnore(Condition = JsonIgnoreCondition.Never)] WorkScheduleToolView? WorkSchedule);
+
+internal sealed record MyWorkScheduleView(
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.Never)] WorkScheduleToolView? WorkSchedule,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? Message);
+
+internal sealed record WorkSchedulesView(IReadOnlyList<WorkScheduleToolView> WorkSchedules);

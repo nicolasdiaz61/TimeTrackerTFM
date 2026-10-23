@@ -10,21 +10,21 @@ namespace TimeTracker.Infrastructure.Tests.Assistant;
 public class ToolsetRegistrationTests
 {
     [Fact]
-    public void Manager_GetsExactlyTheFourReadOnlyTools()
+    public void Manager_GetsExactlyTheSixReadOnlyTools()
     {
         var harness = new ToolHarness(ToolHarness.Marta, UserRole.Manager);
 
         Assert.Equal(
-            ["get_my_time_entries", "get_team_member_time_entries", "get_team_members", "get_team_summary"],
+            ["get_my_time_entries", "get_my_work_schedule", "get_team_member_time_entries", "get_team_members", "get_team_summary", "get_work_schedules"],
             harness.Tools.Select(tool => tool.Name).Order(StringComparer.Ordinal));
     }
 
     [Fact]
-    public void Employee_GetsOnlyHisOwnTimeEntriesTool()
+    public void Employee_GetsOnlyHisOwnTimeEntriesAndScheduleTools()
     {
         var harness = new ToolHarness(ToolHarness.Luis, UserRole.Employee);
 
-        Assert.Equal(["get_my_time_entries"], harness.Tools.Select(tool => tool.Name));
+        Assert.Equal(["get_my_time_entries", "get_my_work_schedule"], harness.Tools.Select(tool => tool.Name));
     }
 
     [Fact]
@@ -49,7 +49,7 @@ public class ToolsetRegistrationTests
         // las garantías reales son las otras dos aserciones (herramientas en las opciones y ningún acceso a datos).
         Assert.Contains("not found", toolResult, StringComparison.Ordinal);
         Assert.Null(harness.Users.LastLimit);
-        Assert.Equal(["get_my_time_entries"], fake.Calls[0].Options!.Tools!.Select(tool => tool.Name));
+        Assert.Equal(["get_my_time_entries", "get_my_work_schedule"], fake.Calls[0].Options!.Tools!.Select(tool => tool.Name));
     }
 
     [Fact]

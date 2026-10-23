@@ -130,6 +130,22 @@ public sealed class AssistantPromptTests
     }
 
     [Fact]
+    public void Build_EveryoneIsToldToUseMyWorkSchedule_AndOnlyManagersGetTheTeamScheduleTools()
+    {
+        var manager = AssistantPrompt.Build(new DateOnly(2026, 10, 18), UserRole.Manager);
+        var employee = AssistantPrompt.Build(new DateOnly(2026, 10, 18), UserRole.Employee);
+
+        Assert.Contains("get_my_work_schedule", employee);
+        Assert.Contains("¿a qué hora entro?", employee);
+        Assert.Contains("Las jornadas están dentro de tu alcance", employee);
+        Assert.DoesNotContain("get_work_schedules", employee);
+        Assert.Contains("get_my_work_schedule", manager);
+        Assert.Contains("get_work_schedules", manager);
+        Assert.Contains("get_team_members incluye la jornada de cada persona", manager);
+        Assert.Contains("quién tiene la jornada Oficina", manager);
+    }
+
+    [Fact]
     public void Build_ManagerMentionsDirectReportsAndEmployeeDoesNot()
     {
         var manager = AssistantPrompt.Build(new DateOnly(2026, 10, 18), UserRole.Manager);

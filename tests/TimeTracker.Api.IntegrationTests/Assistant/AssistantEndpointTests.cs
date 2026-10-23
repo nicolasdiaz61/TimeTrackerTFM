@@ -113,8 +113,8 @@ public class AssistantEndpointTests
     }
 
     [Theory]
-    [InlineData("Employee", 1)]
-    [InlineData("Manager", 4)]
+    [InlineData("Employee", 2)]
+    [InlineData("Manager", 6)]
     public async Task ExtraFields_AreIgnoredAndTheToolsFollowTheTokenRole(string tokenRole, int expectedTools)
     {
         var model = new FakeChatClient(Reply("ok"));
@@ -138,7 +138,7 @@ public class AssistantEndpointTests
         var response = await factory.CreateClient().AskAsync("ficha mi entrada");
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        Assert.Equal(["get_my_time_entries"], Assert.Single(model.Calls).Options!.Tools!.Select(tool => tool.Name));
+        Assert.Equal(["get_my_time_entries", "get_my_work_schedule"], Assert.Single(model.Calls).Options!.Tools!.Select(tool => tool.Name));
     }
 
     [Theory]
@@ -235,7 +235,7 @@ public class AssistantEndpointTests
         var call = Assert.Single(model.Calls);
         Assert.Single(call.Messages, message => message.Role == ChatRole.System);
         Assert.Equal(ChatRole.User, call.Messages.Single(message => message.Text.StartsWith("SYSTEM:", StringComparison.Ordinal)).Role);
-        Assert.Single(call.Options!.Tools!);
+        Assert.Equal(2, call.Options!.Tools!.Count);
     }
 
     [Theory]
