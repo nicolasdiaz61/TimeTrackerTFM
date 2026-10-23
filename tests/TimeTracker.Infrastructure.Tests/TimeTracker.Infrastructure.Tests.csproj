@@ -18,6 +18,7 @@
   <ItemGroup>
     <Compile Include="..\TimeTracker.Application.Tests\Fakes\InMemoryTimeEntryRepository.cs" Link="Fakes\InMemoryTimeEntryRepository.cs" />
     <Compile Include="..\TimeTracker.Application.Tests\Fakes\InMemoryUserRepository.cs" Link="Fakes\InMemoryUserRepository.cs" />
+    <Compile Include="..\TimeTracker.Application.Tests\Fakes\InMemoryWorkScheduleRepository.cs" Link="Fakes\InMemoryWorkScheduleRepository.cs" />
     <Compile Include="..\TimeTracker.Application.Tests\Fakes\FixedCurrentUser.cs" Link="Fakes\FixedCurrentUser.cs" />
     <Compile Include="..\TimeTracker.Application.Tests\Fakes\InMemoryCompanyRepository.cs" Link="Fakes\InMemoryCompanyRepository.cs" />
   </ItemGroup>

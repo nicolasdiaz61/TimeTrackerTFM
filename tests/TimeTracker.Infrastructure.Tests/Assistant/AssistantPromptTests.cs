@@ -200,6 +200,28 @@ public sealed class AssistantPromptTests
     }
 
     [Fact]
+    public void Build_ManagerIsToldToAnswerOvertimeFromTheSummaryStatingTheAssumption()
+    {
+        var manager = AssistantPrompt.Build(new DateOnly(2026, 10, 18), UserRole.Manager);
+
+        Assert.Contains("Para horas extra, llama a get_team_summary", manager);
+        Assert.Contains("overtimeMinutes y overtimeText", manager);
+        Assert.Contains("nunca las calcules tú", manager);
+        Assert.Contains("assumedDailyHours", manager);
+        Assert.Contains("días de la jornada de cada persona", manager);
+        Assert.Contains("pásalas como dailyHours", manager);
+    }
+
+    [Fact]
+    public void Build_EmployeeNeverMentionsOvertime()
+    {
+        var employee = AssistantPrompt.Build(new DateOnly(2026, 10, 18), UserRole.Employee);
+
+        Assert.DoesNotContain("dailyHours", employee);
+        Assert.DoesNotContain("overtime", employee);
+    }
+
+    [Fact]
     public void Build_ManagerHasComparingAndRankingTheTeamInScope_ButStillRefusesOffTopicRequests()
     {
         var manager = AssistantPrompt.Build(new DateOnly(2026, 10, 18), UserRole.Manager);

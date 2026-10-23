@@ -72,6 +72,87 @@ public class TeamSummaryToolTests
     }
 
     [Fact]
+    public void DailyHours_IsAnOptionalNumberParameterWithADescription_AndDatesStayRequired()
+    {
+        var schema = Manager().Tools.Single(tool => tool.Name == Tool).JsonSchema;
+
+        var hours = schema.GetProperty("properties").GetProperty("dailyHours");
+        Assert.Equal("number", hours.GetProperty("type").GetString());
+        Assert.Contains("horas previstas por día laborable", hours.GetProperty("description").GetString(), StringComparison.Ordinal);
+        Assert.Contains("usa 8 salvo que el usuario indique otra", hours.GetProperty("description").GetString(), StringComparison.Ordinal);
+        var required = schema.GetProperty("required").EnumerateArray().Select(item => item.GetString()).ToList();
+        Assert.Equal(["fromDate", "toDate"], required.Order());
+    }
+
+    [Fact]
+    public async Task Overtime_WithoutDailyHours_AssumesEightAndReturnsPrecomputedFields()
+    {
+        var harness = Manager();
+        harness.SeedEntry(ToolHarness.Luis, Day, new(8, 0), new(18, 30));
+        harness.SeedEntry(ToolHarness.Ana, Day, new(8, 0), new(14, 0));
+
+        var result = await SummaryAsync(harness);
+
+        Assert.Equal(8, result.GetProperty("assumedDailyHours").GetDouble());
+        Assert.Contains("8 h", result.GetProperty("overtimeNote").GetString(), StringComparison.Ordinal);
+        Assert.Equal(75, result.GetProperty("averages").GetProperty("overtimeMinutes").GetDouble());
+        Assert.Equal("1 h 15 min", result.GetProperty("averages").GetProperty("overtimeText").GetString());
+        var luis = result.GetProperty("members").EnumerateArray().Single(member => member.GetProperty("memberId").GetString() == ToolHarness.Luis.ToString());
+        Assert.Equal(150, luis.GetProperty("overtimeMinutes").GetInt32());
+        Assert.Equal("2 h 30 min", luis.GetProperty("overtimeText").GetString());
+        Assert.Equal(1, luis.GetProperty("overtimeDays").GetInt32());
+        Assert.Equal(75, luis.GetProperty("overtimeVsAverage").GetDouble());
+        Assert.True(luis.GetProperty("aboveAverageOvertime").GetBoolean());
+    }
+
+    [Fact]
+    public async Task Overtime_WithDailyHours_UsesTheGivenValue()
+    {
+        var harness = Manager();
+        harness.SeedEntry(ToolHarness.Luis, Day, new(8, 0), new(18, 30));
+
+        var result = await harness.InvokeAsync(Tool, ("fromDate", "2026-10-12"), ("toDate", "2026-10-18"), ("dailyHours", 6.5));
+
+        Assert.Equal(6.5, result.GetProperty("assumedDailyHours").GetDouble());
+        Assert.Equal(240, result.GetProperty("members").EnumerateArray().Single(member => member.GetProperty("memberId").GetString() == ToolHarness.Luis.ToString()).GetProperty("overtimeMinutes").GetInt32());
+    }
+
+    [Theory]
+    [InlineData(0.5)]
+    [InlineData(0.0)]
+    [InlineData(13.0)]
+    [InlineData(-8.0)]
+    public async Task Overtime_WithInvalidDailyHours_ReturnsAnErrorWithoutQueryingAnything(double hours)
+    {
+        var harness = Manager();
+
+        var result = await harness.InvokeAsync(Tool, ("fromDate", "2026-10-12"), ("toDate", "2026-10-18"), ("dailyHours", hours));
+
+        Assert.Equal(["error"], result.EnumerateObject().Select(property => property.Name));
+        Assert.Contains("dailyHours", result.GetProperty("error").GetString(), StringComparison.Ordinal);
+        Assert.Equal(0, harness.Entries.ListInWindowCalls);
+        Assert.Null(harness.Users.LastLimit);
+    }
+
+    [Fact]
+    public async Task Overtime_UsesTheAssignedScheduleOfEachMember()
+    {
+        var harness = Manager();
+        var schedule = TimeTracker.Domain.WorkSchedules.WorkSchedule.Create(
+            Guid.NewGuid(), Company.DefaultId, new("Fines", new TimeOnly(8, 0), new TimeOnly(13, 0), 45, 15, [DayOfWeek.Saturday]));
+        harness.Schedules.Seed(schedule);
+        harness.Users.All.Single(user => user.Id == ToolHarness.Luis).AssignWorkSchedule(schedule.Id);
+        harness.SeedEntry(ToolHarness.Luis, Day, new(8, 0), new(10, 0));
+        harness.SeedEntry(ToolHarness.Ana, Day, new(8, 0), new(10, 0));
+
+        var result = await SummaryAsync(harness);
+
+        var members = result.GetProperty("members").EnumerateArray().ToDictionary(member => member.GetProperty("memberId").GetString()!);
+        Assert.Equal(120, members[ToolHarness.Luis.ToString()].GetProperty("overtimeMinutes").GetInt32());
+        Assert.Equal(0, members[ToolHarness.Ana.ToString()].GetProperty("overtimeMinutes").GetInt32());
+    }
+
+    [Fact]
     public async Task Summary_ExposesNoEmailsHashesOrManagerData()
     {
         var harness = Manager();

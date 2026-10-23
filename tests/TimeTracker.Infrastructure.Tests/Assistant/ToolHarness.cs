@@ -26,6 +26,7 @@ internal sealed class ToolHarness
 
     public ToolHarness(Guid userId, UserRole role, ITimeEntryRepository? entries = null)
     {
+        Schedules = new InMemoryWorkScheduleRepository(Users);
         Users.Seed(
             UserAccount.Create(Marta, Company.DefaultId, "marta@example.test", "Marta Responsable", "hash", UserRole.Manager, null),
             UserAccount.Create(Ana, Company.DefaultId, "ana@example.test", "Ana Empleada", "hash", UserRole.Employee, Marta),
@@ -38,7 +39,7 @@ internal sealed class ToolHarness
             new GetTimeEntriesUseCase(repository, currentUser),
             new GetTeamMembersUseCase(Users, currentUser),
             new GetTeamMemberTimeEntriesUseCase(Users, repository, currentUser),
-            new GetTeamSummaryUseCase(Users, repository, currentUser),
+            new GetTeamSummaryUseCase(Users, repository, Schedules, currentUser),
             currentUser,
             Clock,
             Logger);
@@ -48,6 +49,8 @@ internal sealed class ToolHarness
     public InMemoryTimeEntryRepository Entries { get; } = new();
 
     public InMemoryUserRepository Users { get; } = new();
+
+    public InMemoryWorkScheduleRepository Schedules { get; }
 
     public FakeTimeProvider Clock { get; } = new();
 

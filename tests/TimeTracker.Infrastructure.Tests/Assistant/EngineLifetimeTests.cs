@@ -9,6 +9,7 @@ using TimeTracker.Application.Team;
 using TimeTracker.Application.Tests.Fakes;
 using TimeTracker.Application.TimeTracking;
 using TimeTracker.Application.Users;
+using TimeTracker.Application.WorkSchedules;
 using TimeTracker.Domain.Users;
 using TimeTracker.Infrastructure.Assistant;
 using TimeTracker.Infrastructure.Tests.Fakes;
@@ -33,6 +34,7 @@ public sealed class EngineLifetimeTests
         services.AddScoped<ICurrentUser>(_ => new FixedCurrentUser(Guid.NewGuid(), UserRole.Employee));
         services.AddScoped<ITimeEntryRepository, InMemoryTimeEntryRepository>();
         services.AddScoped<IUserRepository, InMemoryUserRepository>();
+        services.AddScoped<IWorkScheduleRepository>(provider => new InMemoryWorkScheduleRepository((InMemoryUserRepository)provider.GetRequiredService<IUserRepository>()));
         services.AddScoped<GetTimeEntriesUseCase>();
         services.AddScoped<GetTeamMembersUseCase>();
         services.AddScoped<GetTeamMemberTimeEntriesUseCase>();
