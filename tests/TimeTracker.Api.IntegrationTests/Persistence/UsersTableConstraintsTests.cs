@@ -18,14 +18,14 @@ public class UsersTableConstraintsTests(PostgresFixture postgres)
     private static string NewEmail() => $"usuario.{Guid.NewGuid():N}@example.test";
 
     [Fact]
-    public async Task Users_Table_HasEightColumnsAndOnlyManagerIdIsNullable()
+    public async Task Users_Table_HasNineColumnsAndOnlyManagerIdAndWorkScheduleIdAreNullable()
     {
         var columns = await MigrationDatabase.QueryAsync(
             postgres.ConnectionString,
             "SELECT column_name || ':' || is_nullable FROM information_schema.columns WHERE table_name = 'users' ORDER BY column_name");
 
         Assert.Equal(
-            ["company_id:NO", "display_name:NO", "email:NO", "id:NO", "manager_id:YES", "must_change_password:NO", "password_hash:NO", "role:NO"],
+            ["company_id:NO", "display_name:NO", "email:NO", "id:NO", "manager_id:YES", "must_change_password:NO", "password_hash:NO", "role:NO", "work_schedule_id:YES"],
             columns);
         Assert.Equal(
             ["false"],

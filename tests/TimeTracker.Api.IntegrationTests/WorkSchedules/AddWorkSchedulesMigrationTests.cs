@@ -12,8 +12,6 @@ namespace TimeTracker.Api.IntegrationTests.WorkSchedules;
 [Collection("Postgres")]
 public class AddWorkSchedulesMigrationTests(PostgresFixture postgres)
 {
-    private const string AddWorkSchedules = "_AddWorkSchedules";
-
     private const string UserRows =
         "SELECT id || '|' || company_id || '|' || email || '|' || display_name || '|' || password_hash || '|' || role || '|' || COALESCE(manager_id::text, 'null') || '|' || must_change_password FROM users ORDER BY email";
 
