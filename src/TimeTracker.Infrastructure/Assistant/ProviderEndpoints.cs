@@ -10,4 +10,6 @@ internal static class ProviderEndpoints
     public static readonly Uri Anthropic = new Uri("https://api.anthropic.com/");
 
     public static readonly Uri GeminiOpenAi = new Uri("https://generativelanguage.googleapis.com/v1beta/openai/");
+
+    public static readonly Uri GroqOpenAi = new Uri("https://api.groq.com/openai/v1");
 }

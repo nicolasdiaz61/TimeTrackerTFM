@@ -46,7 +46,7 @@ public class MigrationTests(PostgresFixture postgres)
         var migrations = await QueryAsync(connectionString, "SELECT \"MigrationId\" FROM \"__EFMigrationsHistory\" ORDER BY \"MigrationId\"");
         var tables = await QueryAsync(connectionString, "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public'");
 
-        Assert.Equal(8, migrations.Count);
+        Assert.Equal(9, migrations.Count);
         Assert.Contains(migrations, migration => migration.EndsWith("_InitialTimeEntries", StringComparison.Ordinal));
         Assert.EndsWith("_AddUsers", migrations[1], StringComparison.Ordinal);
         Assert.EndsWith("_AddTimeEntryType", migrations[2], StringComparison.Ordinal);
@@ -55,6 +55,7 @@ public class MigrationTests(PostgresFixture postgres)
         Assert.EndsWith("_AddCompanies", migrations[5], StringComparison.Ordinal);
         Assert.EndsWith("_EnforceCompanyIsolation", migrations[6], StringComparison.Ordinal);
         Assert.EndsWith("_AddWorkSchedules", migrations[7], StringComparison.Ordinal);
+        Assert.EndsWith("_AddGroqProvider", migrations[8], StringComparison.Ordinal);
         Assert.Contains("time_entries", tables);
         Assert.Contains("users", tables);
     }

@@ -88,6 +88,7 @@ public sealed class AiOptionsValidatorTests
     [InlineData("  Ollama  ", AiProvider.Ollama)]
     [InlineData("openai", AiProvider.OpenAI)]
     [InlineData("GEMINI", AiProvider.Gemini)]
+    [InlineData("groq", AiProvider.Groq)]
     [InlineData("none", AiProvider.None)]
     [InlineData("", AiProvider.None)]
     [InlineData(null, AiProvider.None)]
@@ -229,6 +230,7 @@ public sealed class AiOptionsValidatorTests
     [Theory]
     [InlineData("OpenAI")]
     [InlineData("gemini")]
+    [InlineData("groq")]
     public void Validate_CloudProviders_AreValidWithKeyAndModel(string provider)
     {
         var options = ValidAnthropic();
@@ -243,6 +245,8 @@ public sealed class AiOptionsValidatorTests
     [InlineData("Gemini", "Ai:ApiKey")]
     [InlineData("OpenAI", "Ai:Model")]
     [InlineData("Gemini", "Ai:Model")]
+    [InlineData("Groq", "Ai:ApiKey")]
+    [InlineData("Groq", "Ai:Model")]
     public void Validate_OpenAIOrGeminiWithoutKeyOrModel_FailsWithTheKeyName(string provider, string missing)
     {
         var options = ValidAnthropic();
@@ -318,7 +322,7 @@ public sealed class AiOptionsValidatorTests
     public void Validate_ValidAllowedProviders_Succeeds()
     {
         var options = ValidAnthropic();
-        options.AllowedProviders = " anthropic, OpenAI ,Gemini,Ollama,openai";
+        options.AllowedProviders = " anthropic, OpenAI ,Gemini,Groq,Ollama,openai";
 
         Assert.True(Validator.Validate(null, options).Succeeded);
     }

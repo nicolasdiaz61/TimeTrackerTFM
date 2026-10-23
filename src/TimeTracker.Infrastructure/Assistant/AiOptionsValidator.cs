@@ -33,7 +33,7 @@ public sealed class AiOptionsValidator : IValidateOptions<AiOptions>
         var provider = options.ResolvedProvider;
         if (provider is null)
         {
-            failures.Add("Ai:Provider: el valor no es válido. Use Anthropic, OpenAI, Gemini, Ollama o déjelo vacío para deshabilitar el asistente.");
+            failures.Add("Ai:Provider: el valor no es válido. Use Anthropic, OpenAI, Gemini, Groq, Ollama o déjelo vacío para deshabilitar el asistente.");
         }
 
         // Se validan siempre, aunque el entorno no tenga proveedor: limitan lo que cualquier compañía puede hacer.

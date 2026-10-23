@@ -24,6 +24,15 @@ public class AllowedProvidersTests
     }
 
     [Fact]
+    public void Groq_IsAcceptedInTheListIgnoringCase()
+    {
+        var result = AllowedProviders.Resolve(Env(allowedProviders: "groq, Anthropic"));
+
+        Assert.Null(result.Error);
+        Assert.Equal([AssistantProvider.Groq, AssistantProvider.Anthropic], result.Providers);
+    }
+
+    [Fact]
     public void WithoutAListAndWithANoneEnvironment_NothingIsAllowed()
         => Assert.Empty(AllowedProviders.Resolve(Env(provider: AssistantProvider.None)).Providers);
 

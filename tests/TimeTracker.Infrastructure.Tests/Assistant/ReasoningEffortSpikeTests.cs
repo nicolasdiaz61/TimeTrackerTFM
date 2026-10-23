@@ -25,6 +25,7 @@ public sealed class ReasoningEffortSpikeTests
     {
         ["OpenAI"] = ["reasoning_effort"],
         ["Gemini"] = ["reasoning_effort"],
+        ["Groq"] = ["reasoning_effort"],
         ["Anthropic"] = ["output_config", "effort"],
         ["Ollama"] = ["think"],
     };
@@ -118,6 +119,16 @@ public sealed class ReasoningEffortSpikeTests
         await SendAsync("Gemini", "low", handler);
 
         Assert.StartsWith(ProviderEndpoints.GeminiOpenAi.ToString(), handler.RequestUri?.ToString(), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Groq_SendsTheRequestToTheFixedGroqUrl()
+    {
+        var handler = new RecordingHandler();
+
+        await SendAsync("Groq", "low", handler);
+
+        Assert.StartsWith(ProviderEndpoints.GroqOpenAi.ToString(), handler.RequestUri?.ToString(), StringComparison.Ordinal);
     }
 
     [Theory]
