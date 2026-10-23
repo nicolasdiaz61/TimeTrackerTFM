@@ -17,7 +17,8 @@ window.timeTrackerChat = {
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
-        setTimeout(function () { URL.revokeObjectURL(url); }, 0);
+        // Firefox y Safari inician la descarga de forma asíncrona: revocar antes la cancelaría.
+        setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
     },
     // Intro envía el formulario; Mayús+Intro (o composición con IME) conserva el comportamiento normal del textarea.
     sendOnEnter: function (textarea) {
