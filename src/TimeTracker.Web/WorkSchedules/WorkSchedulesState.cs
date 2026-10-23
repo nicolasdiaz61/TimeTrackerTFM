@@ -244,5 +244,5 @@ public sealed class WorkSchedulesState(IWorkSchedulesApi api, bool isManager)
 
     // Un valor vacío o ilegible viaja como nulo: la API responde con el error del campo.
     private static TimeOnly? ParseTime(string text)
-        => TimeOnly.TryParseExact(text, TimeFormats,CultureInfo.InvariantCulture, DateTimeStyles.None, out var time) ? time : null;
+        => TimeOnly.TryParseExact(text, TimeFormats, CultureInfo.InvariantCulture, DateTimeStyles.None, out var time) ? time : null;
 }
