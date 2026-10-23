@@ -28,6 +28,20 @@ public sealed class AssistantPromptTests
         Assert.Contains("texto plano", prompt);
     }
 
+    [Theory]
+    [InlineData(UserRole.Manager)]
+    [InlineData(UserRole.Employee)]
+    public void Build_AllowsOneSimpleMarkdownTableAndNothingElseOfMarkdownOrHtml(UserRole role)
+    {
+        var prompt = AssistantPrompt.Build(new DateOnly(2026, 10, 18), role);
+
+        Assert.Contains("una única tabla Markdown sencilla", prompt);
+        Assert.Contains("|---|---|", prompt);
+        Assert.Contains("como máximo 12 columnas", prompt);
+        Assert.Contains("ningún otro formato Markdown ni HTML (sin negritas, títulos, enlaces ni código)", prompt);
+        Assert.DoesNotContain("sin formato Markdown ni HTML", prompt);
+    }
+
     // Domingo 2026-10-18: la semana en curso empieza el lunes 2026-10-12.
     [Fact]
     public void Build_IncludesTheReferenceDatesAlreadyComputedForASunday()

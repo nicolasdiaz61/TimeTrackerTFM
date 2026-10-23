@@ -1,5 +1,6 @@
 @page "/asistente"
 @attribute [Authorize]
+@using System.Runtime.CompilerServices
 @using TimeTracker.Web.Assistant
 @inject AssistantApiClient Api
 @inject ChatViewport Viewport
@@ -41,7 +42,49 @@
             <div class="assistant-turn @(isUser ? "assistant-turn-user" : "assistant-turn-assistant")">
                 <span class="assistant-author">@(isUser ? "Usted" : "Asistente")</span>
                 @* Texto plano: Blazor escapa el contenido y white-space: pre-wrap conserva los saltos de línea. *@
-                <p class="assistant-text">@turn.Text</p>
+                @if (isUser)
+                {
+                    <p class="assistant-text">@turn.Text</p>
+                }
+                else
+                {
+                    foreach (var block in BlocksOf(turn))
+                    {
+                        if (block is TableBlock table)
+                        {
+                            <div class="assistant-table-wrap" tabindex="0" role="region" aria-label="Tabla del asistente">
+                                <table class="assistant-table">
+                                    <thead>
+                                        <tr>
+                                            @foreach (var header in table.Headers)
+                                            {
+                                                <th scope="col">@header</th>
+                                            }
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        @foreach (var row in table.Rows)
+                                        {
+                                            <tr>
+                                                @foreach (var cell in row)
+                                                {
+                                                    <td>@cell</td>
+                                                }
+                                            </tr>
+                                        }
+                                    </tbody>
+                                </table>
+                            </div>
+                            <div class="assistant-table-actions">
+                                <button type="button" class="btn btn-outline-secondary btn-sm" @onclick="() => DownloadCsvAsync(table)">Descargar CSV</button>
+                            </div>
+                        }
+                        else if (block is ParagraphBlock paragraph)
+                        {
+                            <p class="assistant-text">@paragraph.Text</p>
+                        }
+                    }
+                }
             </div>
         }
 
@@ -132,6 +175,15 @@
             await input.FocusAsync();
         }
     }
+
+    // El análisis se guarda por turno para no repetirlo en cada pulsación del campo de texto.
+    private readonly ConditionalWeakTable<ConversationTurn, IReadOnlyList<AssistantBlock>> blockCache = new();
+
+    private IReadOnlyList<AssistantBlock> BlocksOf(ConversationTurn turn)
+        => blockCache.GetValue(turn, static t => AssistantMessageParser.Parse(t.Text));
+
+    private Task DownloadCsvAsync(TableBlock table)
+        => Viewport.DownloadAsync(CsvBuilder.FileName(DateTime.Now), "text/csv;charset=utf-8", CsvBuilder.Build(table.Headers, table.Rows));
 
     private async Task SendExampleAsync(string question)
     {

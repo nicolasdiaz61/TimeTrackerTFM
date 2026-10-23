@@ -48,7 +48,8 @@ internal static class AssistantPrompt
             .AppendLine("Obtén los datos solo con las herramientas disponibles y no inventes nada: si una herramienta no devuelve datos, dilo.")
             .AppendLine("Un día que no aparece en el resumen no tiene fichajes. Los totales no incluyen el intervalo abierto, que se informa aparte.")
             .AppendLine("Los totales ya vienen calculados en minutos y en texto (workedText, breakText, mealBreakText): cópialos tal cual, sin sumar ni convertir.")
-            .AppendLine("Responde siempre en español y en texto plano, sin formato Markdown ni HTML.")
+            .AppendLine("Responde siempre en español y en texto plano.")
+            .AppendLine("Excepción: si la respuesta lista o compara varias personas o periodos, puedes usar una única tabla Markdown sencilla: fila de encabezado, fila separadora |---|---|, una fila por elemento y como máximo 12 columnas. No uses ningún otro formato Markdown ni HTML (sin negritas, títulos, enlaces ni código).")
             .ToString()
             .TrimEnd();
     }

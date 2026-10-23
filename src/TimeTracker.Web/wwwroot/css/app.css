@@ -600,3 +600,11 @@ code {
     color: var(--text-muted-strong);
     font-size: 0.8rem;
 }
+.assistant-turn { min-width: 0; }
+.assistant-table-wrap { max-width: 100%; overflow-x: auto; margin: 0.25rem 0; border: 1px solid #ced4da; border-radius: 0.5rem; background-color: #fff; }
+.assistant-table { border-collapse: collapse; font-size: 0.85rem; width: max-content; min-width: 100%; }
+.assistant-table th, .assistant-table td { padding: 0.25rem 0.6rem; border-bottom: 1px solid #e9ecef; text-align: left; white-space: nowrap; }
+.assistant-table th { background-color: #e9ecef; font-weight: 600; }
+.assistant-table tbody tr:nth-child(even) { background-color: #f8f9fa; }
+.assistant-table tbody tr:last-child td { border-bottom: 0; }
+.assistant-table-actions { margin-top: 0.25rem; }
