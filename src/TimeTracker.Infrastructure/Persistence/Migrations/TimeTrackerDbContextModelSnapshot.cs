@@ -172,6 +172,10 @@ namespace TimeTracker.Infrastructure.Persistence.Migrations
                         .HasColumnType("character varying(20)")
                         .HasColumnName("role");
 
+                    b.Property<Guid?>("WorkScheduleId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("work_schedule_id");
+
                     b.Property<uint>("xmin")
                         .IsConcurrencyToken()
                         .ValueGeneratedOnAddOrUpdate()
@@ -190,6 +194,9 @@ namespace TimeTracker.Infrastructure.Persistence.Migrations
                     b.HasIndex("CompanyId", "ManagerId")
                         .HasDatabaseName("ix_users_company_id_manager_id");
 
+                    b.HasIndex("CompanyId", "WorkScheduleId")
+                        .HasDatabaseName("ix_users_company_id_work_schedule_id");
+
                     b.ToTable("users", null, t =>
                         {
                             t.HasCheckConstraint("ck_users_email_lowercase", "email = lower(email)");
@@ -197,6 +204,63 @@ namespace TimeTracker.Infrastructure.Persistence.Migrations
                             t.HasCheckConstraint("ck_users_manager_not_self", "manager_id IS NULL OR manager_id <> id");
 
                             t.HasCheckConstraint("ck_users_role", "role IN ('Employee', 'Manager')");
+                        });
+                });
+
+            modelBuilder.Entity("TimeTracker.Domain.WorkSchedules.WorkSchedule", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<Guid>("CompanyId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("company_id");
+
+                    b.Property<int>("DaysMask")
+                        .HasColumnType("integer")
+                        .HasColumnName("days_mask");
+
+                    b.Property<int>("ExpectedBreakMinutes")
+                        .HasColumnType("integer")
+                        .HasColumnName("expected_break_minutes");
+
+                    b.Property<int>("LunchMinutes")
+                        .HasColumnType("integer")
+                        .HasColumnName("lunch_minutes");
+
+                    b.Property<TimeOnly>("LunchStart")
+                        .HasColumnType("time without time zone")
+                        .HasColumnName("lunch_start");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("name");
+
+                    b.Property<TimeOnly>("StartTime")
+                        .HasColumnType("time without time zone")
+                        .HasColumnName("start_time");
+
+                    b.HasKey("Id");
+
+                    b.HasAlternateKey("CompanyId", "Id")
+                        .HasName("ux_work_schedules_company_id_id");
+
+                    b.HasIndex("CompanyId", "Name")
+                        .IsUnique()
+                        .HasDatabaseName("ux_work_schedules_company_id_name");
+
+                    b.ToTable("work_schedules", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_work_schedules_days_mask", "days_mask BETWEEN 1 AND 127");
+
+                            t.HasCheckConstraint("ck_work_schedules_expected_break_minutes", "expected_break_minutes BETWEEN 0 AND 480");
+
+                            t.HasCheckConstraint("ck_work_schedules_lunch_after_start", "lunch_start > start_time");
+
+                            t.HasCheckConstraint("ck_work_schedules_lunch_minutes", "lunch_minutes BETWEEN 0 AND 480");
                         });
                 });
 
@@ -360,6 +424,23 @@ namespace TimeTracker.Infrastructure.Persistence.Migrations
                         .HasPrincipalKey("CompanyId", "Id")
                         .OnDelete(DeleteBehavior.NoAction)
                         .HasConstraintName("fk_users_users_company_id_manager_id");
+
+                    b.HasOne("TimeTracker.Domain.WorkSchedules.WorkSchedule", null)
+                        .WithMany()
+                        .HasForeignKey("CompanyId", "WorkScheduleId")
+                        .HasPrincipalKey("CompanyId", "Id")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .HasConstraintName("fk_users_work_schedules_company_id_work_schedule_id");
+                });
+
+            modelBuilder.Entity("TimeTracker.Domain.WorkSchedules.WorkSchedule", b =>
+                {
+                    b.HasOne("TimeTracker.Domain.Companies.Company", null)
+                        .WithMany()
+                        .HasForeignKey("CompanyId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired()
+                        .HasConstraintName("fk_work_schedules_companies_company_id");
                 });
 
             modelBuilder.Entity("TimeTracker.Infrastructure.Persistence.AssistantSettingsAuditRecord", b =>

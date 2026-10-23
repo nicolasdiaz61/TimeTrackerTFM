@@ -100,7 +100,7 @@ public class OpenApiContractTests
     }
 
     [Fact]
-    public void ExportedDocument_ContainsOnlyTheTwoTeamGetOperations()
+    public void ExportedDocument_ContainsTheTwoTeamGetOperationsAndTheWorkScheduleAssignment()
     {
         using var document = LoadDocument();
         var paths = document.RootElement.GetProperty("paths");
@@ -108,12 +108,29 @@ public class OpenApiContractTests
 
         var teamPaths = paths.EnumerateObject().Where(path => path.Name.StartsWith("/api/team", StringComparison.Ordinal)).ToList();
 
-        Assert.Equal(["/api/team/members", MemberEntries], teamPaths.Select(path => path.Name).Order(StringComparer.Ordinal));
-        Assert.All(teamPaths, path => Assert.Equal(["get"], path.Value.EnumerateObject().Select(operation => operation.Name)));
+        Assert.Equal(["/api/team/members", MemberEntries, "/api/team/members/{memberId}/work-schedule"], teamPaths.Select(path => path.Name).Order(StringComparer.Ordinal));
+        Assert.All(teamPaths.Where(path => !path.Name.EndsWith("/work-schedule", StringComparison.Ordinal)), path => Assert.Equal(["get"], path.Value.EnumerateObject().Select(operation => operation.Name)));
+        Assert.Equal(["put"], teamPaths.Single(path => path.Name.EndsWith("/work-schedule", StringComparison.Ordinal)).Value.EnumerateObject().Select(operation => operation.Name));
         var parameters = paths.GetProperty(MemberEntries).GetProperty("get").GetProperty("parameters").EnumerateArray().ToList();
         Assert.Equal(["memberId", "from", "to"], parameters.Select(parameter => parameter.GetProperty("name").GetString()));
         Assert.Equal(["path", "query", "query"], parameters.Select(parameter => parameter.GetProperty("in").GetString()));
         Assert.Equal("uuid", parameters[0].GetProperty("schema").GetProperty("format").GetString());
+    }
+
+    [Fact]
+    public void ExportedDocument_DeclaresTheWorkScheduleOperationsWithTheirResponses()
+    {
+        using var document = LoadDocument();
+        var paths = document.RootElement.GetProperty("paths");
+
+        AssertResponses(paths, "/api/work-schedules", "get", "200", "401", "403");
+        AssertResponses(paths, "/api/work-schedules", "post", "201", "400", "401", "403", "409");
+        AssertResponses(paths, "/api/work-schedules/{id}", "put", "200", "400", "401", "403", "404", "409");
+        AssertResponses(paths, "/api/work-schedules/{id}", "delete", "204", "401", "403", "404", "409");
+        AssertResponses(paths, "/api/work-schedules/mine", "get", "200", "204", "401");
+        AssertResponses(paths, "/api/team/members/{memberId}/work-schedule", "put", "204", "400", "401", "403", "404", "409");
+        Assert.True(RequiresBearer(document.RootElement, "/api/work-schedules", "post"));
+        Assert.True(RequiresBearer(document.RootElement, "/api/work-schedules/mine", "get"));
     }
 
     [Fact]

@@ -7,6 +7,7 @@ using TimeTracker.Application.Companies;
 using TimeTracker.Application.DemoData;
 using TimeTracker.Application.TimeTracking;
 using TimeTracker.Application.Users;
+using TimeTracker.Application.WorkSchedules;
 
 namespace TimeTracker.Infrastructure.Persistence;
 
@@ -24,6 +25,7 @@ public static class PersistenceServiceCollectionExtensions
         services.AddSingleton<ICompanyRegistrationStore, CompanyRegistrationStore>();
         services.AddScoped<ITimeEntryRepository, TimeEntryRepository>();
         services.AddScoped<IUserRepository, UserRepository>();
+        services.AddScoped<IWorkScheduleRepository, WorkScheduleRepository>();
         services.AddScoped<IDemoTimeEntryStore, DemoTimeEntryStore>();
         services.AddScoped<IAssistantSettingsStore, AssistantSettingsStore>();
 

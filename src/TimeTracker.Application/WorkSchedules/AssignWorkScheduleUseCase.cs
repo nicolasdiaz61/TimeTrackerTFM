@@ -16,7 +16,7 @@ public sealed class AssignWorkScheduleUseCase(IUserRepository users, IWorkSchedu
             return AssignWorkScheduleOutcome.NotFound;
         }
 
-        if (workScheduleId is { } id && await schedules.FindAsync(id, cancellationToken) is null)
+        if (workScheduleId is { } id && await schedules.FindByIdAsync(id, cancellationToken) is null)
         {
             return AssignWorkScheduleOutcome.NotFound;
         }

@@ -11,6 +11,6 @@ public sealed class GetMyWorkScheduleUseCase(IUserRepository users, IWorkSchedul
     {
         var user = await users.FindByIdAsync(currentUser.EmployeeId, cancellationToken);
 
-        return user?.WorkScheduleId is { } id ? await schedules.FindAsync(id, cancellationToken) : null;
+        return user?.WorkScheduleId is { } id ? await schedules.FindByIdAsync(id, cancellationToken) : null;
     }
 }

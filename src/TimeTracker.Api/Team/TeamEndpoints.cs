@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Mvc;
 
 using TimeTracker.Api.Security;
 using TimeTracker.Api.TimeEntries;
+using TimeTracker.Api.WorkSchedules;
 using TimeTracker.Application.Team;
 
 namespace TimeTracker.Api.Team;
@@ -31,6 +32,13 @@ public static class TeamEndpoints
         group.MapGet("members/{memberId:guid}/time-entries", MemberTimeEntriesAsync)
             .ProducesProblem(StatusCodes.Status400BadRequest)
             .ProducesProblem(StatusCodes.Status404NotFound);
+
+        // Asigna o retira la jornada de un miembro del equipo: un miembro ajeno o una jornada ajena dan el mismo 404.
+        group.MapPut("members/{memberId:guid}/work-schedule", WorkScheduleEndpoints.AssignAsync)
+            .Produces(StatusCodes.Status204NoContent)
+            .ProducesProblem(StatusCodes.Status400BadRequest)
+            .ProducesProblem(StatusCodes.Status404NotFound)
+            .ProducesProblem(StatusCodes.Status409Conflict);
 
         return endpoints;
     }

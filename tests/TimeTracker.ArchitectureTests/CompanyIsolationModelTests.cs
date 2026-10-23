@@ -30,7 +30,7 @@ public class CompanyIsolationModelTests
     }
 
     [Fact]
-    public void TheModelHasTheFourCompanyScopedTables_AndCompaniesIsNotOneOfThem()
+    public void TheModelHasTheFiveCompanyScopedTables_AndCompaniesIsNotOneOfThem()
     {
         using var context = new TimeTrackerDbContext(
             new DbContextOptionsBuilder<TimeTrackerDbContext>().UseNpgsql("Host=localhost;Database=ignored").Options,
@@ -38,7 +38,7 @@ public class CompanyIsolationModelTests
 
         var scoped = context.Model.GetEntityTypes().Where(HasCompanyColumn).Select(type => type.GetTableName()).Order().ToList();
 
-        Assert.Equal(["assistant_settings", "assistant_settings_audit", "time_entries", "users"], scoped);
+        Assert.Equal(["assistant_settings", "assistant_settings_audit", "time_entries", "users", "work_schedules"], scoped);
         Assert.Empty(context.Model.FindEntityType(typeof(TimeTracker.Domain.Companies.Company))!.GetDeclaredQueryFilters());
     }
 

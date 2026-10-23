@@ -10,9 +10,9 @@ public interface IWorkScheduleRepository
     /// <summary>Personas con cada jornada asignada (solo las jornadas que tienen alguna).</summary>
     Task<IReadOnlyDictionary<Guid, int>> AssignedCountsAsync(CancellationToken cancellationToken);
 
-    Task<WorkSchedule?> FindAsync(Guid id, CancellationToken cancellationToken);
+    Task<WorkSchedule?> FindByIdAsync(Guid id, CancellationToken cancellationToken);
 
-    /// <summary>Igual que <see cref="FindAsync"/>, pero seguida para guardar cambios con <see cref="SaveChangesAsync"/>.</summary>
+    /// <summary>Igual que <see cref="FindByIdAsync"/>, pero seguida para guardar cambios con <see cref="SaveChangesAsync"/>.</summary>
     Task<WorkSchedule?> FindForUpdateAsync(Guid id, CancellationToken cancellationToken);
 
     Task<int> CountAsync(CancellationToken cancellationToken);

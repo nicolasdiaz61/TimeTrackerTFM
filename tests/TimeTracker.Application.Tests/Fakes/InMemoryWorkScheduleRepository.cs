@@ -27,10 +27,10 @@ internal sealed class InMemoryWorkScheduleRepository(InMemoryUserRepository user
         return Task.FromResult(counts);
     }
 
-    public Task<WorkSchedule?> FindAsync(Guid id, CancellationToken cancellationToken)
+    public Task<WorkSchedule?> FindByIdAsync(Guid id, CancellationToken cancellationToken)
         => Task.FromResult(_schedules.FirstOrDefault(schedule => schedule.Id == id));
 
-    public Task<WorkSchedule?> FindForUpdateAsync(Guid id, CancellationToken cancellationToken) => FindAsync(id, cancellationToken);
+    public Task<WorkSchedule?> FindForUpdateAsync(Guid id, CancellationToken cancellationToken) => FindByIdAsync(id, cancellationToken);
 
     public Task<int> CountAsync(CancellationToken cancellationToken) => Task.FromResult(_schedules.Count);
 
