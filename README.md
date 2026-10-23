@@ -144,7 +144,7 @@ La migración `AddTimeEntryType` deja los fichajes existentes como `Work` (colum
 
 ## Asistente de IA
 
-El asistente responde en español, en lenguaje natural, a preguntas sobre los fichajes de quien pregunta («¿cuántas horas trabajé la semana pasada?») y, si es responsable (`Manager`), sobre los de sus reportes directos, uno a uno o comparando al equipo (herramienta `get_team_summary`: quién hace más pausas, quién está por encima de la media; [ADR 0025](docs/adr/0025-resumen-de-equipo-del-asistente.md)). Es **de solo lectura**: no ficha ni modifica nada, y cada herramienta aplica la autorización de la persona autenticada (la identidad sale siempre del token). Se consulta con `POST /api/asistente` (`{ "message": "…", "history": [...] }`); la página `/asistente` de la Web lo consulta. Está **deshabilitado por defecto**: sin `Ai__Provider` la API arranca igual y el endpoint responde `503` «El asistente no está disponible en este entorno.». Las decisiones están en el [ADR 0017](docs/adr/0017-asistente-ia-con-herramientas-de-solo-lectura.md). Cuando la respuesta compara varias personas o periodos puede incluir una tabla, que la Web pinta como tabla HTML (siempre con texto escapado) y permite descargar como CSV con «Descargar CSV» ([ADR 0026](docs/adr/0026-tablas-y-csv-en-el-asistente.md)).
+El asistente responde en español, en lenguaje natural, a preguntas sobre los fichajes de quien pregunta («¿cuántas horas trabajé la semana pasada?») y, si es responsable (`Manager`), sobre los de sus reportes directos, uno a uno o comparando al equipo (herramienta `get_team_summary`: quién hace más pausas, quién está por encima de la media y quién hace más horas extra con una jornada diaria supuesta de 8 h; [ADR 0025](docs/adr/0025-resumen-de-equipo-del-asistente.md) y [ADR 0027](docs/adr/0027-horas-extra-en-el-resumen-de-equipo.md)). Es **de solo lectura**: no ficha ni modifica nada, y cada herramienta aplica la autorización de la persona autenticada (la identidad sale siempre del token). Se consulta con `POST /api/asistente` (`{ "message": "…", "history": [...] }`); la página `/asistente` de la Web lo consulta. Está **deshabilitado por defecto**: sin `Ai__Provider` la API arranca igual y el endpoint responde `503` «El asistente no está disponible en este entorno.». Las decisiones están en el [ADR 0017](docs/adr/0017-asistente-ia-con-herramientas-de-solo-lectura.md). Cuando la respuesta compara varias personas o periodos puede incluir una tabla, que la Web pinta como tabla HTML (siempre con texto escapado) y permite descargar como CSV con «Descargar CSV» ([ADR 0026](docs/adr/0026-tablas-y-csv-en-el-asistente.md)).
 
 **Habilitarlo** (solo configuración, sin cambiar código; el modelo también es configuración):
 
@@ -402,6 +402,7 @@ openspec/                     Especificaciones y cambios (Spec Driven Developmen
 24. [Alcance del asistente](docs/adr/0024-alcance-del-asistente.md)
 25. [Resumen de equipo del asistente](docs/adr/0025-resumen-de-equipo-del-asistente.md)
 26. [Tablas y CSV en el asistente](docs/adr/0026-tablas-y-csv-en-el-asistente.md)
+27. [Horas extra en el resumen de equipo](docs/adr/0027-horas-extra-en-el-resumen-de-equipo.md)
 
 ## Integración continua
 
