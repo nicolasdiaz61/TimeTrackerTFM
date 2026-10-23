@@ -38,6 +38,8 @@ public sealed class AssistantToolset(
     internal const string MaxDaysText = "31";
     private const string DateRangeSuffix = $"entre dos fechas (máximo {MaxDaysText} días).";
     private const string MemberIdDescription = $"Identificador (GUID) del miembro, obtenido SOLO de {TeamMembersTool}; nunca el nombre.";
+    private const string DailyHoursDescription = "horas previstas por día laborable para calcular las horas extra; usa 8 salvo que el usuario indique otra";
+    private const string InvalidDailyHoursMessage = "dailyHours debe ser un número de horas entre 1 y 12, por ejemplo 8.";
     private const string UnavailableMessage = "No se ha podido completar la consulta en este momento.";
 
     /// <summary>Herramientas ofrecidas al modelo para el rol del usuario actual.</summary>
@@ -65,7 +67,7 @@ public sealed class AssistantToolset(
             tools.Add(Create(
                 GetTeamSummaryAsync,
                 TeamSummaryTool,
-                $"Resume y compara a todo el equipo (reportes directos) {DateRangeSuffix} Úsala para comparaciones, rankings y medias: quién hace más pausas, quién está por encima del promedio, quién trabaja más. Devuelve por miembro minutos y número de pausas y comidas, y la media del equipo con la diferencia y si está por encima; ya viene calculado y no hace falta llamar antes a {TeamMembersTool}."));
+                $"Resume y compara a todo el equipo (reportes directos) {DateRangeSuffix} Úsala para comparaciones, rankings y medias: quién hace más pausas, quién está por encima del promedio, quién trabaja más, quién hace más horas extra. Devuelve por miembro minutos y número de pausas y comidas y horas extra (overtimeMinutes), y la media del equipo con la diferencia y si está por encima; ya viene calculado y no hace falta llamar antes a {TeamMembersTool}."));
         }
 
         return tools;
@@ -100,7 +102,8 @@ public sealed class AssistantToolset(
     private Task<object> GetTeamSummaryAsync(
         [Description(FromDescription)] string fromDate,
         [Description(ToDescription)] string toDate,
-        CancellationToken cancellationToken)
+        [Description(DailyHoursDescription)] double dailyHours = GetTeamSummaryUseCase.DefaultDailyHours,
+        CancellationToken cancellationToken = default)
         => RunAsync(TeamSummaryTool, async () =>
         {
             if (!TryCreateRange(fromDate, toDate, out var range, out var error))
@@ -108,7 +111,12 @@ public sealed class AssistantToolset(
                 return (ToolOutcome.Invalid, ToolResults.Error(error));
             }
 
-            var summary = await teamSummary.ExecuteAsync(range, timeProvider.GetUtcNow(), cancellationToken);
+            if (double.IsNaN(dailyHours) || dailyHours is < GetTeamSummaryUseCase.MinDailyHours or > GetTeamSummaryUseCase.MaxDailyHours)
+            {
+                return (ToolOutcome.Invalid, ToolResults.Error(InvalidDailyHoursMessage));
+            }
+
+            var summary = await teamSummary.ExecuteAsync(range, timeProvider.GetUtcNow(), dailyHours, cancellationToken);
             return (ToolOutcome.Ok, (object)(summary with
             {
                 Members = [.. summary.Members.Select(member => member with { Name = DisplayNameSanitizer.Sanitize(member.Name) })],

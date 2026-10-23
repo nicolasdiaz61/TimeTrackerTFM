@@ -381,20 +381,21 @@ public partial class DeliveryArtifactsTests
     // --- ADR (SA-20, SA-21, SA-22) ---
 
     [Fact]
-    public void Adr_Directory_HasTwentySixAdrsWithFourSections()
+    public void Adr_Directory_HasTwentySevenAdrsWithFourSections()
     {
         string[] sections = ["## Contexto", "## Decisión", "## Consecuencias", "## Alternativas"];
         var adrs = Directory.GetFiles(Path.Combine(RepositoryRoot.Path, "docs", "adr"), "0*.md")
             .Order(StringComparer.Ordinal)
             .ToList();
 
-        Assert.Equal(26, adrs.Count);
+        int[] numbers = [.. Enumerable.Range(1, 27)];
+        Assert.Equal(numbers.Length, adrs.Count);
         for (var index = 0; index < adrs.Count; index++)
         {
             var name = Path.GetFileName(adrs[index]);
             var text = File.ReadAllText(adrs[index]);
 
-            Assert.StartsWith($"{index + 1:0000}-", name, StringComparison.Ordinal);
+            Assert.StartsWith($"{numbers[index]:0000}-", name, StringComparison.Ordinal);
             Assert.Matches(@"(?m)^- Estado: \S", text);
             Assert.Matches(@"(?m)^- Fecha: \d{4}-\d{2}-\d{2}", text);
             var missing = sections.Where(section => !text.Contains(section, StringComparison.Ordinal)).ToList();

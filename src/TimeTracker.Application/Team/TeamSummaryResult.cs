@@ -3,8 +3,10 @@ using TimeTracker.Application.TimeTracking;
 namespace TimeTracker.Application.Team;
 
 /// <summary>
-/// Resumen comparativo del equipo en un periodo: todo está calculado en código (totales, medias y diferencias) para que
-/// el modelo no sume, divida ni compare. Los miembros van ordenados por minutos de pausa descendente y luego por nombre.
+/// Resumen comparativo del equipo en un periodo: todo está calculado en código (totales, medias, diferencias y horas
+/// extra) para que el modelo no sume, divida ni compare. Las horas extra usan una jornada diaria supuesta
+/// (<see cref="AssumedDailyHours"/>, explicada en <see cref="OvertimeNote"/>). Los miembros van ordenados por minutos de
+/// pausa descendente y luego por nombre.
 /// </summary>
 public sealed record TeamSummaryResult(
     DateOnly From,
@@ -12,16 +14,20 @@ public sealed record TeamSummaryResult(
     int MemberCount,
     bool MembersTruncated,
     TeamAverages Averages,
-    IReadOnlyList<TeamMemberSummary> Members);
+    IReadOnlyList<TeamMemberSummary> Members,
+    double AssumedDailyHours,
+    string OvertimeNote);
 
 /// <summary>Medias por miembro del equipo (un miembro sin fichajes cuenta como cero); 0 si el equipo está vacío.</summary>
-public sealed record TeamAverages(double WorkedMinutes, double BreakMinutes, double BreakCount, double MealBreakMinutes)
+public sealed record TeamAverages(double WorkedMinutes, double BreakMinutes, double BreakCount, double MealBreakMinutes, double OvertimeMinutes)
 {
     public string WorkedText => DurationText.Format((int)Math.Round(WorkedMinutes));
 
     public string BreakText => DurationText.Format((int)Math.Round(BreakMinutes));
 
     public string MealBreakText => DurationText.Format((int)Math.Round(MealBreakMinutes));
+
+    public string OvertimeText => DurationText.Format((int)Math.Round(OvertimeMinutes));
 }
 
 /// <summary>
@@ -42,11 +48,17 @@ public sealed record TeamMemberSummary(
     bool AboveAverageBreakMinutes,
     bool AboveAverageBreakCount,
     OpenEntrySummary? Open,
-    bool EntriesTruncated)
+    bool EntriesTruncated,
+    int OvertimeMinutes,
+    int OvertimeDays,
+    double OvertimeVsAverage,
+    bool AboveAverageOvertime)
 {
     public string WorkedText => DurationText.Format(WorkedMinutes);
 
     public string BreakText => DurationText.Format(BreakMinutes);
 
     public string MealBreakText => DurationText.Format(MealBreakMinutes);
+
+    public string OvertimeText => DurationText.Format(OvertimeMinutes);
 }

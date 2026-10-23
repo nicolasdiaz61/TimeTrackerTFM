@@ -78,7 +78,7 @@ public sealed class AssistantToolsIsolationTests(PostgresFixture postgres)
             new GetTimeEntriesUseCase(entries, currentUser),
             new GetTeamMembersUseCase(users, currentUser),
             new GetTeamMemberTimeEntriesUseCase(users, entries, currentUser),
-            new GetTeamSummaryUseCase(users, entries, currentUser),
+            new GetTeamSummaryUseCase(users, entries, new WorkScheduleRepository(context), currentUser),
             currentUser,
             new FakeTimeProvider(Now),
             LoggerFactory.Create(builder => builder.AddProvider(logs)).CreateLogger<AssistantToolset>());
@@ -102,7 +102,7 @@ public sealed class AssistantToolsIsolationTests(PostgresFixture postgres)
 
         Assert.Equal(4, rig.Tools.Count);
         var parameters = rig.Tools.SelectMany(tool => tool.JsonSchema.GetProperty("properties").EnumerateObject().Select(property => property.Name)).Distinct().Order().ToList();
-        Assert.Equal(["fromDate", "memberId", "toDate"], parameters);
+        Assert.Equal(["dailyHours", "fromDate", "memberId", "toDate"], parameters);
     }
 
     [Fact]
@@ -190,6 +190,48 @@ public sealed class AssistantToolsIsolationTests(PostgresFixture postgres)
         => MigrationDatabase.ExecuteAsync(
             connectionString,
             $"INSERT INTO time_entries (id, company_id, employee_id, clock_in_at, clock_out_at, type) VALUES ('{Guid.NewGuid()}', '{companyId}', '{employeeId}', '2026-10-13T10:00:00Z', '2026-10-13T10:00:00Z'::timestamptz + interval '{minutes} minutes', 'Break')");
+
+    private static Task InsertWorkAsync(string connectionString, Guid companyId, Guid employeeId, int hours)
+        => MigrationDatabase.ExecuteAsync(
+            connectionString,
+            $"INSERT INTO time_entries (id, company_id, employee_id, clock_in_at, clock_out_at, type) VALUES ('{Guid.NewGuid()}', '{companyId}', '{employeeId}', '2026-10-13T06:00:00Z', '2026-10-13T06:00:00Z'::timestamptz + interval '{hours} hours', 'Work')");
+
+    // Jornada de solo fin de semana (sábado y domingo: máscara 65) asignada a una persona.
+    private static async Task AssignWeekendScheduleAsync(string connectionString, Guid companyId, Guid employeeId)
+    {
+        var scheduleId = Guid.NewGuid();
+        await MigrationDatabase.ExecuteAsync(
+            connectionString,
+            $"INSERT INTO work_schedules (id, company_id, name, start_time, lunch_start, lunch_minutes, expected_break_minutes, days_mask) VALUES ('{scheduleId}', '{companyId}', 'Fin de semana', '09:00', '14:00', 60, 30, 65)");
+        await MigrationDatabase.ExecuteAsync(connectionString, $"UPDATE users SET work_schedule_id = '{scheduleId}' WHERE id = '{employeeId}'");
+    }
+
+    [Fact]
+    public async Task GetTeamSummary_OvertimeOfA_UsesOnlyItsOwnSchedulesAndNeverCountsCompanyB()
+    {
+        var fixture = await FixtureAsync();
+        // A: Employee1 trabaja 12 h un martes con una jornada de fin de semana (todo es extra: 720); Employee2 sin jornada trabaja 10 h (120). La siembra del fixture añade 1 h de trabajo a cada uno en otro día (solo cuenta como extra en el día no laborable de Employee1: 780 y 120).
+        await AssignWeekendScheduleAsync(fixture.ConnectionString, fixture.A.Id, fixture.A.Employee1.Id);
+        await InsertWorkAsync(fixture.ConnectionString, fixture.A.Id, fixture.A.Employee1.Id, 12);
+        await InsertWorkAsync(fixture.ConnectionString, fixture.A.Id, fixture.A.Employee2.Id, 10);
+        await InsertWorkAsync(fixture.ConnectionString, fixture.B.Id, fixture.B.Employee1.Id, 14);
+        var rig = RigFor(fixture.ConnectionString, fixture.A.Id, fixture.A.Manager.Id, UserRole.Manager);
+
+        var result = await rig.InvokeAsync("get_team_summary", ("fromDate", "2026-10-12"), ("toDate", "2026-10-18"));
+
+        using var document = JsonDocument.Parse(result);
+        var members = document.RootElement.GetProperty("members").EnumerateArray().ToList();
+        Assert.Equal(8, document.RootElement.GetProperty("assumedDailyHours").GetDouble());
+        Assert.Equal(450, document.RootElement.GetProperty("averages").GetProperty("overtimeMinutes").GetDouble());
+        var first = members.Single(member => member.GetProperty("memberId").GetString() == fixture.A.Employee1.Id.ToString());
+        var second = members.Single(member => member.GetProperty("memberId").GetString() == fixture.A.Employee2.Id.ToString());
+        Assert.Equal(780, first.GetProperty("overtimeMinutes").GetInt32());
+        Assert.True(first.GetProperty("aboveAverageOvertime").GetBoolean());
+        Assert.Equal(120, second.GetProperty("overtimeMinutes").GetInt32());
+        Assert.False(second.GetProperty("aboveAverageOvertime").GetBoolean());
+        Assert.DoesNotContain("Persona de B", result, StringComparison.Ordinal);
+        Assert.DoesNotContain("Fin de semana", result, StringComparison.Ordinal);
+    }
 
     [Fact]
     public async Task GetTeamSummary_CoversOnlyTheDirectReportsOfTheManagerOfTheToken_NeverCompanyBNorOtherTeamsOfA()
