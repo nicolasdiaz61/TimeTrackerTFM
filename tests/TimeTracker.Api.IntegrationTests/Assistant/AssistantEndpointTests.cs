@@ -114,7 +114,7 @@ public class AssistantEndpointTests
 
     [Theory]
     [InlineData("Employee", 1)]
-    [InlineData("Manager", 3)]
+    [InlineData("Manager", 4)]
     public async Task ExtraFields_AreIgnoredAndTheToolsFollowTheTokenRole(string tokenRole, int expectedTools)
     {
         var model = new FakeChatClient(Reply("ok"));

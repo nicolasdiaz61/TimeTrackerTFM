@@ -21,6 +21,7 @@ public sealed class AssistantToolset(
     GetTimeEntriesUseCase timeEntries,
     GetTeamMembersUseCase teamMembers,
     GetTeamMemberTimeEntriesUseCase teamMemberTimeEntries,
+    GetTeamSummaryUseCase teamSummary,
     ICurrentUser currentUser,
     TimeProvider timeProvider,
     ILogger<AssistantToolset> logger)
@@ -28,6 +29,7 @@ public sealed class AssistantToolset(
     private const string MyTimeEntriesTool = "get_my_time_entries";
     private const string TeamMembersTool = "get_team_members";
     private const string TeamMemberTimeEntriesTool = "get_team_member_time_entries";
+    private const string TeamSummaryTool = "get_team_summary";
     private const string FromDescription = "Primer día del periodo, formato yyyy-MM-dd (hora de España).";
     private const string ToDescription = "Último día del periodo, formato yyyy-MM-dd (hora de España).";
     private const string DateFormat = "yyyy-MM-dd";
@@ -60,6 +62,10 @@ public sealed class AssistantToolset(
                 GetTeamMemberTimeEntriesAsync,
                 TeamMemberTimeEntriesTool,
                 $"Llama siempre antes a {TeamMembersTool} y pasa su identificador (GUID) en memberId, no el nombre. Devuelve un resumen por día, en hora de España, de los fichajes de un miembro del equipo {DateRangeSuffix}"));
+            tools.Add(Create(
+                GetTeamSummaryAsync,
+                TeamSummaryTool,
+                $"Resume y compara a todo el equipo (reportes directos) {DateRangeSuffix} Úsala para comparaciones, rankings y medias: quién hace más pausas, quién está por encima del promedio, quién trabaja más. Devuelve por miembro minutos y número de pausas y comidas, y la media del equipo con la diferencia y si está por encima; ya viene calculado y no hace falta llamar antes a {TeamMembersTool}."));
         }
 
         return tools;
@@ -88,6 +94,25 @@ public sealed class AssistantToolset(
         {
             var members = await teamMembers.ExecuteAsync(cancellationToken);
             return (ToolOutcome.Ok, (object)members.Select(member => new TeamMemberView(member.Id, DisplayNameSanitizer.Sanitize(member.DisplayName))).ToList());
+        });
+
+    // Los nombres se sanean igual que en get_team_members: son datos no confiables para el modelo.
+    private Task<object> GetTeamSummaryAsync(
+        [Description(FromDescription)] string fromDate,
+        [Description(ToDescription)] string toDate,
+        CancellationToken cancellationToken)
+        => RunAsync(TeamSummaryTool, async () =>
+        {
+            if (!TryCreateRange(fromDate, toDate, out var range, out var error))
+            {
+                return (ToolOutcome.Invalid, ToolResults.Error(error));
+            }
+
+            var summary = await teamSummary.ExecuteAsync(range, timeProvider.GetUtcNow(), cancellationToken);
+            return (ToolOutcome.Ok, (object)(summary with
+            {
+                Members = [.. summary.Members.Select(member => member with { Name = DisplayNameSanitizer.Sanitize(member.Name) })],
+            }));
         });
 
     private Task<object> GetTeamMemberTimeEntriesAsync(

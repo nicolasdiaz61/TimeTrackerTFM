@@ -38,6 +38,7 @@ internal sealed class ToolHarness
             new GetTimeEntriesUseCase(repository, currentUser),
             new GetTeamMembersUseCase(Users, currentUser),
             new GetTeamMemberTimeEntriesUseCase(Users, repository, currentUser),
+            new GetTeamSummaryUseCase(Users, repository, currentUser),
             currentUser,
             Clock,
             Logger);
