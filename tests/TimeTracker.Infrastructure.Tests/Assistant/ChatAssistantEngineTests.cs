@@ -172,7 +172,7 @@ public sealed class ChatAssistantEngineTests
         var forged = call.Messages.Single(message => message.Text.StartsWith("SYSTEM:"));
         Assert.Equal(ChatRole.User, forged.Role);
         Assert.Single(call.Messages, message => message.Role == ChatRole.System);
-        Assert.Equal([MyTool], call.Options!.Tools!.Select(tool => tool.Name));
+        Assert.Equal([MyTool, "get_my_work_schedule"], call.Options!.Tools!.Select(tool => tool.Name));
     }
 
     [Fact]
@@ -184,9 +184,9 @@ public sealed class ChatAssistantEngineTests
         await new Rig(employeeModel, UserRole.Employee).Engine.ReplyAsync(Question, CancellationToken.None);
         await new Rig(managerModel, UserRole.Manager).Engine.ReplyAsync(Question, CancellationToken.None);
 
-        Assert.Equal([MyTool], employeeModel.Calls[0].Options!.Tools!.Select(tool => tool.Name));
+        Assert.Equal([MyTool, "get_my_work_schedule"], employeeModel.Calls[0].Options!.Tools!.Select(tool => tool.Name));
         Assert.Equal(
-            ["get_my_time_entries", "get_team_member_time_entries", "get_team_members", "get_team_summary"],
+            ["get_my_time_entries", "get_my_work_schedule", "get_team_member_time_entries", "get_team_members", "get_team_summary", "get_work_schedules"],
             managerModel.Calls[0].Options!.Tools!.Select(tool => tool.Name).Order());
         Assert.Contains("Rol del usuario: Manager", managerModel.Calls[0].Messages[0].Text);
         Assert.Contains("Rol del usuario: Employee", employeeModel.Calls[0].Messages[0].Text);

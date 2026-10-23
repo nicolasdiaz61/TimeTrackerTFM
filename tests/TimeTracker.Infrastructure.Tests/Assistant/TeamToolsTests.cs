@@ -66,14 +66,14 @@ public class TeamToolsTests
     }
 
     [Fact]
-    public async Task Members_ExposeOnlyIdAndName()
+    public async Task Members_ExposeOnlyIdNameAndSchedule()
     {
         var harness = Manager();
 
         var members = await harness.InvokeAsync(MembersTool);
 
         var first = members[0];
-        Assert.Equal(["id", "displayName"], first.EnumerateObject().Select(property => property.Name));
+        Assert.Equal(["id", "displayName", "workSchedule"], first.EnumerateObject().Select(property => property.Name));
         var text = members.GetRawText();
         Assert.DoesNotContain("example.test", text, StringComparison.Ordinal);
         Assert.DoesNotContain("hash", text, StringComparison.Ordinal);

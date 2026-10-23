@@ -39,6 +39,8 @@ public sealed class AssistantRegistrationTests
         services.AddScoped<GetTeamMembersUseCase>();
         services.AddScoped<GetTeamMemberTimeEntriesUseCase>();
         services.AddScoped<GetTeamSummaryUseCase>();
+        services.AddScoped<GetMyWorkScheduleUseCase>();
+        services.AddScoped<ListWorkSchedulesUseCase>();
         services.AddScoped<RecordingCompanyContext>();
         services.AddScoped<ICompanyContextSetter>(scope => scope.GetRequiredService<RecordingCompanyContext>());
         services.AddSingleton<ICompanyScopeFactory, CompanyScopeFactory>();

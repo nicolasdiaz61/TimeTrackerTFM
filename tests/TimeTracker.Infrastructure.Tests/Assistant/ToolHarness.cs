@@ -7,9 +7,11 @@ using TimeTracker.Application.Team;
 using TimeTracker.Application.Tests.Fakes;
 using TimeTracker.Application.Time;
 using TimeTracker.Application.TimeTracking;
+using TimeTracker.Application.WorkSchedules;
 using TimeTracker.Domain.Companies;
 using TimeTracker.Domain.TimeTracking;
 using TimeTracker.Domain.Users;
+using TimeTracker.Domain.WorkSchedules;
 using TimeTracker.Infrastructure.Assistant;
 using TimeTracker.Infrastructure.Tests.Fakes;
 
@@ -40,6 +42,8 @@ internal sealed class ToolHarness
             new GetTeamMembersUseCase(Users, currentUser),
             new GetTeamMemberTimeEntriesUseCase(Users, repository, currentUser),
             new GetTeamSummaryUseCase(Users, repository, Schedules, currentUser),
+            new GetMyWorkScheduleUseCase(Users, Schedules, currentUser),
+            new ListWorkSchedulesUseCase(Schedules),
             currentUser,
             Clock,
             Logger);
@@ -66,6 +70,22 @@ internal sealed class ToolHarness
         var entry = TimeEntry.Start(Company.DefaultId, employeeId, type, SpainTime.ToUtc(date, from));
         entry.Close(SpainTime.ToUtc(date, to));
         Entries.Seed(entry);
+    }
+
+    /// <summary>Crea una jornada de la compañía por defecto y, si se indica, la asigna a una persona.</summary>
+    public WorkSchedule SeedSchedule(string name, IReadOnlyCollection<DayOfWeek> days, params Guid[] assignTo)
+    {
+        var schedule = WorkSchedule.Create(
+            Guid.NewGuid(),
+            Company.DefaultId,
+            new WorkScheduleDetails(name, new TimeOnly(8, 30), new TimeOnly(14, 0), 45, 20, days));
+        Schedules.Seed(schedule);
+        foreach (var person in assignTo)
+        {
+            Users.All.Single(user => user.Id == person).AssignWorkSchedule(schedule.Id);
+        }
+
+        return schedule;
     }
 
     public async Task<JsonElement> InvokeAsync(string tool, params (string Name, object? Value)[] arguments)

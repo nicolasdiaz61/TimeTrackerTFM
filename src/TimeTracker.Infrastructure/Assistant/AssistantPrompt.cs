@@ -29,9 +29,12 @@ internal static class AssistantPrompt
         AppendReferenceDates(prompt, today);
         prompt.AppendLine($"No inventes ni calcules fechas: si la petición no coincide con una referencia, pide aclaración. Un periodo admite como máximo {LocalDateRange.MaxDays} días y un fin posterior a hoy se recorta a hoy.");
 
+        prompt.AppendLine("Para «¿qué jornada tengo?» o «¿a qué hora entro?», llama a get_my_work_schedule. Las jornadas están dentro de tu alcance.");
+
         if (role == UserRole.Manager)
         {
             prompt
+                .AppendLine("get_team_members incluye la jornada de cada persona con su configuración: responde «qué jornada tiene X» o «quién tiene la jornada Oficina» con ella, sin llamar a otras herramientas. Para listar las jornadas de la compañía y cuánta gente tiene cada una, llama a get_work_schedules.")
                 .AppendLine("El usuario también puede consultar los fichajes de sus reportes directos.")
                 .AppendLine("Para consultar a un miembro, llama siempre antes a get_team_members y usa su identificador (GUID) como memberId, nunca el nombre.")
                 .AppendLine("Para comparar, ordenar o calcular medias del equipo (por ejemplo, quién hace más pausas o quién está por encima del promedio), llama una sola vez a get_team_summary y responde con sus cifras: ya vienen calculadas y no debes recalcularlas; la respuesta indica quién está por encima de la media. No consultes a los miembros uno por uno para eso.")

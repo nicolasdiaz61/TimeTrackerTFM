@@ -405,6 +405,7 @@ openspec/                     Especificaciones y cambios (Spec Driven Developmen
 27. [Horas extra en el resumen de equipo](docs/adr/0027-horas-extra-en-el-resumen-de-equipo.md)
 28. [Sesión compartida entre pestañas del navegador](docs/adr/0028-sesion-compartida-entre-pestañas.md) (sustituye el almacenamiento del 0012)
 29. [Navegación por pestañas, diálogo reutilizable y sistema visual](docs/adr/0029-navegacion-por-pestanas-y-sistema-visual.md)
+30. [Jornadas en el asistente](docs/adr/0030-jornadas-en-el-asistente.md)
 
 ## Integración continua
 

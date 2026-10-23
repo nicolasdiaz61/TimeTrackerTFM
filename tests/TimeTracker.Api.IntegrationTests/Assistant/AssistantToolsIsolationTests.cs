@@ -12,6 +12,7 @@ using TimeTracker.Api.IntegrationTests.Support;
 using TimeTracker.Application.Team;
 using TimeTracker.Application.Tests.Fakes;
 using TimeTracker.Application.TimeTracking;
+using TimeTracker.Application.WorkSchedules;
 using TimeTracker.Domain.Users;
 using TimeTracker.Infrastructure.Assistant;
 using TimeTracker.Infrastructure.Persistence;
@@ -79,6 +80,8 @@ public sealed class AssistantToolsIsolationTests(PostgresFixture postgres)
             new GetTeamMembersUseCase(users, currentUser),
             new GetTeamMemberTimeEntriesUseCase(users, entries, currentUser),
             new GetTeamSummaryUseCase(users, entries, new WorkScheduleRepository(context), currentUser),
+            new GetMyWorkScheduleUseCase(users, new WorkScheduleRepository(context), currentUser),
+            new ListWorkSchedulesUseCase(new WorkScheduleRepository(context)),
             currentUser,
             new FakeTimeProvider(Now),
             LoggerFactory.Create(builder => builder.AddProvider(logs)).CreateLogger<AssistantToolset>());
@@ -100,7 +103,7 @@ public sealed class AssistantToolsIsolationTests(PostgresFixture postgres)
         var fixture = await FixtureAsync();
         var rig = RigFor(fixture.ConnectionString, fixture.A.Id, fixture.A.Manager.Id, UserRole.Manager);
 
-        Assert.Equal(4, rig.Tools.Count);
+        Assert.Equal(6, rig.Tools.Count);
         var parameters = rig.Tools.SelectMany(tool => tool.JsonSchema.GetProperty("properties").EnumerateObject().Select(property => property.Name)).Distinct().Order().ToList();
         Assert.Equal(["dailyHours", "fromDate", "memberId", "toDate"], parameters);
     }
@@ -297,7 +300,67 @@ public sealed class AssistantToolsIsolationTests(PostgresFixture postgres)
         var rig = RigFor(fixture.ConnectionString, fixture.A.Id, fixture.A.Employee1.Id, UserRole.Employee);
 
         Assert.DoesNotContain(rig.Tools, tool => tool.Name == "get_team_summary");
-        Assert.Single(rig.Tools);
+        Assert.DoesNotContain(rig.Tools, tool => tool.Name == "get_work_schedules");
+        Assert.Equal(["get_my_time_entries", "get_my_work_schedule"], rig.Tools.Select(tool => tool.Name).Order(StringComparer.Ordinal));
+    }
+
+    private static async Task<Guid> InsertScheduleAsync(string connectionString, Guid companyId, string name, params Guid[] assignTo)
+    {
+        var scheduleId = Guid.NewGuid();
+        await MigrationDatabase.ExecuteAsync(
+            connectionString,
+            $"INSERT INTO work_schedules (id, company_id, name, start_time, lunch_start, lunch_minutes, expected_break_minutes, days_mask) VALUES ('{scheduleId}', '{companyId}', '{name}', '09:00', '14:00', 60, 30, 62)");
+        foreach (var person in assignTo)
+        {
+            await MigrationDatabase.ExecuteAsync(connectionString, $"UPDATE users SET work_schedule_id = '{scheduleId}' WHERE id = '{person}'");
+        }
+
+        return scheduleId;
+    }
+
+    [Fact]
+    public async Task WorkScheduleTools_ShowEachCompanyOnlyItsOwnSchedulesAndAssignments()
+    {
+        var fixture = await FixtureAsync();
+        await InsertScheduleAsync(fixture.ConnectionString, fixture.A.Id, "Jornada Alfa", fixture.A.Employee1.Id);
+        await InsertScheduleAsync(fixture.ConnectionString, fixture.B.Id, "Jornada Beta", fixture.B.Employee1.Id, fixture.B.Employee2.Id);
+
+        var managerA = RigFor(fixture.ConnectionString, fixture.A.Id, fixture.A.Manager.Id, UserRole.Manager);
+        var managerB = RigFor(fixture.ConnectionString, fixture.B.Id, fixture.B.Manager.Id, UserRole.Manager);
+
+        var listA = await managerA.InvokeAsync("get_work_schedules", ("companyId", fixture.B.Id.ToString()));
+        var listB = await managerB.InvokeAsync("get_work_schedules", ("companyId", fixture.A.Id.ToString()));
+        var teamB = await managerB.InvokeAsync("get_team_members");
+        var teamA = await managerA.InvokeAsync("get_team_members");
+
+        Assert.Contains("Jornada Alfa", listA, StringComparison.Ordinal);
+        Assert.Contains("\"assignedCount\":1", listA, StringComparison.Ordinal);
+        Assert.DoesNotContain("Jornada Beta", listA + teamA, StringComparison.Ordinal);
+        Assert.Contains("Jornada Beta", listB, StringComparison.Ordinal);
+        Assert.Contains("\"assignedCount\":2", listB, StringComparison.Ordinal);
+        Assert.DoesNotContain("Jornada Alfa", listB + teamB, StringComparison.Ordinal);
+        Assert.Contains("Jornada Beta", teamB, StringComparison.Ordinal);
+        Assert.Contains("\"days\":[\"lunes\",\"martes\",\"miércoles\",\"jueves\",\"viernes\"]", teamB, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task GetMyWorkSchedule_ReturnsOnlyTheOwnScheduleOfTheEmployeeOfTheToken()
+    {
+        var fixture = await FixtureAsync();
+        await InsertScheduleAsync(fixture.ConnectionString, fixture.A.Id, "Jornada Alfa", fixture.A.Employee1.Id);
+        await InsertScheduleAsync(fixture.ConnectionString, fixture.B.Id, "Jornada Beta", fixture.B.Employee1.Id);
+
+        var employeeB = RigFor(fixture.ConnectionString, fixture.B.Id, fixture.B.Employee1.Id, UserRole.Employee);
+        var colleagueA = RigFor(fixture.ConnectionString, fixture.A.Id, fixture.A.Employee2.Id, UserRole.Employee);
+
+        var ofB = await employeeB.InvokeAsync("get_my_work_schedule", ("employeeId", fixture.A.Employee1.Id.ToString()), ("companyId", fixture.A.Id.ToString()));
+        var ofColleague = await colleagueA.InvokeAsync("get_my_work_schedule", ("employeeId", fixture.A.Employee1.Id.ToString()));
+
+        Assert.Contains("Jornada Beta", ofB, StringComparison.Ordinal);
+        Assert.DoesNotContain("Jornada Alfa", ofB, StringComparison.Ordinal);
+        // El compañero de A no tiene jornada: no ve la de su compañero ni la de nadie.
+        Assert.Contains("No tiene una jornada asignada.", ofColleague, StringComparison.Ordinal);
+        Assert.DoesNotContain("Jornada", ofColleague, StringComparison.Ordinal);
     }
 
     [Fact]

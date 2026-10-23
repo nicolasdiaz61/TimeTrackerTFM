@@ -12,8 +12,12 @@ internal sealed class InMemoryWorkScheduleRepository(InMemoryUserRepository user
 
     public void Seed(params WorkSchedule[] schedules) => _schedules.AddRange(schedules);
 
+    /// <summary>Número de veces que se ha listado: permite probar que no hay una consulta por miembro.</summary>
+    public int ListCalls { get; private set; }
+
     public Task<IReadOnlyList<WorkSchedule>> ListAsync(CancellationToken cancellationToken)
     {
+        ListCalls++;
         IReadOnlyList<WorkSchedule> list = [.. _schedules.OrderBy(schedule => schedule.Name, StringComparer.Ordinal)];
         return Task.FromResult(list);
     }
