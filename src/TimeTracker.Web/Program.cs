@@ -34,7 +34,9 @@ builder.Services.AddScoped<ILocalTimeZone>(sp => new BrowserTimeZone((IJSInProce
 builder.Services.AddAuthorizationCore();
 builder.Services.AddCascadingAuthenticationState();
 builder.Services.AddScoped<ChatViewport>();
+builder.Services.AddScoped<ISessionStorage, BrowserSessionStorage>();
 builder.Services.AddScoped<TokenStore>();
+builder.Services.AddScoped<SessionSynchronizer>();
 builder.Services.AddScoped<SessionNotice>();
 builder.Services.AddScoped<JwtAuthenticationStateProvider>();
 builder.Services.AddScoped<AuthenticationStateProvider>(sp => sp.GetRequiredService<JwtAuthenticationStateProvider>());

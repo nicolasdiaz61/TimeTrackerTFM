@@ -33,6 +33,14 @@ public sealed class JwtAuthenticationStateProvider(TokenStore store, TimeProvide
         return new AuthenticationState(new ClaimsPrincipal(new ClaimsIdentity(claims, "jwt", "name", "role")));
     }
 
+    /// <summary>Reevalúa el token tras un cambio hecho en otra pestaña y avisa a la interfaz.</summary>
+    public async Task<AuthenticationState> RefreshAsync()
+    {
+        var state = await GetAuthenticationStateAsync();
+        NotifyAuthenticationStateChanged(Task.FromResult(state));
+        return state;
+    }
+
     public async Task SignInAsync(string token)
     {
         await store.SetAsync(token);

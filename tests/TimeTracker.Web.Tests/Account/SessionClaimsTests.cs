@@ -55,7 +55,7 @@ public class SessionClaimsTests
     [Fact]
     public async Task TheStateProvider_ExposesCnameAndMcpToTheInterface()
     {
-        var js = new FakeJsRuntime();
+        var js = new FakeSessionStorage();
         js.Seed(TokenStore.StorageKey, Tokens.Create(DateTimeOffset.UtcNow.AddMinutes(30), companyName: "Compañía Ejemplo", passwordChangePending: true));
         var provider = new JwtAuthenticationStateProvider(new TokenStore(js), TimeProvider.System, new SessionNotice());
 

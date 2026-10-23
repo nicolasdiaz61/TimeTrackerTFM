@@ -11,7 +11,7 @@ public class JwtAuthenticationStateProviderTests
 {
     private static readonly DateTimeOffset Now = new(2026, 10, 14, 10, 0, 0, TimeSpan.Zero);
 
-    private readonly FakeJsRuntime js = new();
+    private readonly FakeSessionStorage js = new();
     private readonly SessionNotice notice = new();
     private readonly JwtAuthenticationStateProvider provider;
 
