@@ -6,6 +6,7 @@ using TimeTracker.Application.Identity;
 using TimeTracker.Domain.Companies;
 using TimeTracker.Domain.TimeTracking;
 using TimeTracker.Domain.Users;
+using TimeTracker.Domain.WorkSchedules;
 
 namespace TimeTracker.Infrastructure.Persistence;
 
@@ -34,6 +35,8 @@ public sealed class TimeTrackerDbContext : DbContext
     public DbSet<TimeEntry> TimeEntries => Set<TimeEntry>();
 
     public DbSet<UserAccount> Users => Set<UserAccount>();
+
+    public DbSet<WorkSchedule> WorkSchedules => Set<WorkSchedule>();
 
     /// <summary>Compañía del contexto; <see cref="Guid.Empty"/> si no hay ninguna, que no coincide con ninguna fila (la FK a <c>companies</c> lo impide).</summary>
     internal Guid CurrentCompanyId => _companyContext?.CompanyId ?? Guid.Empty;

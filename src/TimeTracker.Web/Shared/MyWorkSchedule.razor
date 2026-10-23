@@ -1,0 +1,15 @@
+@using TimeTracker.Web.WorkSchedules
+@inject IWorkSchedulesApi Schedules
+
+@* Una línea con la jornada asignada a la persona; si no tiene ninguna, o la consulta falla, no se muestra nada. *@
+@if (schedule is not null)
+{
+    <p class="my-work-schedule" data-testid="my-work-schedule"><strong>Su jornada</strong> — @WorkSchedulePresentation.Summary(schedule)</p>
+}
+
+@code {
+    private WorkScheduleDto? schedule;
+
+    protected override async Task OnInitializedAsync()
+        => schedule = (await Schedules.MineAsync()).Value;
+}

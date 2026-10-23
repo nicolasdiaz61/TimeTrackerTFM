@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore.Metadata.Builders;
 
 using TimeTracker.Domain.Companies;
 using TimeTracker.Domain.Users;
+using TimeTracker.Domain.WorkSchedules;
 
 namespace TimeTracker.Infrastructure.Persistence;
 
@@ -13,6 +14,9 @@ internal sealed class UserConfiguration : IEntityTypeConfiguration<UserAccount>
 
     // Compartido con la traducción del alta con tope (UserRepository): un responsable de otra compañía incumple esta clave.
     public const string ManagerForeignKeyName = "fk_users_users_company_id_manager_id";
+
+    // Compartido con la traducción del borrado de una jornada asignada (WorkScheduleRepository).
+    public const string WorkScheduleForeignKeyName = "fk_users_work_schedules_company_id_work_schedule_id";
 
     public void Configure(EntityTypeBuilder<UserAccount> builder)
     {
@@ -33,6 +37,7 @@ internal sealed class UserConfiguration : IEntityTypeConfiguration<UserAccount>
         builder.Property(user => user.PasswordHash).HasColumnName("password_hash").IsRequired();
         builder.Property(user => user.Role).HasColumnName("role").HasConversion<string>().HasMaxLength(20).IsRequired();
         builder.Property(user => user.ManagerId).HasColumnName("manager_id");
+        builder.Property(user => user.WorkScheduleId).HasColumnName("work_schedule_id");
         builder.Property(user => user.MustChangePassword).HasColumnName("must_change_password").HasDefaultValue(false).IsRequired();
 
         // Token de concurrencia optimista: la columna de sistema xmin (sin columna propia). Lo usan el cambio de
@@ -56,6 +61,16 @@ internal sealed class UserConfiguration : IEntityTypeConfiguration<UserAccount>
             .OnDelete(DeleteBehavior.NoAction)
             .HasConstraintName(ManagerForeignKeyName);
 
+        // Como máximo una jornada por persona y de su misma compañía; MATCH SIMPLE: sin jornada no se comprueba nada. NO ACTION: una
+        // jornada asignada no se borra (23503), no hay cascada.
+        builder.HasOne<WorkSchedule>()
+            .WithMany()
+            .HasForeignKey(user => new { user.CompanyId, user.WorkScheduleId })
+            .HasPrincipalKey(schedule => new { schedule.CompanyId, schedule.Id })
+            .OnDelete(DeleteBehavior.NoAction)
+            .HasConstraintName(WorkScheduleForeignKeyName);
+
+        builder.HasIndex(user => new { user.CompanyId, user.WorkScheduleId }).HasDatabaseName("ix_users_company_id_work_schedule_id");
         builder.HasIndex(user => user.Email).HasDatabaseName(EmailIndexName).IsUnique();
         builder.HasIndex(user => new { user.CompanyId, user.ManagerId }).HasDatabaseName("ix_users_company_id_manager_id");
     }

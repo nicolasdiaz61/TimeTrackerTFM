@@ -54,7 +54,7 @@ public class AuthorizationCoverageTests
             .Where(endpoint => endpoint.RoutePattern.RawText?.StartsWith("/api/team", StringComparison.Ordinal) == true)
             .ToList();
 
-        Assert.Equal(2, team.Count);
+        Assert.Equal(3, team.Count);
         Assert.All(team, endpoint => Assert.Contains(endpoint.Metadata.GetOrderedMetadata<IAuthorizeData>(), data => data.Policy == AuthorizationPolicies.Manager));
     }
 

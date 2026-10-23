@@ -6,7 +6,9 @@
 @using TimeTracker.Web.Time
 @using TimeTracker.Web.TimeEntries
 @using TimeTracker.Web.Timeline
+@using TimeTracker.Web.WorkSchedules
 @inject TimeEntriesApiClient Api
+@inject IWorkSchedulesApi Schedules
 @inject ILocalTimeZone Zone
 @inject TimeProvider Clock
 
@@ -36,7 +38,7 @@
 }
 else if (timeline is not null)
 {
-    <MonthTimelineView Timeline="timeline" />
+    <MonthTimelineView Timeline="timeline" WorkSchedule="schedule" />
 }
 
 @code {
@@ -44,6 +46,7 @@ else if (timeline is not null)
     private MonthRef month;
     private MonthTimeline? timeline;
     private string? status;
+    private WorkScheduleDto? schedule;
     private string? errorMessage;
     private bool loading = true;
     private int loadSequence;
@@ -52,6 +55,8 @@ else if (timeline is not null)
     {
         current = MonthRef.Of(Zone.DateOf(Clock.GetUtcNow()));
         month = current;
+        // Sin jornada, o si la consulta falla, no se muestra nada de lo previsto.
+        schedule = (await Schedules.MineAsync()).Value;
         await LoadAsync();
     }
 

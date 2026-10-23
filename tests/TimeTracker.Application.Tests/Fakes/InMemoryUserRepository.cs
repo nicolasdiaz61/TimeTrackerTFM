@@ -12,6 +12,8 @@ internal sealed class InMemoryUserRepository : IUserRepository
 {
     private readonly List<UserAccount> _users = [];
 
+    public IReadOnlyList<UserAccount> All => _users;
+
     public int FindByEmailCalls { get; private set; }
 
     public string? LastEmailRequested { get; private set; }

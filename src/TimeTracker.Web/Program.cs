@@ -11,6 +11,7 @@ using TimeTracker.Web.Registration;
 using TimeTracker.Web.Team;
 using TimeTracker.Web.Time;
 using TimeTracker.Web.TimeEntries;
+using TimeTracker.Web.WorkSchedules;
 
 var builder = WebAssemblyHostBuilder.CreateDefault(args);
 builder.RootComponents.Add<App>("#app");
@@ -49,6 +50,8 @@ builder.Services.AddScoped(sp => new EmployeesApiClient(CreateAuthorizedClient(s
 builder.Services.AddScoped<IEmployeesApi>(sp => sp.GetRequiredService<EmployeesApiClient>());
 builder.Services.AddScoped(sp => new TimeEntriesApiClient(CreateAuthorizedClient(sp, apiBaseUri)));
 builder.Services.AddScoped(sp => new TeamApiClient(CreateAuthorizedClient(sp, apiBaseUri)));
+builder.Services.AddScoped(sp => new WorkSchedulesApiClient(CreateAuthorizedClient(sp, apiBaseUri)));
+builder.Services.AddScoped<IWorkSchedulesApi>(sp => sp.GetRequiredService<WorkSchedulesApiClient>());
 builder.Services.AddScoped(sp => new AssistantApiClient(CreateAuthorizedClient(sp, apiBaseUri)));
 builder.Services.AddScoped(sp => new AssistantConfigurationApiClient(CreateAuthorizedClient(sp, apiBaseUri)));
 

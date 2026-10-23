@@ -82,6 +82,7 @@ public class EnforceCompanyIsolationDownTests(PostgresFixture postgres)
         var database = await SeedAfterAAsync(postgres, withOrphan: false);
         await using var context = postgres.CreateContext(database.ConnectionString);
         await context.Database.MigrateAsync(CancellationToken.None);
+        await MigrateToAsync(context, EnforceCompanyIsolation);
         await AddSecondCompanyAsync(database.ConnectionString);
         var shape = await ShapeAsync(database.ConnectionString);
         var rows = await QueryAsync(database.ConnectionString, BusinessRows);
@@ -101,6 +102,7 @@ public class EnforceCompanyIsolationDownTests(PostgresFixture postgres)
         var database = await SeedAfterAAsync(postgres, withOrphan: false);
         await using var context = postgres.CreateContext(database.ConnectionString);
         await context.Database.MigrateAsync(CancellationToken.None);
+        await MigrateToAsync(context, EnforceCompanyIsolation);
         await AddSecondCompanyAsync(database.ConnectionString);
         await ExecuteAsync(database.ConnectionString, $"INSERT INTO assistant_settings (company_id, provider, updated_by, updated_at) VALUES ('{SecondCompany}', 'None', gen_random_uuid(), now())");
         var shape = await ShapeAsync(database.ConnectionString);

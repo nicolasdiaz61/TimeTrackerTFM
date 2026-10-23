@@ -2,6 +2,7 @@
 @using TimeTracker.Web.Calendar
 @using TimeTracker.Web.Formatting
 @using TimeTracker.Web.Timeline
+@using TimeTracker.Web.WorkSchedules
 
 @* Vista de un mes: totales, leyenda y una fila por día con su barra de franjas. Las barras son SVG con atributos numéricos
    (x, width) y color por clases CSS: la CSP de la Web no admite estilos en línea (ver ADR 0016). *@
@@ -15,6 +16,11 @@
             </pattern>
         </defs>
     </svg>
+
+    @if (WorkSchedule is not null)
+    {
+        <p class="planned-summary" data-testid="planned-summary"><strong>Jornada prevista</strong> — @WorkSchedulePresentation.Summary(WorkSchedule)</p>
+    }
 
     <dl class="month-totals" data-testid="month-totals">
         <div class="month-total">
@@ -88,6 +94,10 @@
                             </rect>
                         }
                     </svg>
+                    @if (WorkSchedule is not null)
+                    {
+                        <span class="day-planned" data-testid="day-planned"><strong>Prevista:</strong> @WorkSchedulePresentation.PlannedFor(WorkSchedule, day.Date)</span>
+                    }
                     @if (day.HasEntries)
                     {
                         <span class="day-total">
@@ -142,6 +152,10 @@
 
     [Parameter, EditorRequired]
     public MonthTimeline Timeline { get; set; } = default!;
+
+    /// <summary>Jornada asignada a la persona; si es nula no se muestra nada de lo previsto.</summary>
+    [Parameter]
+    public WorkScheduleDto? WorkSchedule { get; set; }
 
     // El ancho del eje en horas (16 a 24) selecciona una clase que fija la variable CSS de las marcas.
     private string AxisSpanClass => $"axis-span-{Timeline.Axis.EndHour - Timeline.Axis.StartHour}";

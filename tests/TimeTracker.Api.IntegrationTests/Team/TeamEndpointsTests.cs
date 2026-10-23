@@ -109,7 +109,7 @@ public class TeamEndpointsTests(PostgresFixture postgres)
     }
 
     [Fact]
-    public async Task Members_BodyHasOnlyIdAndDisplayName()
+    public async Task Members_BodyHasOnlyIdDisplayNameAndWorkSchedule()
     {
         var scenario = await TeamScenario.CreateAsync(postgres);
         using var factory = new PostgresApiFactory(postgres.ConnectionString);
@@ -122,7 +122,7 @@ public class TeamEndpointsTests(PostgresFixture postgres)
         Assert.Equal(["items"], body.RootElement.EnumerateObject().Select(property => property.Name));
         Assert.All(
             body.RootElement.GetProperty("items").EnumerateArray(),
-            item => Assert.Equal(["id", "displayName"], item.EnumerateObject().Select(property => property.Name)));
+            item => Assert.Equal(["id", "displayName", "workScheduleId"], item.EnumerateObject().Select(property => property.Name)));
         foreach (var forbidden in new[] { "email", "passwordHash", "role", "managerId", scenario.Luis.Email })
         {
             Assert.DoesNotContain(forbidden, text, StringComparison.OrdinalIgnoreCase);

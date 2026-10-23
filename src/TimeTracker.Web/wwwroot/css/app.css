@@ -540,3 +540,18 @@ code {
 .assistant-config-actions { display: flex; flex-wrap: wrap; gap: 0.5rem; }
 .registration-form, .change-password-form, .team-member-form { max-width: 32rem; }
 .temporary-password-value { font-size: 1.1rem; user-select: all; overflow-wrap: anywhere; }
+
+/* ---- Jornada prevista en los fichajes ---- */
+
+.planned-summary {
+    margin: 0.5rem 0;
+    padding: 0.5rem 0.75rem;
+    border-left: 4px solid #1b6ec2;
+    background-color: #eaf3ff;
+}
+
+.day-planned {
+    grid-column: 1 / -1;
+    color: var(--text-muted-strong);
+    font-size: 0.8rem;
+}

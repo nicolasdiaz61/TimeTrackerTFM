@@ -79,7 +79,7 @@ public class CompanyModelTests(PostgresFixture postgres)
         var toCompany = Assert.Single(users.GetForeignKeys(), key => key.Properties.Count == 1);
         Assert.Equal("fk_users_companies_company_id", toCompany.GetConstraintName());
         Assert.Equal(typeof(Company), toCompany.PrincipalEntityType.ClrType);
-        var manager = Assert.Single(users.GetForeignKeys(), key => key.Properties.Count == 2);
+        var manager = Assert.Single(users.GetForeignKeys(), key => key.Properties.Count == 2 && key.PrincipalEntityType.ClrType == typeof(TimeTracker.Domain.Users.UserAccount));
         Assert.Equal("fk_users_users_company_id_manager_id", manager.GetConstraintName());
         Assert.Equal(["company_id", "manager_id"], manager.Properties.Select(property => property.GetColumnName()));
         Assert.Equal(["company_id", "id"], manager.PrincipalKey.Properties.Select(property => property.GetColumnName()));

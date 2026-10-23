@@ -12,6 +12,6 @@ public sealed class GetTeamMembersUseCase(IUserRepository users, ICurrentUser cu
     {
         var reports = await users.ListDirectReportsAsync(currentUser.EmployeeId, MaxMembers, cancellationToken);
 
-        return [.. reports.Select(report => new TeamMemberResult(report.Id, report.DisplayName))];
+        return [.. reports.Select(report => new TeamMemberResult(report.Id, report.DisplayName, report.WorkScheduleId))];
     }
 }

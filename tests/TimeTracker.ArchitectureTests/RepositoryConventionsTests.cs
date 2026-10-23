@@ -62,6 +62,19 @@ public class RepositoryConventionsTests
     }
 
     [Fact]
+    public void Web_HasTheWorkSchedulesPageForManagersOnlyWithItsMenuLink()
+    {
+        var page = ReadWeb("Pages/WorkSchedulesPage.razor");
+
+        Assert.Contains("@page \"/jornadas\"", page, StringComparison.Ordinal);
+        Assert.Contains("Roles = \"Manager\"", page, StringComparison.Ordinal);
+        var menu = ReadWeb("Layout/NavMenu.razor");
+        var managerBlock = menu[menu.IndexOf("Roles=\"Manager\"", StringComparison.Ordinal)..];
+        Assert.Contains("href=\"jornadas\"", managerBlock, StringComparison.Ordinal);
+        Assert.DoesNotContain("href=\"jornadas\"", menu[..menu.IndexOf("Roles=\"Manager\"", StringComparison.Ordinal)], StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void Web_HasNoTemplateLeftoversAndIsBrandedInSpanish()
     {
         string[] removed = ["Pages/Counter.razor", "Pages/Weather.razor", "wwwroot/sample-data/weather.json"];
