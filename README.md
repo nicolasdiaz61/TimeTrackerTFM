@@ -67,9 +67,9 @@ La configuración llega por variables de entorno (nunca en el repositorio). `.en
 | `PORT` | No | Si la plataforma lo define (Railway), la imagen de la API escucha ahí y prevalece sobre `ASPNETCORE_HTTP_PORTS`. |
 | `ForwardedHeaders__Enabled` | No (por defecto `false`) | Con `true`, la API confía en `X-Forwarded-For`/`X-Forwarded-Proto` de un proxy inverso. Solo tras un proxy que la proteja de accesos directos (véase «Despliegue en Railway»). |
 | `ForwardedHeaders__Hops` | No (por defecto `2`) | Saltos de proxy de confianza, contados desde la derecha de `X-Forwarded-For` (Railway: «cliente, borde»). |
-| `Ai__Provider` | No (vacío = asistente deshabilitado) | `Anthropic` u `Ollama` (sin distinguir mayúsculas; `None` o vacío lo deshabilita). Cualquier otro valor, incluido un número, impide arrancar. Véase «Asistente de IA». |
+| `Ai__Provider` | No (vacío = asistente deshabilitado) | `Anthropic`, `OpenAI`, `Gemini`, `Groq` u `Ollama` (sin distinguir mayúsculas; `None` o vacío lo deshabilita). Cualquier otro valor, incluido un número, impide arrancar. Véase «Asistente de IA». |
 | `Ai__Model` | Con proveedor | Nombre del modelo (máximo 100 caracteres); es configuración, nunca código. |
-| `Ai__ApiKey` | Con `Anthropic` | Clave de API del proveedor. **Es un secreto**: solo en variables de entorno o en el secreto de la plataforma; nunca en archivos del repositorio. |
+| `Ai__ApiKey` | Con `Anthropic`, `OpenAI`, `Gemini` o `Groq` | Clave de API del proveedor. **Es un secreto**: solo en variables de entorno o en el secreto de la plataforma; nunca en archivos del repositorio. |
 | `Ai__Endpoint` | Con `Ollama` | URL `http`/`https` del servidor de Ollama, por ejemplo `http://host.docker.internal:11434/`. |
 | `Ai__MaxOutputTokens`, `Ai__MaxToolIterations`, `Ai__TimeoutSeconds` | No (800, 5 y 25) | Tokens de salida (64-4096), iteraciones de herramientas (1-10) y tiempo máximo en segundos (5-55). |
 | `Ai__RequestsPerMinute`, `Ai__DailyRequestsPerUser` | No (5 y 50) | Peticiones por minuto (1-60) y por día natural de España (1-1000) por usuario. |
@@ -167,13 +167,13 @@ Claves de entorno nuevas (todas opcionales; se documentan en `.env.example`):
 
 | Clave | Uso |
 |---|---|
-| `Ai__AllowedProviders` | Proveedores que el responsable puede elegir, separados por comas: `Anthropic`, `OpenAI`, `Gemini`, `Ollama`. Sin ella, solo el proveedor del entorno. |
+| `Ai__AllowedProviders` | Proveedores que el responsable puede elegir, separados por comas: `Anthropic`, `OpenAI`, `Gemini`, `Groq`, `Ollama`. Sin ella, solo el proveedor del entorno. |
 | `Ai__Effort` | Esfuerzo de razonamiento por defecto: `low`, `medium` o `high`. |
 | `Ai__MasterKeys__1` | **Secreto.** Clave maestra de 32 bytes aleatorios en Base64 que cifra la clave de API guardada. Sin ella, el responsable no puede guardar una clave nueva (el asistente sigue funcionando con el entorno). |
 | `Ai__ActiveMasterKeyVersion` | Versión de la clave maestra con la que se cifra (por ejemplo `1`). |
 | `Ai__SettingsPollSeconds` | Cada cuántos segundos cada instancia revisa la configuración guardada (30 por defecto). |
 
-`OpenAI` y `Gemini` se suman a `Anthropic` y `Ollama`: el proveedor del entorno (`Ai__Provider`) puede ser cualquiera de los cuatro, y los dos nuevos exigen `Ai__ApiKey` y `Ai__Model`. La URL de cada proveedor en la nube la fija el servidor; solo `Ollama` usa `Ai__Endpoint`.
+`OpenAI`, `Gemini` y `Groq` se suman a `Anthropic` y `Ollama`: el proveedor del entorno (`Ai__Provider`) puede ser cualquiera de los cinco, y los tres nuevos exigen `Ai__ApiKey` y `Ai__Model`. `Groq` habla el protocolo de OpenAI en una URL fija del servidor ([ADR 0023](docs/adr/0023-proveedor-groq.md)). La URL de cada proveedor en la nube la fija el servidor; solo `Ollama` usa `Ai__Endpoint`.
 
 **Rotación de la clave maestra.** Añada `Ai__MasterKeys__2`, cambie `Ai__ActiveMasterKeyVersion` a `2` y redespliegue: las claves guardadas con la versión 1 siguen descifrándose mientras exista `Ai__MasterKeys__1`. Un guardado del responsable sin clave nueva recifra la conservada con la versión activa. Retire la versión 1 solo cuando ninguna fila la use (`credential_key_version` en `assistant_settings`). Defina la clave maestra **antes** de que un responsable guarde una clave de API y nunca la escriba en archivos del repositorio.
 
@@ -248,7 +248,7 @@ Variables del servicio `api` (`railway variables set -s api --skip-deploys "CLAV
 | `Seed__DemoData` | `true` para sembrar el historial de un mes (véase «Datos de demostración»); opcional. |
 | `Ai__Provider`, `Ai__Model` y `Ai__ApiKey` | Opcionales: habilitan el asistente (véase «Asistente de IA»). `Ai__ApiKey` es un secreto y se define con `railway variables set Ai__ApiKey --stdin -s api`; nunca en este repositorio. Para deshabilitarlo, quite `Ai__Provider`. |
 | `Ai__MasterKeys__1` y `Ai__ActiveMasterKeyVersion` | Opcionales, pero **imprescindibles antes de que un responsable guarde una clave de API** desde la Web (véase «Configuración del asistente por el responsable en Railway»). `Ai__MasterKeys__1` es un secreto y se define por `stdin`; `Ai__ActiveMasterKeyVersion=1`. |
-| `Ai__AllowedProviders` | Opcional: proveedores que el responsable puede elegir (`Anthropic`, `OpenAI`, `Gemini`, `Ollama`). Sin ella, solo el del entorno. |
+| `Ai__AllowedProviders` | Opcional: proveedores que el responsable puede elegir (`Anthropic`, `OpenAI`, `Gemini`, `Groq`, `Ollama`). Sin ella, solo el del entorno. |
 | `Registration__Enabled` | `false` por defecto (registro cerrado). Se abre solo siguiendo el orden de «Apertura del registro» del [runbook](docs/runbook-railway.md). |
 | `Registration__InviteCodes` | **Secreto**, solo en el entorno de Railway (lista separada por comas; 16 a 128 caracteres cada código). Se define por `stdin`; nunca en el repositorio. |
 | `Company__MaxEmployees` | Opcional: tope de personas por compañía (50 por defecto, de 1 a 1000). |
@@ -398,6 +398,7 @@ openspec/                     Especificaciones y cambios (Spec Driven Developmen
 20. [Aislamiento multiempresa en una base de datos compartida](docs/adr/0020-aislamiento-multiempresa.md)
 21. [Configuración del asistente por compañía](docs/adr/0021-configuracion-del-asistente-por-compania.md) (sustituye parcialmente al 0018 y al 0019)
 22. [Autorregistro con código de invitación y contraseñas](docs/adr/0022-autorregistro-con-codigo-de-invitacion-y-contrasenas.md)
+23. [Proveedor Groq para el asistente](docs/adr/0023-proveedor-groq.md)
 
 ## Integración continua
 
