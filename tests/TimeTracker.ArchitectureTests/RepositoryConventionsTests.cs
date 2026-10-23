@@ -179,6 +179,32 @@ public class RepositoryConventionsTests
     }
 
     [Fact]
+    public void Web_AssistantTablesAreRenderedOnlyWithEscapedRazorExpressionsAndDownloadedThroughTheViewport()
+    {
+        var page = ReadWeb("Pages/Assistant.razor");
+
+        // La salida del modelo no es de confianza (AGENTS.md §6): ni marcado crudo ni HTML en el analizador o el CSV.
+        string[] forbidden = ["MarkupString", "innerHTML", "RenderTreeBuilder", "AddMarkupContent"];
+        var sources = WebSourceFiles()
+            .Where(file => Path.GetFileName(file) is "AssistantMessageParser.cs" or "CsvBuilder.cs")
+            .Select(file => File.ReadAllText(file))
+            .Append(page)
+            .ToList();
+        Assert.Equal(3, sources.Count);
+        Assert.All(sources, text => Assert.DoesNotContain(forbidden, word => text.Contains(word, StringComparison.Ordinal)));
+
+        Assert.Contains("<table class=\"assistant-table\">", page, StringComparison.Ordinal);
+        Assert.Contains("<th scope=\"col\">@header</th>", page, StringComparison.Ordinal);
+        Assert.Contains("<td>@cell</td>", page, StringComparison.Ordinal);
+        Assert.Contains("AssistantMessageParser.Parse", page, StringComparison.Ordinal);
+        Assert.Contains("Descargar CSV", page, StringComparison.Ordinal);
+        Assert.Contains("overflow-x: auto", ReadWeb("wwwroot/css/app.css"), StringComparison.Ordinal);
+
+        // Los mensajes del usuario nunca se analizan: solo el texto de los turnos del asistente.
+        Assert.Contains("isUser", page, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void Web_HasTheAssistantConfigurationPageOnlyForManagersWithPlainTextAndNoBrowserStorage()
     {
         var pagePath = Path.Combine(RepositoryRoot.Path, "src", "TimeTracker.Web", "Pages", "AssistantConfiguration.razor");

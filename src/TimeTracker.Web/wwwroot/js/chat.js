@@ -6,6 +6,19 @@ window.timeTrackerChat = {
             element.scrollTop = element.scrollHeight;
         }
     },
+    // Descarga un archivo generado en el cliente: Blob + enlace temporal con download; libera la URL después.
+    downloadFile: function (fileName, contentType, content) {
+        var blob = new Blob([content], { type: contentType });
+        var url = URL.createObjectURL(blob);
+        var link = document.createElement("a");
+        link.href = url;
+        link.download = fileName;
+        link.style.display = "none";
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        setTimeout(function () { URL.revokeObjectURL(url); }, 0);
+    },
     // Intro envía el formulario; Mayús+Intro (o composición con IME) conserva el comportamiento normal del textarea.
     sendOnEnter: function (textarea) {
         if (!textarea || textarea.dataset.sendOnEnter === "true") {
