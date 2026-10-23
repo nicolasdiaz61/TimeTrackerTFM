@@ -78,6 +78,7 @@ public sealed class AssistantToolsIsolationTests(PostgresFixture postgres)
             new GetTimeEntriesUseCase(entries, currentUser),
             new GetTeamMembersUseCase(users, currentUser),
             new GetTeamMemberTimeEntriesUseCase(users, entries, currentUser),
+            new GetTeamSummaryUseCase(users, entries, currentUser),
             currentUser,
             new FakeTimeProvider(Now),
             LoggerFactory.Create(builder => builder.AddProvider(logs)).CreateLogger<AssistantToolset>());
@@ -99,7 +100,7 @@ public sealed class AssistantToolsIsolationTests(PostgresFixture postgres)
         var fixture = await FixtureAsync();
         var rig = RigFor(fixture.ConnectionString, fixture.A.Id, fixture.A.Manager.Id, UserRole.Manager);
 
-        Assert.Equal(3, rig.Tools.Count);
+        Assert.Equal(4, rig.Tools.Count);
         var parameters = rig.Tools.SelectMany(tool => tool.JsonSchema.GetProperty("properties").EnumerateObject().Select(property => property.Name)).Distinct().Order().ToList();
         Assert.Equal(["fromDate", "memberId", "toDate"], parameters);
     }
@@ -183,6 +184,78 @@ public sealed class AssistantToolsIsolationTests(PostgresFixture postgres)
 
         Assert.DoesNotContain(NotFound, result, StringComparison.Ordinal);
         Assert.Contains("error", result, StringComparison.Ordinal);
+    }
+
+    private static Task InsertBreakAsync(string connectionString, Guid companyId, Guid employeeId, int minutes)
+        => MigrationDatabase.ExecuteAsync(
+            connectionString,
+            $"INSERT INTO time_entries (id, company_id, employee_id, clock_in_at, clock_out_at, type) VALUES ('{Guid.NewGuid()}', '{companyId}', '{employeeId}', '2026-10-13T10:00:00Z', '2026-10-13T10:00:00Z'::timestamptz + interval '{minutes} minutes', 'Break')");
+
+    [Fact]
+    public async Task GetTeamSummary_CoversOnlyTheDirectReportsOfTheManagerOfTheToken_NeverCompanyBNorOtherTeamsOfA()
+    {
+        var fixture = await FixtureAsync();
+        // Otro responsable de A con su propio empleado, y descansos largos en B: nada de eso puede entrar en el resumen ni en la media.
+        var otherManager = Guid.NewGuid();
+        var otherEmployee = Guid.NewGuid();
+        await UserSeed.InsertRawAsync(fixture.ConnectionString, otherManager, $"otro.{otherManager:N}@example.test", "Manager", companyId: fixture.A.Id);
+        await UserSeed.InsertRawAsync(fixture.ConnectionString, otherEmployee, $"otro.{otherEmployee:N}@example.test", "Employee", otherManager, companyId: fixture.A.Id);
+        await MigrationDatabase.ExecuteAsync(fixture.ConnectionString, $"UPDATE users SET display_name = 'Otro equipo de A' WHERE id IN ('{otherManager}', '{otherEmployee}')");
+        await InsertBreakAsync(fixture.ConnectionString, fixture.A.Id, fixture.A.Employee1.Id, 30);
+        await InsertBreakAsync(fixture.ConnectionString, fixture.A.Id, otherEmployee, 120);
+        await InsertBreakAsync(fixture.ConnectionString, fixture.B.Id, fixture.B.Employee1.Id, 240);
+        var rig = RigFor(fixture.ConnectionString, fixture.A.Id, fixture.A.Manager.Id, UserRole.Manager);
+
+        var result = await rig.InvokeAsync("get_team_summary", ("fromDate", "2026-10-12"), ("toDate", "2026-10-18"));
+
+        using var document = JsonDocument.Parse(result);
+        var members = document.RootElement.GetProperty("members").EnumerateArray().ToList();
+        Assert.Equal(
+            new[] { fixture.A.Employee1.Id, fixture.A.Employee2.Id }.Select(id => id.ToString()).Order(),
+            members.Select(member => member.GetProperty("memberId").GetString()!).Order());
+        Assert.Equal(2, document.RootElement.GetProperty("memberCount").GetInt32());
+        Assert.Equal(15, document.RootElement.GetProperty("averages").GetProperty("breakMinutes").GetDouble());
+        var first = members.Single(member => member.GetProperty("memberId").GetString() == fixture.A.Employee1.Id.ToString());
+        Assert.Equal(30, first.GetProperty("breakMinutes").GetInt32());
+        Assert.True(first.GetProperty("aboveAverageBreakMinutes").GetBoolean());
+        Assert.DoesNotContain("Persona de B", result, StringComparison.Ordinal);
+        Assert.DoesNotContain("Otro equipo de A", result, StringComparison.Ordinal);
+        foreach (var other in fixture.B.All.Select(person => person.Id).Append(otherManager).Append(otherEmployee).Append(fixture.A.Manager.Id))
+        {
+            Assert.DoesNotContain(other.ToString(), result, StringComparison.Ordinal);
+        }
+    }
+
+    [Fact]
+    public async Task GetTeamSummary_OfTheManagerOfB_NeverShowsThePeopleOfA_AndIgnoresInjectedArguments()
+    {
+        var fixture = await FixtureAsync();
+        var rig = RigFor(fixture.ConnectionString, fixture.B.Id, fixture.B.Manager.Id, UserRole.Manager);
+
+        var result = await rig.InvokeAsync(
+            "get_team_summary",
+            ("fromDate", "2026-10-12"),
+            ("toDate", "2026-10-18"),
+            ("companyId", fixture.A.Id.ToString()),
+            ("memberId", fixture.A.Employee1.Id.ToString()));
+
+        Assert.Contains(fixture.B.Employee1.Id.ToString(), result, StringComparison.Ordinal);
+        Assert.Contains("Persona de B", result, StringComparison.Ordinal);
+        Assert.DoesNotContain("Persona de A", result, StringComparison.Ordinal);
+        foreach (var other in fixture.A.All)
+        {
+            Assert.DoesNotContain(other.Id.ToString(), result, StringComparison.Ordinal);
+        }
+    }
+
+    [Fact]
+    public async Task GetTeamSummary_IsNotOfferedToEmployees()
+    {
+        var fixture = await FixtureAsync();
+        var rig = RigFor(fixture.ConnectionString, fixture.A.Id, fixture.A.Employee1.Id, UserRole.Employee);
+
+        Assert.DoesNotContain(rig.Tools, tool => tool.Name == "get_team_summary");
+        Assert.Single(rig.Tools);
     }
 
     [Fact]
