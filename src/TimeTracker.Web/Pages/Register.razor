@@ -6,6 +6,9 @@
 
 <PageTitle>Registrar compañía - TimeTracker</PageTitle>
 
+<div class="auth-card">
+<div class="auth-brand"><svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6.5" /><path d="M8 4.5V8l2.5 1.5" /></svg>TimeTracker</div>
+<p class="auth-tagline">Control de tiempos y ausencias para su empresa.</p>
 <h1>Registrar compañía</h1>
 
 <p>Cree su compañía y su cuenta de responsable. Necesita un código de invitación.</p>
@@ -62,6 +65,7 @@
 
     <button type="submit" class="btn btn-primary" disabled="@form.IsBusy">Crear compañía</button>
 </EditForm>
+</div>
 
 @code {
     private RegisterForm form = default!;

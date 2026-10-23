@@ -881,3 +881,16 @@ body.dialog-open { overflow: hidden; }
 @media (prefers-reduced-motion: reduce) {
     .btn, .tt-tab, .form-control, .form-select { transition: none; }
 }
+
+/* Formularios de página como tarjetas (alta, cambio de contraseña, configuración del asistente). */
+.change-password-form, .team-member-form, .assistant-config-form {
+    padding: var(--space-4);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-lg);
+    background-color: var(--color-surface);
+    box-shadow: var(--shadow-sm);
+}
+.auth-card .registration-form { max-width: none; }
+@media (max-width: 575.98px) {
+    .change-password-form, .team-member-form, .assistant-config-form, .auth-card { padding: var(--space-3); }
+}
