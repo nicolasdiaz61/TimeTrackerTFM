@@ -52,7 +52,7 @@ public sealed class ConnectionFailureClassifierTests
         get
         {
             var cases = new TheoryData<string, HttpStatusCode, string>();
-            foreach (var provider in new[] { "OpenAI", "Anthropic", "Ollama" })
+            foreach (var provider in new[] { "OpenAI", "Gemini", "Groq", "Anthropic", "Ollama" })
             {
                 cases.Add(provider, HttpStatusCode.Unauthorized, "authentication");
                 cases.Add(provider, HttpStatusCode.Forbidden, "authentication");

@@ -8,4 +8,5 @@ public enum AssistantProvider
     OpenAI,
     Gemini,
     Ollama,
+    Groq,
 }

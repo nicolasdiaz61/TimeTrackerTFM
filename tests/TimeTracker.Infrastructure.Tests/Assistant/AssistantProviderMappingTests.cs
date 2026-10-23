@@ -14,6 +14,6 @@ public sealed class AssistantProviderMappingTests
     [Fact]
     public void AiProvider_KeepsItsExistingNumbersAndAddsTheNewOnesAtTheEnd()
     {
-        Assert.Equal([0, 1, 2, 3, 4], new[] { AiProvider.None, AiProvider.Anthropic, AiProvider.Ollama, AiProvider.OpenAI, AiProvider.Gemini }.Select(p => (int)p));
+        Assert.Equal([0, 1, 2, 3, 4, 5], new[] { AiProvider.None, AiProvider.Anthropic, AiProvider.Ollama, AiProvider.OpenAI, AiProvider.Gemini, AiProvider.Groq }.Select(p => (int)p));
     }
 }

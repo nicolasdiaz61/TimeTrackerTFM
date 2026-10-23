@@ -13,6 +13,7 @@ public enum AiProvider
     Ollama = 2,
     OpenAI = 3,
     Gemini = 4,
+    Groq = 5,
 }
 
 /// <summary>Sección <c>Ai</c> de la configuración (variables <c>Ai__*</c>). Sin proveedor el asistente queda deshabilitado.</summary>

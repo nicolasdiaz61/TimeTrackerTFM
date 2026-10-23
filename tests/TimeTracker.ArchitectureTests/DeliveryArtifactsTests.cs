@@ -255,7 +255,7 @@ public partial class DeliveryArtifactsTests
     {
         var comments = string.Join('\n', ReadRepositoryFile(".env.example").Split('\n').Where(line => line.TrimStart().StartsWith('#')));
 
-        foreach (var provider in new[] { "Anthropic", "OpenAI", "Gemini", "Ollama" })
+        foreach (var provider in new[] { "Anthropic", "OpenAI", "Gemini", "Groq", "Ollama" })
         {
             Assert.Contains(provider, comments, StringComparison.Ordinal);
         }
@@ -381,14 +381,14 @@ public partial class DeliveryArtifactsTests
     // --- ADR (SA-20, SA-21, SA-22) ---
 
     [Fact]
-    public void Adr_Directory_HasTwentyTwoAdrsWithFourSections()
+    public void Adr_Directory_HasTwentyThreeAdrsWithFourSections()
     {
         string[] sections = ["## Contexto", "## Decisión", "## Consecuencias", "## Alternativas"];
         var adrs = Directory.GetFiles(Path.Combine(RepositoryRoot.Path, "docs", "adr"), "0*.md")
             .Order(StringComparer.Ordinal)
             .ToList();
 
-        Assert.Equal(22, adrs.Count);
+        Assert.Equal(23, adrs.Count);
         for (var index = 0; index < adrs.Count; index++)
         {
             var name = Path.GetFileName(adrs[index]);
@@ -451,7 +451,7 @@ public partial class DeliveryArtifactsTests
         string[] required =
         [
             "/asistente/configuracion", "Ai__MasterKeys__1", "Ai__ActiveMasterKeyVersion", "Ai__AllowedProviders", "Ai__Effort",
-            "OpenAI", "Gemini", "rotación", "datos personales", "0018-configuracion-del-asistente-por-el-responsable.md",
+            "OpenAI", "Gemini", "Groq", "rotación", "datos personales", "0018-configuracion-del-asistente-por-el-responsable.md",
         ];
         var missing = required.Where(text => !readme.Contains(text, StringComparison.OrdinalIgnoreCase)).ToList();
 
@@ -642,6 +642,15 @@ public partial class DeliveryArtifactsTests
 
             Assert.True(expected == actual, $"{path} se ha editado: los ADR aceptados no se reescriben, se sustituyen por otro nuevo (ADR 0001).");
         }
+    }
+
+    [Fact]
+    public void Adr0023_RecordsTheGroqProviderWithAFixedUrl()
+    {
+        var adr = ReadRepositoryFile("docs/adr/0023-proveedor-groq.md");
+
+        Assert.Contains("https://api.groq.com/openai/v1", adr, StringComparison.Ordinal);
+        Assert.Contains("(docs/adr/0023-proveedor-groq.md)", ReadRepositoryFile("README.md"), StringComparison.Ordinal);
     }
 
     [Fact]

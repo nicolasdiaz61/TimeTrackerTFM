@@ -43,6 +43,21 @@ public sealed class AssistantSettingsStorePerCompanyTests(PostgresFixture postgr
             (await Query(cs, "SELECT company_id || '|' || model FROM assistant_settings")).Order());
     }
 
+    [Theory]
+    [InlineData(AssistantProvider.Gemini)]
+    [InlineData(AssistantProvider.Groq)]
+    public async Task EveryCatalogProvider_IsAcceptedByTheDatabaseConstraintAndReadBack(AssistantProvider provider)
+    {
+        var fixture = await TwoCompanyFixture.CreateAsync(postgres, freshDatabase: true);
+        var cs = fixture.ConnectionString;
+        var store = postgres.CreateAssistantStore(cs, fixture.A.Id);
+
+        Token(await store.SaveAsync(Settings("m-a") with { Provider = provider }, "0", Audit(), CancellationToken.None));
+
+        Assert.Equal(provider, (await store.GetAsync(CancellationToken.None))!.Provider);
+        Assert.Equal([provider.ToString()], await Query(cs, $"SELECT provider FROM assistant_settings WHERE company_id = '{fixture.A.Id}'"));
+    }
+
     [Fact]
     public async Task ACompanyWithoutARow_SeesNoRowAndTheNoRowToken_EvenWhenAnotherCompanyHasOne()
     {

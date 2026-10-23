@@ -385,7 +385,7 @@ namespace TimeTracker.Infrastructure.Persistence.Migrations
 
                             t.HasCheckConstraint("ck_assistant_settings_model", "char_length(model) >= 1");
 
-                            t.HasCheckConstraint("ck_assistant_settings_provider", "provider IN ('None', 'Anthropic', 'OpenAI', 'Gemini', 'Ollama')");
+                            t.HasCheckConstraint("ck_assistant_settings_provider", "provider IN ('None', 'Anthropic', 'OpenAI', 'Gemini', 'Groq', 'Ollama')");
 
                             t.HasCheckConstraint("ck_assistant_settings_timeout_seconds", "timeout_seconds BETWEEN 5 AND 55");
                         });

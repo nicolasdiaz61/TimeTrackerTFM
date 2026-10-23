@@ -5,7 +5,7 @@ public sealed record AssistantProviderTraits(bool RequiresCredential, bool Suppo
 {
     public static AssistantProviderTraits For(AssistantProvider provider) => provider switch
     {
-        AssistantProvider.Anthropic or AssistantProvider.OpenAI or AssistantProvider.Gemini => new(true, true, false),
+        AssistantProvider.Anthropic or AssistantProvider.OpenAI or AssistantProvider.Gemini or AssistantProvider.Groq => new(true, true, false),
         AssistantProvider.Ollama => new(false, true, true),
         _ => new(false, false, false),
     };

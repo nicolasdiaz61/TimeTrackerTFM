@@ -84,6 +84,7 @@ public sealed class AssistantRegistrationTests
     [Theory]
     [InlineData("OpenAI")]
     [InlineData("gemini")]
+    [InlineData("groq")]
     public async Task WithOpenAIOrGemini_TheEngineIsEnabledWithoutContactingTheProvider(string name)
     {
         await using var provider = Build(("Ai:Provider", name), ("Ai:Model", "modelo-ficticio"), ("Ai:ApiKey", "clave-prueba-no-real"));

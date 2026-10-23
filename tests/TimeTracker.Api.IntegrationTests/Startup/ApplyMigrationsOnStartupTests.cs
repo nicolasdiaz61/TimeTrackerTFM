@@ -27,10 +27,11 @@ public class ApplyMigrationsOnStartupTests(PostgresFixture postgres)
         var response = await factory.CreateClient().GetAsync("/health", CancellationToken.None);
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        var applied = await QueryAsync(database.ConnectionString, "SELECT \"MigrationId\" FROM \"__EFMigrationsHistory\" ORDER BY \"MigrationId\" DESC LIMIT 3");
-        Assert.EndsWith(AddWorkSchedules, applied[0], StringComparison.Ordinal);
-        Assert.EndsWith(EnforceCompanyIsolation, applied[1], StringComparison.Ordinal);
-        Assert.EndsWith(AddCompanies, applied[2], StringComparison.Ordinal);
+        var applied = await QueryAsync(database.ConnectionString, "SELECT \"MigrationId\" FROM \"__EFMigrationsHistory\" ORDER BY \"MigrationId\" DESC LIMIT 4");
+        Assert.EndsWith(AddGroqProvider, applied[0], StringComparison.Ordinal);
+        Assert.EndsWith(AddWorkSchedules, applied[1], StringComparison.Ordinal);
+        Assert.EndsWith(EnforceCompanyIsolation, applied[2], StringComparison.Ordinal);
+        Assert.EndsWith(AddCompanies, applied[3], StringComparison.Ordinal);
         Assert.Equal(["NO", "NO", "NO"], await QueryAsync(database.ConnectionString, "SELECT is_nullable FROM information_schema.columns WHERE column_name = 'company_id' AND table_name IN ('users', 'time_entries', 'assistant_settings') ORDER BY table_name"));
         Assert.Equal([DefaultCompany], await QueryAsync(database.ConnectionString, "SELECT DISTINCT company_id::text FROM time_entries"));
     }

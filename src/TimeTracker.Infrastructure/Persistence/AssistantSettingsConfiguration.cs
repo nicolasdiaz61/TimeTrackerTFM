@@ -12,7 +12,7 @@ internal sealed class AssistantSettingsConfiguration : IEntityTypeConfiguration<
         // Las CHECK repiten los límites de Application como defensa en profundidad (DD-8).
         builder.ToTable("assistant_settings", table =>
         {
-            table.HasCheckConstraint("ck_assistant_settings_provider", "provider IN ('None', 'Anthropic', 'OpenAI', 'Gemini', 'Ollama')");
+            table.HasCheckConstraint("ck_assistant_settings_provider", "provider IN ('None', 'Anthropic', 'OpenAI', 'Gemini', 'Groq', 'Ollama')");
             table.HasCheckConstraint("ck_assistant_settings_model", "char_length(model) >= 1");
             table.HasCheckConstraint("ck_assistant_settings_timeout_seconds", "timeout_seconds BETWEEN 5 AND 55");
             table.HasCheckConstraint("ck_assistant_settings_max_output_tokens", "max_output_tokens BETWEEN 64 AND 4096");

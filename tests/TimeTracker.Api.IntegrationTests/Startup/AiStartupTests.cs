@@ -62,12 +62,14 @@ public class AiStartupTests
     [Theory]
     [InlineData("OpenAI")]
     [InlineData("Gemini")]
+    [InlineData("Groq")]
     public Task NewCloudProviders_StartWithoutContactingTheProvider(string provider)
         => AssertStartsAsync(("Ai:Provider", provider), ("Ai:Model", "modelo-ficticio"), ("Ai:ApiKey", SecretKey));
 
     [Theory]
     [InlineData("OpenAI", "Ai:ApiKey")]
     [InlineData("Gemini", "Ai:Model")]
+    [InlineData("Groq", "Ai:ApiKey")]
     public void NewCloudProviders_WithoutKeyOrModel_FailNamingTheKey(string provider, string missing)
         => DatabaseStartupTests.AssertStartupFailsNamingKey(
             StartWith(("Ai:Provider", provider), ("Ai:Model", missing == "Ai:Model" ? null : "m"), ("Ai:ApiKey", missing == "Ai:ApiKey" ? null : SecretKey)),

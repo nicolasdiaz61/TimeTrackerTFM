@@ -239,6 +239,8 @@ public sealed class ChatClientFactoryTests
         { "OpenAI", nameof(AiOptions.Model) },
         { "Gemini", nameof(AiOptions.ApiKey) },
         { "Gemini", nameof(AiOptions.Model) },
+        { "Groq", nameof(AiOptions.ApiKey) },
+        { "Groq", nameof(AiOptions.Model) },
         { "Ollama", nameof(AiOptions.Endpoint) },
         { "Ollama", nameof(AiOptions.Model) },
     };
@@ -281,6 +283,16 @@ public sealed class ChatClientFactoryTests
 
         Assert.NotNull(client);
         Assert.Equal(ProviderEndpoints.GeminiOpenAi, client.GetService<ChatClientMetadata>()?.ProviderUri);
+    }
+
+    [Fact]
+    public void Create_WithGroq_UsesTheFixedGroqEndpoint()
+    {
+        using var client = ChatClientFactory.Create(new AiOptions { Provider = "Groq", Model = "modelo-ficticio", ApiKey = SecretKey, Endpoint = "https://otra-url.invalid/" });
+
+        Assert.NotNull(client);
+        Assert.Equal(ProviderEndpoints.GroqOpenAi, client.GetService<ChatClientMetadata>()?.ProviderUri);
+        Assert.Equal(new Uri("https://api.groq.com/openai/v1"), ProviderEndpoints.GroqOpenAi);
     }
 
     [Fact]
