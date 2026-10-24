@@ -1,12 +1,16 @@
 # TimeTracker
 
-Aplicación de control de tiempos y ausencias para empresas: fichajes, ausencias, saldo de horas y horas extra, con un asistente de IA que responderá consultas en lenguaje natural sobre esos datos.
+## Descripción general
 
-> **Estado actual:** la aplicación tiene **autenticación real y roles**. Se inicia sesión en `/login` con un correo y una contraseña; cualquier persona con sesión (empleado o responsable) ficha con el **reproductor del Inicio** (iniciar jornada, pausa, comida, reanudar y finalizar, con cronómetro en vivo), consulta su historial **por mes** en `/fichajes` (una fila por día con una barra de franjas de trabajo, pausas y comidas, en su hora local) y un **responsable** (rol `Manager`) consulta la misma vista mensual de sus reportes directos en `/equipo`. La API emite un JWT propio de 30 minutos (sin renovación) y guarda los usuarios y los fichajes en PostgreSQL con EF Core. La Web tiene una página de inicio en español con enlaces según la sesión y avisa en `/login` cuando la sesión ha caducado. La API incluye además un **asistente de IA de solo lectura** (`POST /api/asistente`, deshabilitado por defecto; véase «Asistente de IA»). Todavía **no** hay ausencias.
+TimeTracker es una aplicación de control de tiempos para empresas: cada persona ficha su jornada (inicio, pausa, comida y fin), consulta su historial por mes, y un responsable ve el de su equipo. Un asistente de IA de solo lectura responde en lenguaje natural a preguntas sobre esos fichajes («¿cuántas horas trabajé la semana pasada?»). Está pensada para equipos de trabajo y sus responsables, y una misma instancia sirve a varias compañías aisladas entre sí. Es el proyecto de fin de máster de su autor; todos los datos de ejemplo son inventados.
+
+Demostración en línea: <https://web-production-a744a.up.railway.app> (véase «Enlaces» para la API y el resto de materiales).
+
+> **Estado actual.** La aplicación es **multicompañía**: cada compañía queda aislada por `company_id` en una base de datos compartida ([ADR 0020](docs/adr/0020-aislamiento-multiempresa.md)). Una compañía nueva se da de alta con un **código de invitación** (`/registro`, cerrado por defecto) y su primer responsable da de alta al resto de personas con una contraseña temporal. La autenticación es real, con roles `Employee` y `Manager` (JWT propio de 30 minutos, sin renovación). Cualquier persona ficha con el **reproductor del Inicio** y consulta su historial **por mes** en `/fichajes`; un responsable consulta el de sus reportes directos en `/equipo` y define las **jornadas** de trabajo en `/jornadas`. El **asistente de IA** (`POST /api/asistente`, de solo lectura y deshabilitado por defecto) funciona con los proveedores Anthropic, OpenAI, Gemini, Groq u Ollama, y el responsable de cada compañía configura el suyo en `/asistente/configuracion`. Las **ausencias** todavía no existen.
 >
-> **Aviso: usuarios de demostración.** La siembra de cuatro usuarios de prueba (contraseña pública, ver «Usuarios de prueba») está **desactivada por defecto**. No la active en un despliegue real. Ver los [ADR 0011](docs/adr/0011-autenticacion-jwt-roles-y-equipo.md) y [0012](docs/adr/0012-sesion-web-y-riesgo-xss.md). Todos los datos de ejemplo son inventados.
+> **Aviso: siembra de demostración.** La siembra de usuarios de prueba está **desactivada por defecto**. No la active en un despliegue real. Ver los [ADR 0011](docs/adr/0011-autenticacion-jwt-roles-y-equipo.md) y [0012](docs/adr/0012-sesion-web-y-riesgo-xss.md).
 
-## Pila tecnológica
+## Stack tecnológico
 
 - .NET 10 (SDK 10.0.302 o superior de la banda 10.0, fijado en `global.json`), C#.
 - API: ASP.NET Core con Minimal APIs y OpenAPI.
@@ -15,10 +19,12 @@ Aplicación de control de tiempos y ausencias para empresas: fichajes, ausencias
 - Autenticación: JWT HS256 propio validado con `JwtBearer` y contraseñas con el hash PBKDF2 de `PasswordHasher` (sin ASP.NET Core Identity; [ADR 0011](docs/adr/0011-autenticacion-jwt-roles-y-equipo.md)).
 - Pruebas: xUnit v2, `WebApplicationFactory`, Testcontainers (PostgreSQL real), Coverlet (cobertura). El motivo de xUnit v2 está en el [ADR 0006](docs/adr/0006-pila-de-pruebas.md).
 - Contenedores: Docker y Docker Compose. Integración continua: GitHub Actions.
-- Asistente de IA: `IChatClient` (Microsoft.Extensions.AI) con Anthropic (nube) u Ollama (local) elegidos por configuración ([ADR 0017](docs/adr/0017-asistente-ia-con-herramientas-de-solo-lectura.md)).
+- Asistente de IA: `IChatClient` (Microsoft.Extensions.AI) con Anthropic, OpenAI, Gemini o Groq (nube) u Ollama (local) elegidos por configuración ([ADR 0017](docs/adr/0017-asistente-ia-con-herramientas-de-solo-lectura.md); Groq en el [ADR 0023](docs/adr/0023-proveedor-groq.md)).
 - Previsto en cambios futuros: ausencias.
 
-## Requisitos previos
+## Instalación y ejecución
+
+### Requisitos previos
 
 - [SDK de .NET](https://dotnet.microsoft.com/download) 10.0.302 o superior (`dotnet --version`).
 - [PowerShell 7](https://learn.microsoft.com/powershell/) (`pwsh`) para el script de cobertura y para generar la clave de firma (el comando de generación no funciona en Windows PowerShell 5.1).
@@ -26,7 +32,7 @@ Aplicación de control de tiempos y ausencias para empresas: fichajes, ausencias
 
 Los paquetes se restauran solo desde nuget.org (`nuget.config` del repositorio).
 
-## Compilar
+### Compilar
 
 ```powershell
 dotnet restore TimeTracker.sln
@@ -36,7 +42,7 @@ dotnet build TimeTracker.sln -c Release --no-restore -warnaserror
 
 Las advertencias se tratan como errores. Al compilar `TimeTracker.Api` se regenera `docs/api/openapi.json`.
 
-## Probar
+### Probar
 
 Con Docker en marcha:
 
@@ -48,7 +54,7 @@ pwsh scripts/check-coverage.ps1 -ResultsDirectory TestResults -Package TimeTrack
 
 Los comandos de cobertura exigen 100 % en `TimeTracker.Domain` y al menos 80 % en `TimeTracker.Application`. Para comprobar el formato: `dotnet format TimeTracker.sln --verify-no-changes --no-restore`.
 
-## Configuración
+### Configuración
 
 La configuración llega por variables de entorno (nunca en el repositorio). `.env.example` documenta las claves sin valores reales; para Docker Compose se copia a `.env` (que no se versiona). `.env.example` nunca lleva claves ni contraseñas: la clave de firma y la contraseña de demostración se escriben solo en su `.env` local.
 
@@ -58,9 +64,9 @@ La configuración llega por variables de entorno (nunca en el repositorio). `.en
 | `ConnectionStrings__Default` | Sí | Cadena de conexión de PostgreSQL, por ejemplo `Host=localhost;Port=5432;Database=timetracker;Username=timetracker;Password=<su contraseña>`. |
 | `Jwt__SigningKey` | Sí | Clave de firma de los tokens, de al menos 32 bytes. Si falta, la API no arranca. Véase «Generar la clave de firma». |
 | `ASPNETCORE_ENVIRONMENT` | No | `Development` o `Production`; con `dotnet run --launch-profile http` ya viene fijado a `Development` y Compose lo fija igual. |
-| `Seed__DemoUsers` | No (por defecto `false`) | Con `true`, la API siembra al arrancar los cuatro usuarios de prueba. **No lo active en un despliegue real.** |
-| `Seed__DemoPassword` | Solo con `Seed__DemoUsers=true` | Contraseña de los usuarios de prueba (mínimo 12 caracteres). Use la de «Usuarios de prueba»; solo en local. |
-| `Seed__DemoData` | No (por defecto `false`; exige `Seed__DemoUsers=true`) | Con `true`, la API siembra al arrancar un mes de fichajes inventados para los usuarios de prueba (véase «Datos de demostración»). Con `Seed__DemoUsers` en `false` o sin definir, la API no arranca. |
+| `Seed__DemoUsers` | No (por defecto `false`) | Con `true`, la API siembra al arrancar los usuarios de demostración. **No lo active en un despliegue real.** |
+| `Seed__DemoPassword` | Solo con `Seed__DemoUsers=true` | Contraseña de los usuarios de demostración (mínimo 12 caracteres). Quien ejecuta en local elige la suya, y solo en local. |
+| `Seed__DemoData` | No (por defecto `false`; exige `Seed__DemoUsers=true`) | Con `true`, la API siembra al arrancar un mes de fichajes inventados para los usuarios de demostración (véase «Datos de demostración»). Con `Seed__DemoUsers` en `false` o sin definir, la API no arranca. |
 | `Database__ApplyMigrationsOnStartup` | No (por defecto `false`) | Con `true`, la API aplica las migraciones al arrancar. |
 | `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD` | Solo con Compose | Base de datos, usuario y contraseña (inventada) del contenedor de PostgreSQL. |
 | `ASPNETCORE_HTTP_PORTS` | No | Puerto de escucha; la imagen Docker lo fija en `8080`. |
@@ -86,11 +92,11 @@ pwsh -NoProfile -Command "[Convert]::ToBase64String([Security.Cryptography.Rando
 
 Copie el resultado en `Jwt__SigningKey` (en su `.env` o en una variable de la sesión). No lo comparta ni lo versione.
 
-## Ejecutar en local (API y Web)
+### Ejecutar en local (API y Web)
 
 1. Cree `.env` con `Copy-Item .env.example .env` y rellene `POSTGRES_USER`, `POSTGRES_DB` y `POSTGRES_PASSWORD` con valores inventados (sin `;` ni `=`).
 2. Levante solo la base de datos: `docker compose up -d postgres` (queda en `127.0.0.1:5432`). Compose exige también `Jwt__SigningKey` y `Seed__DemoPassword` en `.env` aunque solo levante la base de datos; si no quiere rellenarlos todavía, defínalos en la sesión con valores cualquiera y bórrelos después.
-3. Arranque la API (perfil `http`, `Development`, `http://localhost:5274`) con las variables en esa sesión de PowerShell. Con la siembra activada se crean los usuarios de prueba (véase «Usuarios de prueba» para la contraseña):
+3. Arranque la API (perfil `http`, `Development`, `http://localhost:5274`) con las variables en esa sesión de PowerShell. Con la siembra activada se crean los usuarios de demostración:
 
 ```powershell
 $env:ASPNETCORE_ENVIRONMENT = "Development"
@@ -99,7 +105,7 @@ $env:Jwt__SigningKey = "<clave generada con el comando anterior>"
 $env:Database__ApplyMigrationsOnStartup = "true"
 $env:Cors__AllowedOrigins__0 = "http://localhost:5172"
 $env:Seed__DemoUsers = "true"
-$env:Seed__DemoPassword = "<la contraseña de demostración de la tabla de usuarios>"
+$env:Seed__DemoPassword = "<contraseña que elija, de al menos 12 caracteres>"
 dotnet run --project src/TimeTracker.Api --launch-profile http
 ```
 
@@ -111,7 +117,7 @@ Comprobación: `Invoke-WebRequest http://localhost:5274/health` responde `200` c
 dotnet run --project src/TimeTracker.Web --launch-profile http
 ```
 
-5. Abra `http://localhost:5172/login` e inicie sesión con un usuario de prueba. Tras entrar se llega al Inicio, que muestra el reproductor: pulse «Iniciar jornada»; el control indica el estado y ofrece solo las acciones válidas («Pausa», «Comida», «Reanudar», «Finalizar jornada») con el tiempo del tramo actual y el total trabajado hoy. `/fichajes` es de consulta: muestra el estado, un enlace al Inicio para fichar y el mes elegido (con «Anterior», «Siguiente» y «Mes actual»; no se pueden ver meses futuros), con una fila por día, la barra de franjas a escala en hora local, la leyenda y los totales del día y del mes. Un responsable ve además `/equipo`, con la lista de sus reportes directos y la misma vista mensual de cada uno (el miembro elegido se conserva al cambiar de mes). La sesión caduca a los 30 minutos: la Web lo indica en `/login` («Su sesión ha caducado. Inicie sesión de nuevo.») y hay que volver a iniciarla. La Web toma la URL de la API de `ApiBaseUrl` en `src/TimeTracker.Web/wwwroot/appsettings.json` (por defecto `http://localhost:5274`); si falta o no es válida, la Web no arranca y lo indica.
+5. Abra `http://localhost:5172/login` e inicie sesión con uno de los usuarios de demostración que crea la siembra (definidos en `src/TimeTracker.Api/Seeding/DemoUsers.cs`). Tras entrar se llega al Inicio, que muestra el reproductor: pulse «Iniciar jornada»; el control indica el estado y ofrece solo las acciones válidas («Pausa», «Comida», «Reanudar», «Finalizar jornada») con el tiempo del tramo actual y el total trabajado hoy. `/fichajes` es de consulta: muestra el estado, un enlace al Inicio para fichar y el mes elegido (con «Anterior», «Siguiente» y «Mes actual»; no se pueden ver meses futuros), con una fila por día, la barra de franjas a escala en hora local, la leyenda y los totales del día y del mes. Un responsable ve además `/equipo`, con la lista de sus reportes directos y la misma vista mensual de cada uno (el miembro elegido se conserva al cambiar de mes). La sesión caduca a los 30 minutos: la Web lo indica en `/login` («Su sesión ha caducado. Inicie sesión de nuevo.») y hay que volver a iniciarla. La Web toma la URL de la API de `ApiBaseUrl` en `src/TimeTracker.Web/wwwroot/appsettings.json` (por defecto `http://localhost:5274`); si falta o no es válida, la Web no arranca y lo indica.
 
 Al terminar, borre las variables de la sesión (`Remove-Item Env:ASPNETCORE_ENVIRONMENT, Env:ConnectionStrings__Default, Env:Jwt__SigningKey, Env:Database__ApplyMigrationsOnStartup, Env:Cors__AllowedOrigins__0, Env:Seed__DemoUsers, Env:Seed__DemoPassword`) y pare la base de datos con `docker compose down`.
 
@@ -125,7 +131,51 @@ dotnet tool run dotnet-ef migrations add <Nombre> --project src/TimeTracker.Infr
 
 Las migraciones se aplican al arrancar la API con `Database__ApplyMigrationsOnStartup=true`.
 
-### Tipos de marcaje: pausas y pausas de comida
+### Docker y Docker Compose
+
+```powershell
+Copy-Item .env.example .env
+# Edite .env y rellene: POSTGRES_USER, POSTGRES_DB y POSTGRES_PASSWORD (inventados),
+# Cors__AllowedOrigins__0=http://localhost:5172,
+# Jwt__SigningKey (clave generada, ver «Generar la clave de firma») y
+# Seed__DemoPassword (una contraseña que elija usted, de al menos 12 caracteres; solo en local).
+docker compose up --build
+```
+
+Compose levanta PostgreSQL 18 y la API (en `Development`, con migraciones automáticas, la siembra de usuarios de prueba activada y la cadena de conexión construida a partir de `POSTGRES_*`). Si falta `Jwt__SigningKey` o `Seed__DemoPassword`, Compose se niega a arrancar y lo indica. La API queda en `http://localhost:5274` (compruebe `http://localhost:5274/health`), y ambos puertos (5274 y 5432) se publican **solo en `127.0.0.1`**. Compose es únicamente para desarrollo: activa la siembra de usuarios de demostración. La Web no forma parte de Compose: se ejecuta con `dotnet run --project src/TimeTracker.Web --launch-profile http` y su `ApiBaseUrl` ya apunta a `http://localhost:5274`, así que funciona contra el contenedor sin cambios (con `Cors__AllowedOrigins__0=http://localhost:5172`). No ejecute a la vez la API local y la de Compose: ambas usan el puerto 5274.
+
+**Datos antiguos:** los fichajes anteriores a este cambio pertenecían a una identidad provisional que ya no existe y quedan huérfanos (sin usuario). Si ya tenía un volumen de PostgreSQL de antes, `docker compose down -v` borra esos fichajes de desarrollo (y todos los datos del volumen) para empezar limpio.
+
+Sin Compose, la imagen de la API necesita las mismas claves:
+
+```powershell
+docker build -t timetracker-api .
+```
+
+La imagen se ejecuta con un usuario no root, escucha en HTTP (el TLS se termina en el ingreso, [ADR 0007](docs/adr/0007-configuracion-y-validacion-al-arrancar.md)) e incluye un `HEALTHCHECK`. No contiene secretos: las claves (entre ellas `Jwt__SigningKey`) se pasan al ejecutarla.
+
+## Estructuración
+
+```
+src/
+  TimeTracker.Domain          Entidades y objetos de valor (TimeEntry, WorkedHours, UserAccount). Sin dependencias.
+  TimeTracker.Application     Casos de uso (fichar, listar, iniciar sesión, equipo) y puertos. Depende de Domain.
+  TimeTracker.Infrastructure  EF Core, migraciones, repositorios PostgreSQL y asistente de IA (herramientas, bucle, proveedores). Depende de Application.
+  TimeTracker.Api             Endpoints, autenticación JWT, autorización y composición. Depende de Application e Infrastructure.
+  TimeTracker.Web             Blazor WebAssembly (inicio con el reproductor de fichaje, /login, /fichajes, /equipo y /jornadas, con pestañas y un diálogo reutilizable; ADR 0029), independiente.
+tests/                        Pruebas de Domain, Application, Web (formato, sesión, hora local, meses y franjas), Api (integración con PostgreSQL) y de arquitectura.
+docs/adr/                     Registros de decisiones de arquitectura.
+docs/runbook-railway.md       Runbook de despliegue manual, copia de seguridad, reversión y apertura del registro.
+docs/api/openapi.json         Contrato OpenAPI generado (no se edita a mano).
+scripts/check-coverage.ps1    Comprobación del umbral de cobertura.
+docker-compose.yml            Entorno local: API y PostgreSQL.
+.github/workflows/ci.yml      Integración continua.
+openspec/                     Especificaciones y cambios (Spec Driven Development).
+```
+
+## Funcionalidades
+
+### Fichajes, tipos de marcaje y jornadas
 
 Cada intervalo tiene un tipo (`Work`, `Break`, `MealBreak`) y el empleado tiene como máximo uno abierto. La API lo expone sin cuerpo y con el empleado del token:
 
@@ -144,7 +194,7 @@ La migración `AddTimeEntryType` deja los fichajes existentes como `Work` (colum
 
 Una **jornada** (`/jornadas`, solo Manager) define su nombre, hora de entrada, hora de salida (opcional en jornadas antiguas), inicio y duración del almuerzo, pausa esperada y días de la semana; con hora de salida, las horas extra del asistente usan sus minutos de trabajo previstos en lugar de la suposición de 8 h ([ADR 0031](docs/adr/0031-hora-de-salida-en-las-jornadas.md)).
 
-## Asistente de IA
+### Asistente de IA
 
 El asistente responde en español, en lenguaje natural, a preguntas sobre los fichajes de quien pregunta («¿cuántas horas trabajé la semana pasada?») y, si es responsable (`Manager`), sobre los de sus reportes directos, uno a uno o comparando al equipo (herramienta `get_team_summary`: quién hace más pausas, quién está por encima de la media y quién hace más horas extra, con las horas de su jornada o, sin hora de salida, una jornada diaria supuesta de 8 h; [ADR 0025](docs/adr/0025-resumen-de-equipo-del-asistente.md) y [ADR 0027](docs/adr/0027-horas-extra-en-el-resumen-de-equipo.md)). Es **de solo lectura**: no ficha ni modifica nada, y cada herramienta aplica la autorización de la persona autenticada (la identidad sale siempre del token). Se consulta con `POST /api/asistente` (`{ "message": "…", "history": [...] }`); la página `/asistente` de la Web lo consulta. Está **deshabilitado por defecto**: sin `Ai__Provider` la API arranca igual y el endpoint responde `503` «El asistente no está disponible en este entorno.». Las decisiones están en el [ADR 0017](docs/adr/0017-asistente-ia-con-herramientas-de-solo-lectura.md). Cuando la respuesta compara varias personas o periodos puede incluir una tabla, que la Web pinta como tabla HTML (siempre con texto escapado) y permite descargar como CSV con «Descargar CSV» ([ADR 0026](docs/adr/0026-tablas-y-csv-en-el-asistente.md)).
 
@@ -181,7 +231,7 @@ Claves de entorno nuevas (todas opcionales; se documentan en `.env.example`):
 
 > **Datos personales y alcance.** Con una clave aportada por el responsable, los nombres y las horas de los fichajes consultados se envían a ese proveedor externo (RGPD), y un cambio afecta a todas las personas de la compañía. Revise el tratamiento de datos antes de habilitar un proveedor en la nube con datos reales.
 
-## Compañías, registro y alta de personas
+### Compañías, registro y alta de personas
 
 Una misma instancia sirve a varias compañías, aisladas por `company_id` ([ADR 0020](docs/adr/0020-aislamiento-multiempresa.md)). El token lleva la compañía de la persona (`cid`, y `cname` para mostrar su nombre) y nunca se envía un identificador de compañía en una ruta, consulta, cuerpo ni cabecera.
 
@@ -195,28 +245,18 @@ Una misma instancia sirve a varias compañías, aisladas por `company_id` ([ADR 
 
 **Operación.** Despliegue manual con `railway up`, copia de seguridad, ensayo de migraciones, reversión y apertura del registro: [docs/runbook-railway.md](docs/runbook-railway.md).
 
-## Docker y Docker Compose
+### Datos de demostración
 
-```powershell
-Copy-Item .env.example .env
-# Edite .env y rellene: POSTGRES_USER, POSTGRES_DB y POSTGRES_PASSWORD (inventados),
-# Cors__AllowedOrigins__0=http://localhost:5172,
-# Jwt__SigningKey (clave generada, ver «Generar la clave de firma») y
-# Seed__DemoPassword (la contraseña de demostración de «Usuarios de prueba»).
-docker compose up --build
-```
+Con `Seed__DemoUsers=true` y `Seed__DemoData=true`, la API crea al arrancar (tras las migraciones y la siembra de usuarios) unos 30 días de fichajes inventados, distintos para cada usuario de demostración, con trabajo, pausas y pausas de comida. Solo cuenta los días hasta **ayer**: hoy queda libre para que fiche en vivo. Es determinista (sin azar no controlado) e idempotente por día y empleado: si un empleado ya tiene algún intervalo un día, ese día se omite, de modo que reiniciar la API no duplica nada y cada arranque añade solo los días nuevos. Fines de semana libres y uno o dos días sin fichajes por persona. Los horarios son de la hora local de España, convertidos a UTC con la regla de cambio de hora de la UE. En el registro solo aparecen contadores.
 
-Compose levanta PostgreSQL 18 y la API (en `Development`, con migraciones automáticas, la siembra de usuarios de prueba activada y la cadena de conexión construida a partir de `POSTGRES_*`). Si falta `Jwt__SigningKey` o `Seed__DemoPassword`, Compose se niega a arrancar y lo indica. La API queda en `http://localhost:5274` (compruebe `http://localhost:5274/health`), y ambos puertos (5274 y 5432) se publican **solo en `127.0.0.1`**. Compose es únicamente para desarrollo, por la contraseña de demostración pública. La Web no forma parte de Compose: se ejecuta con `dotnet run --project src/TimeTracker.Web --launch-profile http` y su `ApiBaseUrl` ya apunta a `http://localhost:5274`, así que funciona contra el contenedor sin cambios (con `Cors__AllowedOrigins__0=http://localhost:5172`). No ejecute a la vez la API local y la de Compose: ambas usan el puerto 5274.
+| Persona | Perfil |
+|---|---|
+| Marta (responsable) | Jornada regular 09:00-17:30 con reuniones (pausas de duración y presencia variables) y comida de unos 45 min. |
+| Luis | Madrugador 08:00-17:00, comida de 60 min y una pausa de unos 15 min casi todos los días. |
+| Ana | 09:30-18:30, comida larga (~75 min) y alguna pausa de tarde; los miércoles teletrabaja (09:00-17:00) y registra la comida como pausa normal, sin comida. |
+| Pablo | Media jornada 08:00-14:00 con una sola pausa corta y sin comida. |
 
-**Datos antiguos:** los fichajes anteriores a este cambio pertenecían a una identidad provisional que ya no existe y quedan huérfanos (sin usuario). Si ya tenía un volumen de PostgreSQL de antes, `docker compose down -v` borra esos fichajes de desarrollo (y todos los datos del volumen) para empezar limpio.
-
-Sin Compose, la imagen de la API necesita las mismas claves:
-
-```powershell
-docker build -t timetracker-api .
-```
-
-La imagen se ejecuta con un usuario no root, escucha en HTTP (el TLS se termina en el ingreso, [ADR 0007](docs/adr/0007-configuracion-y-validacion-al-arrancar.md)) e incluye un `HEALTHCHECK`. No contiene secretos: las claves (entre ellas `Jwt__SigningKey`) se pasan al ejecutarla.
+Para apagarla basta con `Seed__DemoData=false` (o quitar la variable): no se borran los intervalos ya creados, que son datos normales. Sin ventana, el listado de fichajes devuelve hasta 300 intervalos ([ADR 0015](docs/adr/0015-datos-de-demostracion-de-un-mes.md)); la Web pide siempre un mes concreto ([ADR 0016](docs/adr/0016-vista-mensual-y-hora-local.md)). `.env.example` no incluye esta clave a propósito; se documenta solo aquí. Con Compose, añada `Seed__DemoData=true` a su `.env` local (Compose lo pasa a la API junto con el resto del archivo). Si ejecuta varias instancias de la API a la vez, no active la siembra en todas: podrían duplicar días.
 
 ## Despliegue en Railway
 
@@ -246,7 +286,7 @@ Variables del servicio `api` (`railway variables set -s api --skip-deploys "CLAV
 | `Cors__AllowedOrigins__0` | **Obligatoria.** `https://<dominio de la Web>`, sin barra final; sin ella la API no arranca. |
 | `Database__ApplyMigrationsOnStartup` | `true`: la API aplica las migraciones al arrancar. |
 | `ForwardedHeaders__Enabled` | `true`: la API está tras el proxy de Railway (véase «Riesgos y decisiones»). |
-| `Seed__DemoUsers` y `Seed__DemoPassword` | `true` y la contraseña de «Usuarios de prueba» (solo para la demostración; véase «Apagar la siembra demo»). |
+| `Seed__DemoUsers` y `Seed__DemoPassword` | `true` y una contraseña de demostración de al menos 12 caracteres, definida solo en Railway (solo para la demostración; véase «Apagar la siembra demo»). |
 | `Seed__DemoData` | `true` para sembrar el historial de un mes (véase «Datos de demostración»); opcional. |
 | `Ai__Provider`, `Ai__Model` y `Ai__ApiKey` | Opcionales: habilitan el asistente (véase «Asistente de IA»). `Ai__ApiKey` es un secreto y se define con `railway variables set Ai__ApiKey --stdin -s api`; nunca en este repositorio. Para deshabilitarlo, quite `Ai__Provider`. |
 | `Ai__MasterKeys__1` y `Ai__ActiveMasterKeyVersion` | Opcionales, pero **imprescindibles antes de que un responsable guarde una clave de API** desde la Web (véase «Configuración del asistente por el responsable en Railway»). `Ai__MasterKeys__1` es un secreto y se define por `stdin`; `Ai__ActiveMasterKeyVersion=1`. |
@@ -267,7 +307,7 @@ railway up --service api --ci
 railway up --service web --ci
 ```
 
-Comprobación: `GET <API>/health` responde `200`; inicie sesión en la Web con un usuario de «Usuarios de prueba».
+Comprobación: `GET <API>/health` responde `200`; inicie sesión en la Web con un usuario de demostración.
 
 ### Configuración del asistente por el responsable en Railway
 
@@ -312,7 +352,7 @@ El cambio redespliega la API e invalida los tokens emitidos (las sesiones abiert
 
 ### Apagar la siembra demo
 
-La contraseña de los usuarios de prueba es pública (está en este README): mientras la siembra esté activa, cualquiera puede iniciar sesión con ellos. Para cerrarla:
+Mientras la siembra esté activa existen cuentas de demostración con una contraseña compartida. Para cerrarla:
 
 ```powershell
 railway variables set Seed__DemoUsers=false -s api
@@ -326,101 +366,36 @@ Para dejar de sembrar solo los fichajes (y conservar los usuarios): `railway var
 ### Riesgos y decisiones
 
 - **`ForwardedHeaders` (diferido en el ADR 0011, resuelto aquí).** Tras el proxy de Railway, la IP de la conexión es la del proxy y el limitador de login (por IP) vería a todos los clientes como uno. El borde de Railway entrega `X-Forwarded-For: <cliente>, <borde>` (descarta el que envíe el cliente; las direcciones del borde son públicas y cambian) y `X-Forwarded-Proto: https`. Con `ForwardedHeaders__Enabled=true` la API confía en dos saltos (`ForwardedHeaders__Hops`, 2 por defecto): el cliente es la penúltima entrada y cualquier dirección antepuesta a su izquierda no cuenta. Está desactivado por defecto: sin proxy de confianza, esas cabeceras las controla el cliente. Riesgo residual: solo es seguro si la API únicamente es alcanzable a través del borde de Railway (así es en este despliegue: no hay acceso público directo al contenedor); un ataque distribuido no queda cubierto por el límite por IP.
-- **Demostración pública con credenciales públicas:** véase «Apagar la siembra demo». No hay refresh token: la sesión dura 30 minutos.
+- **Demostración pública con cuentas de prueba:** véase «Apagar la siembra demo». No hay refresh token: la sesión dura 30 minutos.
 - **TLS:** lo termina el borde de Railway; la API y nginx escuchan en HTTP dentro de la plataforma. La Web envía HSTS.
 - **Base de datos:** la API usa la red privada de Railway (`postgres.railway.internal`); el servicio de PostgreSQL no se expone por TCP público.
 - **Imagen de la Web:** la CSP admite el `importmap` en línea que genera la publicación de Blazor por su hash SHA-256 (calculado al construir la imagen), sin `'unsafe-inline'`.
 
-## Usuarios de prueba
-
-Cuatro usuarios inventados (dominio `example.test`) que crea la siembra de demostración cuando `Seed__DemoUsers` es `true` (Compose la activa). Todos usan la misma contraseña de demostración, **inventada y pública**, que debe escribir también en `Seed__DemoPassword` de su `.env` local:
-
-| Correo | Nombre | Rol | Contraseña |
-|---|---|---|---|
-| `marta.responsable@example.test` | Marta Ejemplo | `Manager` (responsable de Ana y Luis) | `Demo-Fichajes-2026` |
-| `luis.empleado@example.test` | Luis Ejemplo | `Employee` (equipo de Marta) | `Demo-Fichajes-2026` |
-| `ana.empleada@example.test` | Ana Ejemplo | `Employee` (equipo de Marta) | `Demo-Fichajes-2026` |
-| `pablo.empleado@example.test` | Pablo Ejemplo | `Employee` (sin responsable) | `Demo-Fichajes-2026` |
-
-**No active la siembra (`Seed__DemoUsers=true`) en un despliegue real:** la contraseña es pública y cualquiera podría iniciar sesión. Por eso está desactivada por defecto y `.env.example` no la contiene.
-
-## Datos de demostración
-
-Con `Seed__DemoUsers=true` y `Seed__DemoData=true`, la API crea al arrancar (tras las migraciones y la siembra de usuarios) unos 30 días de fichajes inventados, distintos para cada usuario de prueba, con trabajo, pausas y pausas de comida. Solo cuenta los días hasta **ayer**: hoy queda libre para que fiche en vivo. Es determinista (sin azar no controlado) e idempotente por día y empleado: si un empleado ya tiene algún intervalo un día, ese día se omite, de modo que reiniciar la API no duplica nada y cada arranque añade solo los días nuevos. Fines de semana libres y uno o dos días sin fichajes por persona. Los horarios son de la hora local de España, convertidos a UTC con la regla de cambio de hora de la UE. En el registro solo aparecen contadores.
-
-| Usuario | Perfil |
-|---|---|
-| `marta.responsable` | Jornada regular 09:00-17:30 con reuniones (pausas de duración y presencia variables) y comida de unos 45 min. |
-| `luis.empleado` | Madrugador 08:00-17:00, comida de 60 min y una pausa de unos 15 min casi todos los días. |
-| `ana.empleada` | 09:30-18:30, comida larga (~75 min) y alguna pausa de tarde; los miércoles teletrabaja (09:00-17:00) y registra la comida como pausa normal, sin comida. |
-| `pablo.empleado` | Media jornada 08:00-14:00 con una sola pausa corta y sin comida. |
-
-Para apagarla basta con `Seed__DemoData=false` (o quitar la variable): no se borran los intervalos ya creados, que son datos normales. Sin ventana, el listado de fichajes devuelve hasta 300 intervalos ([ADR 0015](docs/adr/0015-datos-de-demostracion-de-un-mes.md)); la Web pide siempre un mes concreto ([ADR 0016](docs/adr/0016-vista-mensual-y-hora-local.md)). `.env.example` no incluye esta clave a propósito; se documenta solo aquí. Con Compose, añada `Seed__DemoData=true` a su `.env` local (Compose lo pasa a la API junto con el resto del archivo). Si ejecuta varias instancias de la API a la vez, no active la siembra en todas: podrían duplicar días.
-
-## Estructura
-
-```
-src/
-  TimeTracker.Domain          Entidades y objetos de valor (TimeEntry, WorkedHours, UserAccount). Sin dependencias.
-  TimeTracker.Application     Casos de uso (fichar, listar, iniciar sesión, equipo) y puertos. Depende de Domain.
-  TimeTracker.Infrastructure  EF Core, migraciones, repositorios PostgreSQL y asistente de IA (herramientas, bucle, proveedores). Depende de Application.
-  TimeTracker.Api             Endpoints, autenticación JWT, autorización y composición. Depende de Application e Infrastructure.
-  TimeTracker.Web             Blazor WebAssembly (inicio con el reproductor de fichaje, /login, /fichajes, /equipo y /jornadas, con pestañas y un diálogo reutilizable; ADR 0029), independiente.
-tests/                        Pruebas de Domain, Application, Web (formato, sesión, hora local, meses y franjas), Api (integración con PostgreSQL) y de arquitectura.
-docs/adr/                     Registros de decisiones de arquitectura.
-docs/runbook-railway.md       Runbook de despliegue manual, copia de seguridad, reversión y apertura del registro.
-docs/api/openapi.json         Contrato OpenAPI generado (no se edita a mano).
-scripts/check-coverage.ps1    Comprobación del umbral de cobertura.
-docker-compose.yml            Entorno local: API y PostgreSQL.
-.github/workflows/ci.yml      Integración continua.
-openspec/                     Especificaciones y cambios (Spec Driven Development).
-```
 
 ## Decisiones de arquitectura (ADR)
 
-1. [Formato de ADR](docs/adr/0001-formato-de-adr.md)
-2. [Plataforma .NET 10](docs/adr/0002-net10.md)
-3. [Monolito modular y regla de dependencias](docs/adr/0003-monolito-modular-y-regla-de-dependencias.md)
-4. [Minimal APIs y OpenAPI](docs/adr/0004-minimal-apis-y-openapi.md)
-5. [Frontend WebAssembly y CORS](docs/adr/0005-frontend-wasm-y-cors.md)
-6. [Pila de pruebas](docs/adr/0006-pila-de-pruebas.md)
-7. [Configuración y validación al arrancar](docs/adr/0007-configuracion-y-validacion-al-arrancar.md)
-8. [Persistencia con PostgreSQL y EF Core](docs/adr/0008-persistencia-postgresql-ef-core.md)
-9. [Identidad provisional](docs/adr/0009-identidad-provisional.md) (sustituido por el 0011)
-10. [Tiempo en UTC y minutos truncados](docs/adr/0010-tiempo-utc-y-minutos.md)
-11. [Autenticación con JWT propio, roles y equipo](docs/adr/0011-autenticacion-jwt-roles-y-equipo.md)
-12. [Sesión en la Web: token en sessionStorage y riesgo XSS](docs/adr/0012-sesion-web-y-riesgo-xss.md) (almacenamiento sustituido por el 0028)
-13. [Despliegue de la demostración en Railway](docs/adr/0013-despliegue-en-railway.md)
-14. [Tipos de marcaje: pausas y pausas de comida](docs/adr/0014-tipos-de-marcaje-pausas-y-comida.md)
-15. [Datos de demostración de un mes](docs/adr/0015-datos-de-demostracion-de-un-mes.md)
-16. [Vista mensual de fichajes y hora local en la Web](docs/adr/0016-vista-mensual-y-hora-local.md)
-17. [Asistente de IA con herramientas de solo lectura](docs/adr/0017-asistente-ia-con-herramientas-de-solo-lectura.md)
-18. [Configuración del asistente por el responsable](docs/adr/0018-configuracion-del-asistente-por-el-responsable.md) (sustituido parcialmente por el 0021)
-19. [Auditoría inmutable y despliegue de la configuración del asistente](docs/adr/0019-auditoria-inmutable-y-despliegue-de-la-configuracion-del-asistente.md) (sustituido parcialmente por el 0021)
-20. [Aislamiento multiempresa en una base de datos compartida](docs/adr/0020-aislamiento-multiempresa.md)
-21. [Configuración del asistente por compañía](docs/adr/0021-configuracion-del-asistente-por-compania.md) (sustituye parcialmente al 0018 y al 0019)
-22. [Autorregistro con código de invitación y contraseñas](docs/adr/0022-autorregistro-con-codigo-de-invitacion-y-contrasenas.md)
-23. [Proveedor Groq para el asistente](docs/adr/0023-proveedor-groq.md)
-24. [Alcance del asistente](docs/adr/0024-alcance-del-asistente.md)
-25. [Resumen de equipo del asistente](docs/adr/0025-resumen-de-equipo-del-asistente.md)
-26. [Tablas y CSV en el asistente](docs/adr/0026-tablas-y-csv-en-el-asistente.md)
-27. [Horas extra en el resumen de equipo](docs/adr/0027-horas-extra-en-el-resumen-de-equipo.md)
-28. [Sesión compartida entre pestañas del navegador](docs/adr/0028-sesion-compartida-entre-pestañas.md) (sustituye el almacenamiento del 0012)
-29. [Navegación por pestañas, diálogo reutilizable y sistema visual](docs/adr/0029-navegacion-por-pestanas-y-sistema-visual.md)
-30. [Jornadas en el asistente](docs/adr/0030-jornadas-en-el-asistente.md)
-31. [Hora de salida en las jornadas](docs/adr/0031-hora-de-salida-en-las-jornadas.md)
+Todos los registros de decisiones están en [docs/adr/](docs/adr/) (31 en total, del 0001 al 0031); los ADR aceptados no se reescriben, se sustituyen por otro nuevo. Las decisiones clave:
+
+1. [Monolito modular y regla de dependencias](docs/adr/0003-monolito-modular-y-regla-de-dependencias.md)
+2. [Autenticación con JWT propio, roles y equipo](docs/adr/0011-autenticacion-jwt-roles-y-equipo.md)
+3. [Asistente de IA con herramientas de solo lectura](docs/adr/0017-asistente-ia-con-herramientas-de-solo-lectura.md)
+4. [Configuración del asistente por el responsable](docs/adr/0018-configuracion-del-asistente-por-el-responsable.md) (sustituido parcialmente por el 0021)
+5. [Auditoría inmutable y despliegue de la configuración del asistente](docs/adr/0019-auditoria-inmutable-y-despliegue-de-la-configuracion-del-asistente.md) (sustituido parcialmente por el 0021)
+6. [Aislamiento multiempresa en una base de datos compartida](docs/adr/0020-aislamiento-multiempresa.md)
+7. [Configuración del asistente por compañía](docs/adr/0021-configuracion-del-asistente-por-compania.md) (sustituye parcialmente al 0018 y al 0019)
+8. [Autorregistro con código de invitación y contraseñas](docs/adr/0022-autorregistro-con-codigo-de-invitacion-y-contrasenas.md)
 
 ## Integración continua
 
 El flujo `.github/workflows/ci.yml` se ejecuta en GitHub Actions en cada `push` a `main` y en cada pull request: restaura, comprueba el formato, compila, prueba con cobertura (Domain al 100 % y Application al 80 %), audita paquetes vulnerables, publica y construye la imagen (sin subirla). Sus pasos pueden reproducirse en local con los comandos de «Compilar» y «Probar».
 
-## Enlaces y datos de demostración
+## Enlaces
 
 - Web (demostración): <https://web-production-a744a.up.railway.app>
 - API (demostración): <https://api-production-0f339.up.railway.app> (comprobación: `/health`). Véase «Despliegue en Railway».
 - Vídeo de demostración: **pendiente**.
 - Presentación (slides): **pendiente**.
-- Usuarios de prueba: véase «Usuarios de prueba» (con la siembra activada, como en la demostración desplegada).
+- Credenciales de prueba: las credenciales para la evaluación se entregan por el formulario de entrega y no se publican en el repositorio.
 
 ## Convenciones
 
