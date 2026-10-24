@@ -9,7 +9,8 @@ public sealed record WorkScheduleCommand(
     TimeOnly? LunchStart,
     int? LunchMinutes,
     int? ExpectedBreakMinutes,
-    IReadOnlyCollection<DayOfWeek>? Days)
+    IReadOnlyCollection<DayOfWeek>? Days,
+    TimeOnly? EndTime = null)
 {
-    internal WorkScheduleDetails ToDetails() => new(Name, StartTime, LunchStart, LunchMinutes, ExpectedBreakMinutes, Days);
+    internal WorkScheduleDetails ToDetails() => new(Name, StartTime, LunchStart, LunchMinutes, ExpectedBreakMinutes, Days, EndTime);
 }

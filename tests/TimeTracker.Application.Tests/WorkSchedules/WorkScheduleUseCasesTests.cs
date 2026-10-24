@@ -242,4 +242,36 @@ public class WorkScheduleUseCasesTests
         Assert.Same(schedule, await new GetMyWorkScheduleUseCase(_users, _schedules, new FixedCurrentUser(employee.Id, UserRole.Employee, CompanyId)).ExecuteAsync(CancellationToken.None));
         Assert.Null(await new GetMyWorkScheduleUseCase(_users, _schedules, new FixedCurrentUser(without.Id, UserRole.Employee, CompanyId)).ExecuteAsync(CancellationToken.None));
     }
+
+    [Fact]
+    public async Task Create_WithEndTime_StoresItAndDerivesTheExpectedMinutes()
+    {
+        var result = await Create().ExecuteAsync(Command() with { EndTime = new TimeOnly(18, 0) }, CancellationToken.None);
+
+        var saved = Assert.IsType<SaveWorkScheduleResult.Saved>(result);
+        Assert.Equal(new TimeOnly(18, 0), saved.View.Schedule.EndTime);
+        Assert.Equal(480, saved.View.Schedule.ExpectedWorkMinutes);
+    }
+
+    [Fact]
+    public async Task Create_WithAnEndTimeBeforeTheLunchEnds_ReportsTheEndTimeField()
+    {
+        var result = await Create().ExecuteAsync(Command() with { EndTime = new TimeOnly(14, 30) }, CancellationToken.None);
+
+        var invalid = Assert.IsType<SaveWorkScheduleResult.Invalid>(result);
+        Assert.Contains(invalid.Errors, error => error.Field == "endTime" && error.Message == "La hora de salida debe ser posterior al fin del almuerzo.");
+        Assert.Empty(_schedules.All);
+    }
+
+    [Fact]
+    public async Task Update_AddsTheEndTimeToALegacyScheduleWithout()
+    {
+        var legacy = Schedule();
+        await _schedules.AddAsync(legacy, CancellationToken.None);
+
+        var result = await Update().ExecuteAsync(legacy.Id, Command("Existente") with { EndTime = new TimeOnly(17, 0) }, CancellationToken.None);
+
+        Assert.IsType<SaveWorkScheduleResult.Saved>(result);
+        Assert.Equal(420, legacy.ExpectedWorkMinutes);
+    }
 }

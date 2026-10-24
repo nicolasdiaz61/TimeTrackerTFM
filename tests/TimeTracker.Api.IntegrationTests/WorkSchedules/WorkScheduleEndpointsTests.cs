@@ -109,6 +109,45 @@ public class WorkScheduleEndpointsTests(PostgresFixture postgres)
     }
 
     [Fact]
+    public async Task TheEndTime_IsOptional_AndWhenPresentReturnsTheExpectedMinutes()
+    {
+        var fixture = await TwoCompanyFixture.CreateAsync(postgres);
+        using var factory = new PostgresApiFactory(fixture.ConnectionString);
+        var manager = ClientFor(factory, fixture.A, fixture.A.Manager);
+
+        var legacy = await manager.PostAsJsonAsync(Path, Body("Antigua"), CancellationToken.None);
+        using var legacyJson = JsonDocument.Parse(await legacy.Content.ReadAsStringAsync(CancellationToken.None));
+        var withEnd = Body("Con salida");
+        withEnd["endTime"] = "18:00:00";
+        var created = await manager.PostAsJsonAsync(Path, withEnd, CancellationToken.None);
+        using var createdJson = JsonDocument.Parse(await created.Content.ReadAsStringAsync(CancellationToken.None));
+
+        Assert.Equal(HttpStatusCode.Created, legacy.StatusCode);
+        Assert.Equal(JsonValueKind.Null, legacyJson.RootElement.GetProperty("endTime").ValueKind);
+        Assert.Equal(JsonValueKind.Null, legacyJson.RootElement.GetProperty("expectedWorkMinutes").ValueKind);
+        Assert.Equal("18:00:00", createdJson.RootElement.GetProperty("endTime").GetString());
+        Assert.Equal(480, createdJson.RootElement.GetProperty("expectedWorkMinutes").GetInt32());
+        var items = await ListAsync(manager);
+        Assert.Contains(items.EnumerateArray(), item => item.GetProperty("name").GetString() == "Con salida" && item.GetProperty("expectedWorkMinutes").GetInt32() == 480);
+    }
+
+    [Fact]
+    public async Task AnEndTimeNotAfterTheLunch_Returns400WithTheEndTimeError()
+    {
+        var fixture = await TwoCompanyFixture.CreateAsync(postgres);
+        using var factory = new PostgresApiFactory(fixture.ConnectionString);
+        var manager = ClientFor(factory, fixture.A, fixture.A.Manager);
+        var body = Body();
+        body["endTime"] = "14:30:00";
+
+        var response = await manager.PostAsJsonAsync(Path, body, CancellationToken.None);
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        using var json = JsonDocument.Parse(await response.Content.ReadAsStringAsync(CancellationToken.None));
+        Assert.Equal("La hora de salida debe ser posterior al fin del almuerzo.", json.RootElement.GetProperty("errors").GetProperty("endTime")[0].GetString());
+    }
+
+    [Fact]
     public async Task InvalidBodies_Return400WithFieldErrors()
     {
         var fixture = await TwoCompanyFixture.CreateAsync(postgres);
