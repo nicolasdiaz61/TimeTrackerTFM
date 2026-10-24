@@ -142,9 +142,11 @@ La ventana admite como máximo 32 días y no puede empezar en el futuro (`400` e
 
 La migración `AddTimeEntryType` deja los fichajes existentes como `Work` (columna `type` con valor por defecto `Work`) y es reversible; la decisión está en el [ADR 0014](docs/adr/0014-tipos-de-marcaje-pausas-y-comida.md).
 
+Una **jornada** (`/jornadas`, solo Manager) define su nombre, hora de entrada, hora de salida (opcional en jornadas antiguas), inicio y duración del almuerzo, pausa esperada y días de la semana; con hora de salida, las horas extra del asistente usan sus minutos de trabajo previstos en lugar de la suposición de 8 h ([ADR 0031](docs/adr/0031-hora-de-salida-en-las-jornadas.md)).
+
 ## Asistente de IA
 
-El asistente responde en español, en lenguaje natural, a preguntas sobre los fichajes de quien pregunta («¿cuántas horas trabajé la semana pasada?») y, si es responsable (`Manager`), sobre los de sus reportes directos, uno a uno o comparando al equipo (herramienta `get_team_summary`: quién hace más pausas, quién está por encima de la media y quién hace más horas extra con una jornada diaria supuesta de 8 h; [ADR 0025](docs/adr/0025-resumen-de-equipo-del-asistente.md) y [ADR 0027](docs/adr/0027-horas-extra-en-el-resumen-de-equipo.md)). Es **de solo lectura**: no ficha ni modifica nada, y cada herramienta aplica la autorización de la persona autenticada (la identidad sale siempre del token). Se consulta con `POST /api/asistente` (`{ "message": "…", "history": [...] }`); la página `/asistente` de la Web lo consulta. Está **deshabilitado por defecto**: sin `Ai__Provider` la API arranca igual y el endpoint responde `503` «El asistente no está disponible en este entorno.». Las decisiones están en el [ADR 0017](docs/adr/0017-asistente-ia-con-herramientas-de-solo-lectura.md). Cuando la respuesta compara varias personas o periodos puede incluir una tabla, que la Web pinta como tabla HTML (siempre con texto escapado) y permite descargar como CSV con «Descargar CSV» ([ADR 0026](docs/adr/0026-tablas-y-csv-en-el-asistente.md)).
+El asistente responde en español, en lenguaje natural, a preguntas sobre los fichajes de quien pregunta («¿cuántas horas trabajé la semana pasada?») y, si es responsable (`Manager`), sobre los de sus reportes directos, uno a uno o comparando al equipo (herramienta `get_team_summary`: quién hace más pausas, quién está por encima de la media y quién hace más horas extra, con las horas de su jornada o, sin hora de salida, una jornada diaria supuesta de 8 h; [ADR 0025](docs/adr/0025-resumen-de-equipo-del-asistente.md) y [ADR 0027](docs/adr/0027-horas-extra-en-el-resumen-de-equipo.md)). Es **de solo lectura**: no ficha ni modifica nada, y cada herramienta aplica la autorización de la persona autenticada (la identidad sale siempre del token). Se consulta con `POST /api/asistente` (`{ "message": "…", "history": [...] }`); la página `/asistente` de la Web lo consulta. Está **deshabilitado por defecto**: sin `Ai__Provider` la API arranca igual y el endpoint responde `503` «El asistente no está disponible en este entorno.». Las decisiones están en el [ADR 0017](docs/adr/0017-asistente-ia-con-herramientas-de-solo-lectura.md). Cuando la respuesta compara varias personas o periodos puede incluir una tabla, que la Web pinta como tabla HTML (siempre con texto escapado) y permite descargar como CSV con «Descargar CSV» ([ADR 0026](docs/adr/0026-tablas-y-csv-en-el-asistente.md)).
 
 **Habilitarlo** (solo configuración, sin cambiar código; el modelo también es configuración):
 
@@ -406,6 +408,7 @@ openspec/                     Especificaciones y cambios (Spec Driven Developmen
 28. [Sesión compartida entre pestañas del navegador](docs/adr/0028-sesion-compartida-entre-pestañas.md) (sustituye el almacenamiento del 0012)
 29. [Navegación por pestañas, diálogo reutilizable y sistema visual](docs/adr/0029-navegacion-por-pestanas-y-sistema-visual.md)
 30. [Jornadas en el asistente](docs/adr/0030-jornadas-en-el-asistente.md)
+31. [Hora de salida en las jornadas](docs/adr/0031-hora-de-salida-en-las-jornadas.md)
 
 ## Integración continua
 
