@@ -245,6 +245,7 @@ public class WorkScheduleTests
         Assert.DoesNotContain(WorkSchedule.Validate(Valid() with { LunchStart = null, EndTime = end }), error => error.Field == "endTime");
         Assert.DoesNotContain(WorkSchedule.Validate(Valid() with { LunchMinutes = null, EndTime = end }), error => error.Field == "endTime");
         Assert.DoesNotContain(WorkSchedule.Validate(Valid() with { LunchMinutes = 999, EndTime = end }), error => error.Field == "endTime");
+        Assert.DoesNotContain(WorkSchedule.Validate(Valid() with { LunchMinutes = -1, EndTime = end }), error => error.Field == "endTime");
     }
 
     [Fact]
