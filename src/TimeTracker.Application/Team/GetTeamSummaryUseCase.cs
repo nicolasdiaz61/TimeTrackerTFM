@@ -36,9 +36,9 @@ public sealed class GetTeamSummaryUseCase(IUserRepository users, ITimeEntryRepos
     };
 
     /// <summary>
-    /// Las horas extra de cada día local son lo trabajado por encima de <paramref name="dailyHours"/> si el día es laborable
-    /// en la jornada de la persona (lunes a viernes si no tiene), o todo lo trabajado si no lo es. La jornada no guarda una
-    /// duración prevista, por eso es una suposición explícita que se devuelve en el resultado.
+    /// Las horas extra de cada día local son lo trabajado por encima de lo previsto si el día es laborable en la jornada de la
+    /// persona (lunes a viernes si no tiene), o todo lo trabajado si no lo es. Lo previsto es el tiempo de trabajo de su jornada
+    /// cuando tiene hora de salida; si no, <paramref name="dailyHours"/> (suposición explícita que se devuelve en el resultado).
     /// </summary>
     /// <exception cref="ArgumentOutOfRangeException"><paramref name="dailyHours"/> fuera de 1 a 12.</exception>
     public async Task<TeamSummaryResult> ExecuteAsync(LocalDateRange range, DateTimeOffset now, double dailyHours, CancellationToken cancellationToken)
@@ -48,7 +48,7 @@ public sealed class GetTeamSummaryUseCase(IUserRepository users, ITimeEntryRepos
             throw new ArgumentOutOfRangeException(nameof(dailyHours), dailyHours, "Las horas diarias deben estar entre 1 y 12.");
         }
 
-        var expectedMinutes = (int)Math.Round(dailyHours * MinutesPerHour);
+        var assumedMinutes = (int)Math.Round(dailyHours * MinutesPerHour);
 
         // Se pide uno más para saber si el equipo supera el tope sin devolver una lista sin cota.
         var reports = await users.ListDirectReportsAsync(currentUser.EmployeeId, MaxMembers + 1, cancellationToken);
@@ -56,25 +56,28 @@ public sealed class GetTeamSummaryUseCase(IUserRepository users, ITimeEntryRepos
         var window = range.ToWindow();
 
         // Una sola consulta de jornadas de la compañía del contexto, y solo si algún miembro tiene una asignada.
-        var workingDays = new Dictionary<Guid, IReadOnlySet<DayOfWeek>>();
+        var scheduleInfo = new Dictionary<Guid, (IReadOnlySet<DayOfWeek> Days, int? ExpectedWorkMinutes)>();
         if (reports.Any(report => report.WorkScheduleId is not null))
         {
             foreach (var schedule in await schedules.ListAsync(cancellationToken))
             {
-                workingDays[schedule.Id] = schedule.Days.ToHashSet();
+                scheduleInfo[schedule.Id] = (schedule.Days.ToHashSet(), schedule.ExpectedWorkMinutes);
             }
         }
 
-        var totals = new List<(Guid Id, string Name, DailySummaryResult Summary, int BreakCount, int MealBreakCount, int Overtime, int OvertimeDays)>();
+        var totals = new List<(Guid Id, string Name, DailySummaryResult Summary, int BreakCount, int MealBreakCount, int Overtime, int OvertimeDays, string Basis, int ExpectedDaily)>();
         foreach (var report in reports.Take(MaxMembers))
         {
             var found = await entries.ListInWindowAsync(report.Id, window, GetTimeEntriesUseCase.MaxWindowEntries, cancellationToken);
             var list = TimeEntryListResult.From(found, open: null);
             var closed = found.Where(entry => entry.ClockOutAt is not null).ToList();
             var summary = DailySummaryBuilder.Build(list, range, now);
-            var working = report.WorkScheduleId is { } scheduleId && workingDays.TryGetValue(scheduleId, out var days) ? days : DefaultWorkingDays;
+            var info = report.WorkScheduleId is { } scheduleId && scheduleInfo.TryGetValue(scheduleId, out var known) ? known : (DefaultWorkingDays, (int?)null);
+            var working = info.Item1;
+            var ownMinutes = info.Item2;
+            var expectedDaily = ownMinutes ?? assumedMinutes;
             var overtime = summary.Days
-                .Select(day => Math.Max(0, day.WorkedMinutes - (working.Contains(day.Date.DayOfWeek) ? expectedMinutes : 0)))
+                .Select(day => Math.Max(0, day.WorkedMinutes - (working.Contains(day.Date.DayOfWeek) ? expectedDaily : 0)))
                 .ToList();
             totals.Add((
                 report.Id,
@@ -83,7 +86,9 @@ public sealed class GetTeamSummaryUseCase(IUserRepository users, ITimeEntryRepos
                 closed.Count(entry => entry.Type == TimeEntryType.Break),
                 closed.Count(entry => entry.Type == TimeEntryType.MealBreak),
                 overtime.Sum(),
-                overtime.Count(minutes => minutes > 0)));
+                overtime.Count(minutes => minutes > 0),
+                ownMinutes is null ? TeamMemberSummary.AssumedBasis : TeamMemberSummary.JornadaBasis,
+                expectedDaily));
         }
 
         var count = totals.Count;
@@ -113,14 +118,19 @@ public sealed class GetTeamSummaryUseCase(IUserRepository users, ITimeEntryRepos
                 member.Overtime,
                 member.OvertimeDays,
                 Round(member.Overtime - averages.OvertimeMinutes),
-                member.Overtime > averages.OvertimeMinutes))
+                member.Overtime > averages.OvertimeMinutes,
+                member.Basis,
+                member.ExpectedDaily))
             .OrderByDescending(member => member.BreakMinutes)
             .ThenBy(member => member.Name, StringComparer.Ordinal)
             .ToList();
 
+        var fromJornada = totals.Count(member => member.Basis == TeamMemberSummary.JornadaBasis);
         var note = string.Create(
             CultureInfo.InvariantCulture,
-            $"Horas extra = trabajo por encima de {dailyHours} h en días laborables de su jornada (lunes a viernes si no tiene) y todo el trabajo en días no laborables.");
+            $"Horas extra = trabajo por encima de las horas previstas en días laborables de su jornada (lunes a viernes si no tiene) y todo el trabajo en días no laborables. "
+            + $"Con expectedBasis 'jornada' ({fromJornada}) las horas previstas son las de su jornada (expectedDailyMinutes, de entrada a salida menos almuerzo); "
+            + $"con 'supuesto' ({totals.Count - fromJornada}, sin jornada o con jornada sin hora de salida) se suponen {dailyHours} h diarias.");
         return new TeamSummaryResult(range.From, range.To, count, truncated, Rounded(averages), members, dailyHours, note);
     }
 

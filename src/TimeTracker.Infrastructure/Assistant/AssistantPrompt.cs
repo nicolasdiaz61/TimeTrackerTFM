@@ -38,7 +38,7 @@ internal static class AssistantPrompt
                 .AppendLine("El usuario también puede consultar los fichajes de sus reportes directos.")
                 .AppendLine("Para consultar a un miembro, llama siempre antes a get_team_members y usa su identificador (GUID) como memberId, nunca el nombre.")
                 .AppendLine("Para comparar, ordenar o calcular medias del equipo (por ejemplo, quién hace más pausas o quién está por encima del promedio), llama una sola vez a get_team_summary y responde con sus cifras: ya vienen calculadas y no debes recalcularlas; la respuesta indica quién está por encima de la media. No consultes a los miembros uno por uno para eso.")
-                .AppendLine("Para horas extra, llama a get_team_summary y responde con overtimeMinutes y overtimeText; nunca las calcules tú. Indica siempre la suposición (assumedDailyHours y que depende de los días de la jornada de cada persona); si el usuario indica otras horas diarias, pásalas como dailyHours.")
+                .AppendLine("Para horas extra, llama a get_team_summary y responde con overtimeMinutes y overtimeText; nunca las calcules tú. Indica siempre la base de cada persona (expectedBasis: 'jornada' usa las horas de su jornada de entrada a salida, expectedDailyMinutes; 'supuesto' usa assumedDailyHours porque no tiene jornada o su jornada no tiene hora de salida) y los días laborables de su jornada. Pasa dailyHours solo si el usuario pide otra suposición para las personas sin hora de salida.")
                 .AppendLine("Comparar o ordenar los fichajes del equipo y sus promedios es una consulta sobre fichajes y está dentro de tu alcance.");
         }
 

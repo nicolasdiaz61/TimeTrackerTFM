@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Text.Json.Serialization;
 
+using TimeTracker.Application.TimeTracking;
 using TimeTracker.Domain.WorkSchedules;
 
 namespace TimeTracker.Infrastructure.Assistant;
@@ -16,7 +17,10 @@ internal sealed record WorkScheduleToolView(
     int LunchMinutes,
     int ExpectedBreakMinutes,
     IReadOnlyList<string> Days,
-    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] int? AssignedCount = null)
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] int? AssignedCount = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? EndTime = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] int? ExpectedWorkMinutes = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? ExpectedWorkText = null)
 {
     private const string TimeFormat = "HH':'mm";
 
@@ -30,7 +34,10 @@ internal sealed record WorkScheduleToolView(
             schedule.LunchMinutes,
             schedule.ExpectedBreakMinutes,
             [.. schedule.Days.Select(DayName)],
-            assignedCount);
+            assignedCount,
+            schedule.EndTime?.ToString(TimeFormat, CultureInfo.InvariantCulture),
+            schedule.ExpectedWorkMinutes,
+            schedule.ExpectedWorkMinutes is { } minutes ? DurationText.Format(minutes) : null);
     }
 
     private static string DayName(DayOfWeek day) => day switch

@@ -224,8 +224,9 @@ public sealed class AssistantPromptTests
         Assert.Contains("overtimeMinutes y overtimeText", manager);
         Assert.Contains("nunca las calcules tú", manager);
         Assert.Contains("assumedDailyHours", manager);
-        Assert.Contains("días de la jornada de cada persona", manager);
-        Assert.Contains("pásalas como dailyHours", manager);
+        Assert.Contains("expectedBasis", manager);
+        Assert.Contains("hora de salida", manager);
+        Assert.Contains("Pasa dailyHours solo si el usuario pide otra suposición", manager);
     }
 
     [Fact]

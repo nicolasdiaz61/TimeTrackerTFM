@@ -237,6 +237,41 @@ public sealed class AssistantToolsIsolationTests(PostgresFixture postgres)
     }
 
     [Fact]
+    public async Task GetTeamSummary_ScheduleWithEndTimeOfA_SetsItsExpectedHours_AndNeverUsesTheSchedulesOfB()
+    {
+        var fixture = await FixtureAsync();
+        // A: jornada de lunes a viernes 09:00-17:00 con 60 min de almuerzo (420 previstos); Employee1 trabaja 10 h (600): 180 extra. B tiene otra jornada con salida a las 20:00.
+        await AssignWeekdayScheduleWithEndAsync(fixture.ConnectionString, fixture.A.Id, fixture.A.Employee1.Id, "Jornada de A", "17:00");
+        await AssignWeekdayScheduleWithEndAsync(fixture.ConnectionString, fixture.B.Id, fixture.B.Employee1.Id, "Jornada de B", "20:00");
+        await InsertWorkAsync(fixture.ConnectionString, fixture.A.Id, fixture.A.Employee1.Id, 10);
+        await InsertWorkAsync(fixture.ConnectionString, fixture.A.Id, fixture.A.Employee2.Id, 10);
+        var rig = RigFor(fixture.ConnectionString, fixture.A.Id, fixture.A.Manager.Id, UserRole.Manager);
+
+        var result = await rig.InvokeAsync("get_team_summary", ("fromDate", "2026-10-12"), ("toDate", "2026-10-18"));
+
+        using var document = JsonDocument.Parse(result);
+        var members = document.RootElement.GetProperty("members").EnumerateArray().ToList();
+        var first = members.Single(member => member.GetProperty("memberId").GetString() == fixture.A.Employee1.Id.ToString());
+        var second = members.Single(member => member.GetProperty("memberId").GetString() == fixture.A.Employee2.Id.ToString());
+        Assert.Equal("jornada", first.GetProperty("expectedBasis").GetString());
+        Assert.Equal(420, first.GetProperty("expectedDailyMinutes").GetInt32());
+        Assert.Equal(180, first.GetProperty("overtimeMinutes").GetInt32());
+        Assert.Equal("supuesto", second.GetProperty("expectedBasis").GetString());
+        Assert.Equal(480, second.GetProperty("expectedDailyMinutes").GetInt32());
+        Assert.DoesNotContain("Jornada de B", result, StringComparison.Ordinal);
+        Assert.DoesNotContain("Persona de B", result, StringComparison.Ordinal);
+    }
+
+    private static async Task AssignWeekdayScheduleWithEndAsync(string connectionString, Guid companyId, Guid employeeId, string name, string endTime)
+    {
+        var scheduleId = Guid.NewGuid();
+        await MigrationDatabase.ExecuteAsync(
+            connectionString,
+            $"INSERT INTO work_schedules (id, company_id, name, start_time, lunch_start, lunch_minutes, expected_break_minutes, days_mask, end_time) VALUES ('{scheduleId}', '{companyId}', '{name}', '09:00', '13:00', 60, 30, 62, '{endTime}')");
+        await MigrationDatabase.ExecuteAsync(connectionString, $"UPDATE users SET work_schedule_id = '{scheduleId}' WHERE id = '{employeeId}'");
+    }
+
+    [Fact]
     public async Task GetTeamSummary_CoversOnlyTheDirectReportsOfTheManagerOfTheToken_NeverCompanyBNorOtherTeamsOfA()
     {
         var fixture = await FixtureAsync();
