@@ -66,6 +66,7 @@ else
                             <tr>
                                 <th scope="col">Nombre</th>
                                 <th scope="col">Entrada</th>
+                                <th scope="col">Salida</th>
                                 <th scope="col">Almuerzo</th>
                                 <th scope="col">Pausa esperada</th>
                                 <th scope="col">Días</th>
@@ -80,6 +81,7 @@ else
                                 <tr>
                                     <th scope="row">@schedule.Name</th>
                                     <td>@WorkSchedulePresentation.Time(schedule.StartTime)</td>
+                                    <td>@(schedule.EndTime is { } end ? WorkSchedulePresentation.Time(end) : "Sin indicar")</td>
                                     <td>@WorkSchedulePresentation.Time(schedule.LunchStart) (@schedule.LunchMinutes min)</td>
                                     <td>@schedule.ExpectedBreakMinutes min</td>
                                     <td>@WorkSchedulePresentation.DaysLabel(schedule.Days)</td>
@@ -176,6 +178,11 @@ else
                             <label for="schedule-start" class="form-label">Hora de entrada</label>
                             <InputText id="schedule-start" class="form-control" type="time" @bind-Value="state.StartTime" />
                             <FieldErrors Messages="@(state.ErrorsFor("startTime"))" />
+                        </div>
+                        <div class="col-12 col-md-6 mb-3">
+                            <label for="schedule-end" class="form-label">Hora de salida</label>
+                            <InputText id="schedule-end" class="form-control" type="time" required @bind-Value="state.EndTime" />
+                            <FieldErrors Messages="@(state.ErrorsFor("endTime"))" />
                         </div>
                         <div class="col-12 col-md-6 mb-3">
                             <label for="schedule-lunch-start" class="form-label">Inicio del almuerzo</label>

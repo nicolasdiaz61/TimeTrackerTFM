@@ -49,7 +49,7 @@ public class WorkSchedulesApiClientTests
         Assert.Equal(HttpMethod.Post, handler.Request!.Method);
         using var body = JsonDocument.Parse(handler.Body!);
         Assert.Equal(
-            ["days", "expectedBreakMinutes", "lunchMinutes", "lunchStart", "name", "startTime"],
+            ["days", "endTime", "expectedBreakMinutes", "lunchMinutes", "lunchStart", "name", "startTime"],
             body.RootElement.EnumerateObject().Select(property => property.Name).Order(StringComparer.Ordinal));
         Assert.Equal("09:00:00", body.RootElement.GetProperty("startTime").GetString());
         Assert.Equal([1, 5], body.RootElement.GetProperty("days").EnumerateArray().Select(day => day.GetInt32()));

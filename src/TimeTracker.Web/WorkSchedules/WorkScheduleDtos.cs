@@ -10,7 +10,9 @@ public sealed record WorkScheduleDto(
     int LunchMinutes,
     int ExpectedBreakMinutes,
     DayOfWeek[] Days,
-    int AssignedCount);
+    int AssignedCount,
+    TimeOnly? EndTime = null,
+    int? ExpectedWorkMinutes = null);
 
 public sealed record WorkScheduleListDto(IReadOnlyList<WorkScheduleDto> Items);
 
@@ -20,7 +22,8 @@ public sealed record WorkScheduleRequestDto(
     TimeOnly? LunchStart,
     int? LunchMinutes,
     int? ExpectedBreakMinutes,
-    DayOfWeek[] Days);
+    DayOfWeek[] Days,
+    TimeOnly? EndTime = null);
 
 public sealed record AssignWorkScheduleRequestDto(Guid? WorkScheduleId);
 
@@ -40,22 +43,22 @@ public static class WorkSchedulePresentation
     public static string DaysLabel(IEnumerable<DayOfWeek> days)
         => string.Join(", ", WeekOrder.Where(days.Contains).Select(DayName));
 
-    /// <summary>Una línea como «Oficina: entrada 09:00, almuerzo 14:00 (60 min), pausa esperada 30 min, lunes, martes».</summary>
+    /// <summary>Una línea como «Oficina: horario 09:00–18:00, almuerzo 14:00 (60 min), pausa esperada 30 min, lunes, martes» (sin salida: «entrada 09:00»).</summary>
     public static string Summary(WorkScheduleDto schedule)
     {
         ArgumentNullException.ThrowIfNull(schedule);
 
-        return $"{schedule.Name}: entrada {Time(schedule.StartTime)}, almuerzo {Time(schedule.LunchStart)} ({schedule.LunchMinutes} min), "
+        return $"{schedule.Name}: {Hours(schedule)}, almuerzo {Time(schedule.LunchStart)} ({schedule.LunchMinutes} min), "
             + $"pausa esperada {schedule.ExpectedBreakMinutes} min, {DaysLabel(schedule.Days)}";
     }
 
-    /// <summary>Lo previsto para un día: «09:00 · almuerzo 14:00 (60 min) · pausa 15 min», o «No laborable» si ese día no aplica.</summary>
+    /// <summary>Lo previsto para un día: «09:00–18:00 · almuerzo 14:00 (60 min) · pausa 15 min», o «No laborable» si ese día no aplica.</summary>
     public static string PlannedFor(WorkScheduleDto schedule, DateOnly date)
     {
         ArgumentNullException.ThrowIfNull(schedule);
 
         return schedule.Days.Contains(date.DayOfWeek)
-            ? $"{Time(schedule.StartTime)} · almuerzo {Time(schedule.LunchStart)} ({schedule.LunchMinutes} min) · pausa {schedule.ExpectedBreakMinutes} min"
+            ? $"{Range(schedule)} · almuerzo {Time(schedule.LunchStart)} ({schedule.LunchMinutes} min) · pausa {schedule.ExpectedBreakMinutes} min"
             : "No laborable";
     }
 
@@ -66,6 +69,12 @@ public static class WorkSchedulePresentation
 
         return workScheduleId is { } id ? schedules.FirstOrDefault(schedule => schedule.Id == id) : null;
     }
+
+    private static string Range(WorkScheduleDto schedule)
+        => schedule.EndTime is { } end ? $"{Time(schedule.StartTime)}–{Time(end)}" : Time(schedule.StartTime);
+
+    private static string Hours(WorkScheduleDto schedule)
+        => schedule.EndTime is { } end ? $"horario {Time(schedule.StartTime)}–{Time(end)}" : $"entrada {Time(schedule.StartTime)}";
 
     public static string Time(TimeOnly time) => time.ToString("HH:mm", System.Globalization.CultureInfo.InvariantCulture);
 }
