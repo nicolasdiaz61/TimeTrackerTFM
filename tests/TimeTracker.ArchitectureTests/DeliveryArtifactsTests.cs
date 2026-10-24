@@ -909,13 +909,14 @@ public partial class DeliveryArtifactsTests
     }
 
     [Fact]
-    public void Readme_IndexesEveryAdrInTheDirectory()
+    public void Readme_LinksTheAdrDirectory_AndEveryAdrLinkItCarriesPointsToAnExistingFile()
     {
         var readme = ReadRepositoryFile("README.md");
 
-        foreach (var adr in Directory.GetFiles(Path.Combine(RepositoryRoot.Path, "docs", "adr"), "0*.md").Select(Path.GetFileName))
+        Assert.Contains("(docs/adr/)", readme, StringComparison.Ordinal);
+        foreach (System.Text.RegularExpressions.Match link in System.Text.RegularExpressions.Regex.Matches(readme, @"\(docs/adr/([^)/]+\.md)\)"))
         {
-            Assert.Contains($"(docs/adr/{adr})", readme, StringComparison.Ordinal);
+            Assert.True(File.Exists(Path.Combine(RepositoryRoot.Path, "docs", "adr", link.Groups[1].Value)), $"El README enlaza un ADR que no existe: {link.Groups[1].Value}");
         }
     }
 
@@ -1028,11 +1029,6 @@ public partial class DeliveryArtifactsTests
             "Seed__DemoPassword",
             "Cors__AllowedOrigins__0=http://localhost:5172",
             "RandomNumberGenerator",
-            "marta.responsable@example.test",
-            "luis.empleado@example.test",
-            "ana.empleada@example.test",
-            "pablo.empleado@example.test",
-            "Demo-Fichajes-2026",
             "despliegue real",
             "dotnet ef",
             "0011-autenticacion-jwt-roles-y-equipo.md",
@@ -1044,6 +1040,29 @@ public partial class DeliveryArtifactsTests
 
         Assert.True(missing.Count == 0, $"README.md no menciona: {string.Join(", ", missing)}");
         Assert.DoesNotContain("Identity__DevelopmentEmployeeId", readme, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Readme_DoesNotPublishAnyTestCredential()
+    {
+        var readme = ReadRepositoryFile("README.md");
+
+        Assert.DoesNotContain("Demo-Fichajes-2026", readme, StringComparison.Ordinal);
+        Assert.DoesNotContain("@example.test", readme, StringComparison.Ordinal);
+        Assert.DoesNotContain("## Usuarios de prueba", readme, StringComparison.Ordinal);
+        Assert.Contains("formulario de entrega", readme, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Readme_HasTheFiveRequiredSectionsInOrderBeforeTheExtraOnes()
+    {
+        var headings = ReadRepositoryFile("README.md").Replace("\r\n", "\n", StringComparison.Ordinal).Split('\n')
+            .Where(line => line.StartsWith("## ", StringComparison.Ordinal))
+            .Select(line => line[3..].Trim())
+            .ToList();
+        string[] required = ["Descripción general", "Stack tecnológico", "Instalación y ejecución", "Estructuración", "Funcionalidades"];
+
+        Assert.True(headings.Take(required.Length).SequenceEqual(required), $"Las cinco primeras secciones deben ser: {string.Join(", ", required)}. Hay: {string.Join(", ", headings)}");
     }
 
     [Fact]
