@@ -20,6 +20,7 @@ internal static class MigrationDatabase
     public const string AddAssistantAuditImmutability = "_AddAssistantAuditImmutability";
     public const string AddWorkSchedules = "_AddWorkSchedules";
     public const string AddGroqProvider = "_AddGroqProvider";
+    public const string AddWorkScheduleEndTime = "_AddWorkScheduleEndTime";
 
     public static readonly string DefaultCompany = Company.DefaultId.ToString();
 

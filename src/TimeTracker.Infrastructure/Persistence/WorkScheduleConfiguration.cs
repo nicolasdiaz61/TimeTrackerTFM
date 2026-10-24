@@ -33,6 +33,9 @@ internal sealed class WorkScheduleConfiguration : IEntityTypeConfiguration<WorkS
         builder.Property(schedule => schedule.LunchMinutes).HasColumnName("lunch_minutes").IsRequired();
         builder.Property(schedule => schedule.ExpectedBreakMinutes).HasColumnName("expected_break_minutes").IsRequired();
         builder.Property(schedule => schedule.DaysMask).HasColumnName("days_mask").IsRequired();
+        // Nula en las jornadas anteriores a la hora de salida: no hay relleno de datos (ADR 0031).
+        builder.Property(schedule => schedule.EndTime).HasColumnName("end_time").HasColumnType("time without time zone");
+        builder.Ignore(schedule => schedule.ExpectedWorkMinutes);
         builder.Ignore(schedule => schedule.Days);
 
         // Destino de la clave foránea compuesta de users: una persona solo puede tener una jornada de su misma compañía.
