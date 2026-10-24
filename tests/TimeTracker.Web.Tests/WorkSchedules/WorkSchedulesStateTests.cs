@@ -68,14 +68,14 @@ public class WorkSchedulesStateTests
 
         private WorkScheduleDto Add(WorkScheduleRequestDto request)
         {
-            var dto = new WorkScheduleDto(Guid.NewGuid(), request.Name, request.StartTime ?? default, request.LunchStart ?? default, request.LunchMinutes ?? 0, request.ExpectedBreakMinutes ?? 0, request.Days, 0);
+            var dto = new WorkScheduleDto(Guid.NewGuid(), request.Name, request.StartTime ?? default, request.LunchStart ?? default, request.LunchMinutes ?? 0, request.ExpectedBreakMinutes ?? 0, request.Days, 0, request.EndTime);
             Stored.Add(dto);
             return dto;
         }
     }
 
     private static WorkScheduleDto Existing(int assigned = 0)
-        => new(Oficina, "Oficina", new TimeOnly(9, 0), new TimeOnly(14, 0), 60, 30, [DayOfWeek.Monday, DayOfWeek.Friday], assigned);
+        => new(Oficina, "Oficina", new TimeOnly(9, 0), new TimeOnly(14, 0), 60, 30, [DayOfWeek.Monday, DayOfWeek.Friday], assigned, new TimeOnly(18, 0));
 
     private static WorkSchedulesState Filled(FakeApi api, bool isManager = true)
     {
@@ -83,6 +83,7 @@ public class WorkSchedulesStateTests
         {
             Name = " Oficina ",
             StartTime = "09:00",
+            EndTime = "18:00",
             LunchStart = "14:00",
             LunchMinutes = 60,
             ExpectedBreakMinutes = 30,
@@ -126,7 +127,7 @@ public class WorkSchedulesStateTests
         await state.SubmitAsync();
 
         var request = Assert.Single(api.Created);
-        Assert.Equal(new WorkScheduleRequestDto("Oficina", new TimeOnly(9, 0), new TimeOnly(14, 0), 60, 30, [DayOfWeek.Monday, DayOfWeek.Friday]), request, new RequestComparer());
+        Assert.Equal(new WorkScheduleRequestDto("Oficina", new TimeOnly(9, 0), new TimeOnly(14, 0), 60, 30, [DayOfWeek.Monday, DayOfWeek.Friday], new TimeOnly(18, 0)), request, new RequestComparer());
         Assert.Equal("Jornada guardada.", state.Notice);
         Assert.Single(state.Items);
         Assert.Equal(string.Empty, state.Name);
@@ -137,7 +138,7 @@ public class WorkSchedulesStateTests
     private sealed class RequestComparer : IEqualityComparer<WorkScheduleRequestDto>
     {
         public bool Equals(WorkScheduleRequestDto? x, WorkScheduleRequestDto? y)
-            => x is not null && y is not null && x.Name == y.Name && x.StartTime == y.StartTime && x.LunchStart == y.LunchStart
+            => x is not null && y is not null && x.Name == y.Name && x.StartTime == y.StartTime && x.LunchStart == y.LunchStart && x.EndTime == y.EndTime
                 && x.LunchMinutes == y.LunchMinutes && x.ExpectedBreakMinutes == y.ExpectedBreakMinutes && x.Days.SequenceEqual(y.Days);
 
         public int GetHashCode(WorkScheduleRequestDto obj) => obj.Name.GetHashCode(StringComparison.Ordinal);
@@ -306,9 +307,50 @@ public class WorkSchedulesStateTests
     [Fact]
     public void Summary_DescribesNameEntryLunchBreakAndDays()
     {
-        var text = WorkSchedulePresentation.Summary(Existing());
+        var text = WorkSchedulePresentation.Summary(Existing() with { EndTime = null });
 
+        Assert.Equal("Oficina: horario 09:00–18:00, almuerzo 14:00 (60 min), pausa esperada 30 min, lunes, viernes", WorkSchedulePresentation.Summary(Existing()));
         Assert.Equal("Oficina: entrada 09:00, almuerzo 14:00 (60 min), pausa esperada 30 min, lunes, viernes", text);
         Assert.Equal("lunes, domingo", WorkSchedulePresentation.DaysLabel([DayOfWeek.Sunday, DayOfWeek.Monday]));
+    }
+
+    [Fact]
+    public async Task Submit_WithoutAnEndTime_ShowsTheFieldErrorAndDoesNotCallTheApi()
+    {
+        var api = new FakeApi();
+        var state = Filled(api);
+        state.EndTime = string.Empty;
+
+        await state.SubmitAsync();
+
+        Assert.Empty(api.Created);
+        Assert.Equal("La hora de salida es obligatoria.", Assert.Single(state.ErrorsFor("endTime")));
+        Assert.Equal(FormFeedback.ReviewFieldsMessage, state.ErrorMessage);
+        Assert.False(state.IsBusy);
+    }
+
+    [Fact]
+    public async Task Submit_AcceptsAnEndTimeWithSeconds()
+    {
+        var api = new FakeApi();
+        var state = Filled(api);
+        state.EndTime = "18:00:00";
+
+        await state.SubmitAsync();
+
+        Assert.Equal(new TimeOnly(18, 0), Assert.Single(api.Created).EndTime);
+    }
+
+    [Fact]
+    public void Edit_ALegacyScheduleLeavesTheEndTimeEmpty_AndOneWithItShowsIt()
+    {
+        var state = new WorkSchedulesState(new FakeApi(), true);
+
+        state.Edit(Existing() with { EndTime = null });
+        var legacy = state.EndTime;
+        state.Edit(Existing());
+
+        Assert.Equal(string.Empty, legacy);
+        Assert.Equal("18:00", state.EndTime);
     }
 }

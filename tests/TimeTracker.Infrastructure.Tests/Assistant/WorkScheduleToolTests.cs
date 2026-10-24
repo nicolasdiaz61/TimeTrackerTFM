@@ -159,4 +159,23 @@ public class WorkScheduleToolTests
 
         Assert.Equal(before, harness.Schedules.All.Select(schedule => (schedule.Id, schedule.Name, schedule.DaysMask)));
     }
+
+    [Fact]
+    public async Task MyWorkSchedule_WithAnEndTime_ReturnsItAndTheExpectedWork_AndOmitsThemWithout()
+    {
+        var withEnd = new ToolHarness(ToolHarness.Ana, UserRole.Employee);
+        withEnd.SeedSchedule("Oficina", Weekdays, new TimeOnly(17, 0), ToolHarness.Ana);
+        var without = new ToolHarness(ToolHarness.Luis, UserRole.Employee);
+        without.SeedSchedule("Antigua", Weekdays, ToolHarness.Luis);
+
+        var withSchedule = (await withEnd.InvokeAsync("get_my_work_schedule")).GetProperty("workSchedule");
+        var legacy = (await without.InvokeAsync("get_my_work_schedule")).GetProperty("workSchedule");
+
+        Assert.Equal("17:00", withSchedule.GetProperty("endTime").GetString());
+        Assert.Equal(465, withSchedule.GetProperty("expectedWorkMinutes").GetInt32());
+        Assert.Equal("7 h 45 min", withSchedule.GetProperty("expectedWorkText").GetString());
+        Assert.False(legacy.TryGetProperty("endTime", out _));
+        Assert.False(legacy.TryGetProperty("expectedWorkMinutes", out _));
+        Assert.False(legacy.TryGetProperty("expectedWorkText", out _));
+    }
 }

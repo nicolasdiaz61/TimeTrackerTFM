@@ -11,7 +11,7 @@ public class WorkScheduleDialogsTests
 
     private sealed class FakeApi : IWorkSchedulesApi
     {
-        public List<WorkScheduleDto> Stored { get; } = [new(Oficina, "Oficina", new TimeOnly(9, 0), new TimeOnly(14, 0), 60, 30, [DayOfWeek.Monday], 0)];
+        public List<WorkScheduleDto> Stored { get; } = [new(Oficina, "Oficina", new TimeOnly(9, 0), new TimeOnly(14, 0), 60, 30, [DayOfWeek.Monday], 0, new TimeOnly(18, 0))];
 
         public ApiFailure? SaveFailure { get; set; }
 

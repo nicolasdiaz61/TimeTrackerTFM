@@ -84,6 +84,18 @@ psql "<conexión>" -v ON_ERROR_STOP=1 --single-transaction -f up-a.sql
 
 Con `<desde>` la migración anterior y `<hasta>` `AddCompanies` (A) o `EnforceCompanyIsolation` (B); para `Down`, el orden inverso. Comprobado en local con `psql` 18: el script de EF lleva su propio `START TRANSACTION`/`COMMIT`, de modo que dentro de `--single-transaction` aparecen los avisos `there is already a transaction in progress` y `there is no transaction in progress`. Son inocuos con un script por migración (un error a mitad deshace la migración entera); **no concatene migraciones en un mismo script** ni espere atomicidad entre ellas. Lo que falta por comprobar en Railway es V-3.
 
+## Hora de salida de las jornadas de demostración
+
+La migración `AddWorkScheduleEndTime` (ADR 0031) añade `end_time` nula: las jornadas existentes siguen usando la suposición de 8 h hasta que se edite cada una desde `/jornadas` o se actualice por SQL. La siembra de la compañía de demostración TFM vive fuera del repositorio, así que para sus tres jornadas (por nombre; ejecútelo con la conexión del servicio de la base de datos y revise antes el número de filas):
+
+```sql
+UPDATE work_schedules SET end_time = '18:00' WHERE company_id = '<id-compañía-demo>' AND name = 'Oficina'; -- almuerzo 60 min: 8 h
+UPDATE work_schedules SET end_time = '16:45' WHERE company_id = '<id-compañía-demo>' AND name = 'Madrugador'; -- almuerzo 45 min: 8 h
+UPDATE work_schedules SET end_time = '12:00' WHERE company_id = '<id-compañía-demo>' AND name = 'Media jornada'; -- sin almuerzo: 4 h
+```
+
+Sustituya `<id-compañía-demo>` por el id de la compañía de demostración; cada `UPDATE` debe afectar a una sola fila. Para deshacerlo, `UPDATE work_schedules SET end_time = NULL WHERE company_id = '<id-compañía-demo>'`.
+
 ## Ensayo con datos copiados
 
 Antes de desplegar, en un PostgreSQL local de la misma versión mayor y con una copia de producción restaurada (si el responsable la facilita; si no, con una base sembrada con auditoría y un fichaje huérfano), en dos partes:

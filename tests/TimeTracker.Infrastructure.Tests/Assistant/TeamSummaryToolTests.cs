@@ -79,7 +79,7 @@ public class TeamSummaryToolTests
         var hours = schema.GetProperty("properties").GetProperty("dailyHours");
         Assert.Equal("number", hours.GetProperty("type").GetString());
         Assert.Contains("horas previstas por día laborable", hours.GetProperty("description").GetString(), StringComparison.Ordinal);
-        Assert.Contains("usa 8 salvo que el usuario indique otra", hours.GetProperty("description").GetString(), StringComparison.Ordinal);
+        Assert.Contains("omítelo (por defecto 8) salvo que el usuario pida otra suposición", hours.GetProperty("description").GetString(), StringComparison.Ordinal);
         var required = schema.GetProperty("required").EnumerateArray().Select(item => item.GetString()).ToList();
         Assert.Equal(["fromDate", "toDate"], required.Order());
     }
@@ -209,5 +209,36 @@ public class TeamSummaryToolTests
         Assert.Equal(["error"], result.EnumerateObject().Select(property => property.Name));
         Assert.Equal(0, harness.Entries.ListInWindowCalls);
         Assert.Null(harness.Users.LastLimit);
+    }
+
+    [Fact]
+    public async Task Overtime_MixedTeam_ReportsTheBasisOfEachMember()
+    {
+        var harness = Manager();
+        // 08:30-17:00 con 45 min de almuerzo: 465 min previstos; Ana trabaja 8 h seguidas (480): 15 min extra.
+        harness.SeedSchedule("Oficina", [DayOfWeek.Monday, DayOfWeek.Tuesday, DayOfWeek.Wednesday, DayOfWeek.Thursday, DayOfWeek.Friday], new TimeOnly(17, 0), ToolHarness.Ana);
+        harness.SeedEntry(ToolHarness.Ana, Day, new(8, 0), new(16, 0));
+        harness.SeedEntry(ToolHarness.Luis, Day, new(8, 0), new(18, 30));
+
+        var result = await SummaryAsync(harness);
+
+        var members = result.GetProperty("members").EnumerateArray().ToDictionary(member => member.GetProperty("memberId").GetString()!);
+        var ana = members[ToolHarness.Ana.ToString()];
+        var luis = members[ToolHarness.Luis.ToString()];
+        Assert.Equal("jornada", ana.GetProperty("expectedBasis").GetString());
+        Assert.Equal(465, ana.GetProperty("expectedDailyMinutes").GetInt32());
+        Assert.Equal(15, ana.GetProperty("overtimeMinutes").GetInt32());
+        Assert.Equal("supuesto", luis.GetProperty("expectedBasis").GetString());
+        Assert.Equal(480, luis.GetProperty("expectedDailyMinutes").GetInt32());
+        Assert.Equal(150, luis.GetProperty("overtimeMinutes").GetInt32());
+        Assert.Contains("expectedBasis", result.GetProperty("overtimeNote").GetString(), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void DailyHoursDescription_SaysItOnlyAppliesToPeopleWithoutAnEndTime()
+    {
+        var schema = Manager().Tools.Single(tool => tool.Name == Tool).JsonSchema.GetProperty("properties").GetProperty("dailyHours");
+
+        Assert.Contains("no tiene hora de salida", schema.GetProperty("description").GetString(), StringComparison.Ordinal);
     }
 }

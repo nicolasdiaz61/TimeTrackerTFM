@@ -221,6 +221,10 @@ namespace TimeTracker.Infrastructure.Persistence.Migrations
                         .HasColumnType("integer")
                         .HasColumnName("days_mask");
 
+                    b.Property<TimeOnly?>("EndTime")
+                        .HasColumnType("time without time zone")
+                        .HasColumnName("end_time");
+
                     b.Property<int>("ExpectedBreakMinutes")
                         .HasColumnType("integer")
                         .HasColumnName("expected_break_minutes");

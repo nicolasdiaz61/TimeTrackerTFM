@@ -48,6 +48,19 @@ public class GetTeamSummaryUseCaseTests
         _users.Seed(user);
     }
 
+    // Jornada de 08:00 a la hora de salida dada, con 45 min de almuerzo (lunes a viernes).
+    private void SeedUserWithEnd(Guid id, string name, Guid? managerId, TimeOnly end)
+    {
+        var user = UserAccount.Create(id, Company.DefaultId, $"{id:N}@example.test", name, "hash", UserRole.Employee, managerId);
+        var schedule = WorkSchedule.Create(
+            Guid.NewGuid(),
+            Company.DefaultId,
+            new("Con salida", new TimeOnly(8, 0), new TimeOnly(13, 0), 45, 15, [DayOfWeek.Monday, DayOfWeek.Tuesday, DayOfWeek.Wednesday, DayOfWeek.Thursday, DayOfWeek.Friday], end));
+        _schedules.Seed(schedule);
+        user.AssignWorkSchedule(schedule.Id);
+        _users.Seed(user);
+    }
+
     private void Seed(Guid employee, TimeEntryType type, DateOnly day, TimeOnly from, TimeOnly to)
     {
         var entry = TimeEntry.Start(Company.DefaultId, employee, type, SpainTime.ToUtc(day, from));
@@ -253,6 +266,8 @@ public class GetTeamSummaryUseCaseTests
         Assert.Equal("2 h 30 min", luis.OvertimeText);
         Assert.Equal(8, result.AssumedDailyHours);
         Assert.Contains("8 h", result.OvertimeNote, StringComparison.Ordinal);
+        Assert.Equal("supuesto", luis.ExpectedBasis);
+        Assert.Equal(480, luis.ExpectedDailyMinutes);
     }
 
     [Fact]
@@ -506,5 +521,65 @@ public class GetTeamSummaryUseCaseTests
         var result = await RunAsync();
 
         Assert.False(result.MembersTruncated);
+    }
+
+    [Fact]
+    public async Task Overtime_ScheduleWithEndTime_UsesItsOwnExpectedMinutes_AndIgnoresDailyHours()
+    {
+        // 08:00-14:00 con 45 min de almuerzo: 315 min previstos, no los 480 supuestos.
+        SeedUserWithEnd(LuisId, "Luis", MartaId, new TimeOnly(14, 0));
+        Seed(LuisId, TimeEntryType.Work, Day, new(8, 0), new(14, 0));
+
+        var result = await RunAsync(dailyHours: 12);
+
+        var luis = Assert.Single(result.Members);
+        Assert.Equal(45, luis.OvertimeMinutes);
+        Assert.Equal("jornada", luis.ExpectedBasis);
+        Assert.Equal(315, luis.ExpectedDailyMinutes);
+    }
+
+    [Fact]
+    public async Task Overtime_ScheduleWithEndTime_ExactlyTheExpectedMinutesIsNoOvertime()
+    {
+        SeedUserWithEnd(LuisId, "Luis", MartaId, new TimeOnly(16, 45));
+        Seed(LuisId, TimeEntryType.Work, Day, new(8, 0), new(16, 0));
+
+        var result = await RunAsync();
+
+        Assert.Equal(0, Assert.Single(result.Members).OvertimeMinutes);
+        Assert.Equal(480, Assert.Single(result.Members).ExpectedDailyMinutes);
+    }
+
+    [Fact]
+    public async Task Overtime_MixedTeam_LabelsEachMemberWithItsBasis_AndTheNoteExplainsBoth()
+    {
+        SeedUserWithEnd(LuisId, "Luis", MartaId, new TimeOnly(14, 0));
+        SeedUser(AnaId, "Ana", MartaId);
+        SeedUser(OtherManagerId, "Con jornada sin salida", MartaId, DayOfWeek.Thursday);
+        Seed(LuisId, TimeEntryType.Work, Day, new(8, 0), new(14, 0));
+        Seed(AnaId, TimeEntryType.Work, Day, new(8, 0), new(16, 30));
+
+        var result = await RunAsync(dailyHours: 6);
+
+        var luis = result.Members.Single(member => member.MemberId == LuisId);
+        var ana = result.Members.Single(member => member.MemberId == AnaId);
+        var noEnd = result.Members.Single(member => member.MemberId == OtherManagerId);
+        Assert.Equal(("jornada", 315, 45), (luis.ExpectedBasis, luis.ExpectedDailyMinutes, luis.OvertimeMinutes));
+        Assert.Equal(("supuesto", 360, 150), (ana.ExpectedBasis, ana.ExpectedDailyMinutes, ana.OvertimeMinutes));
+        Assert.Equal(("supuesto", 360), (noEnd.ExpectedBasis, noEnd.ExpectedDailyMinutes));
+        Assert.Contains("'jornada' (1)", result.OvertimeNote, StringComparison.Ordinal);
+        Assert.Contains("'supuesto' (2,", result.OvertimeNote, StringComparison.Ordinal);
+        Assert.Contains("6 h", result.OvertimeNote, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Overtime_ScheduleWithEndTime_NonWorkingDaysStillCountEverythingAsOvertime()
+    {
+        SeedUserWithEnd(LuisId, "Luis", MartaId, new TimeOnly(16, 45));
+        Seed(LuisId, TimeEntryType.Work, Saturday, new(9, 0), new(11, 0));
+
+        var result = await RunAsync();
+
+        Assert.Equal(120, Assert.Single(result.Members).OvertimeMinutes);
     }
 }

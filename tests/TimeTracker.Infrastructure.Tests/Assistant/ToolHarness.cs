@@ -74,11 +74,14 @@ internal sealed class ToolHarness
 
     /// <summary>Crea una jornada de la compañía por defecto y, si se indica, la asigna a una persona.</summary>
     public WorkSchedule SeedSchedule(string name, IReadOnlyCollection<DayOfWeek> days, params Guid[] assignTo)
+        => SeedSchedule(name, days, null, assignTo);
+
+    public WorkSchedule SeedSchedule(string name, IReadOnlyCollection<DayOfWeek> days, TimeOnly? endTime, params Guid[] assignTo)
     {
         var schedule = WorkSchedule.Create(
             Guid.NewGuid(),
             Company.DefaultId,
-            new WorkScheduleDetails(name, new TimeOnly(8, 30), new TimeOnly(14, 0), 45, 20, days));
+            new WorkScheduleDetails(name, new TimeOnly(8, 30), new TimeOnly(14, 0), 45, 20, days, endTime));
         Schedules.Seed(schedule);
         foreach (var person in assignTo)
         {

@@ -2354,6 +2354,13 @@
             "items": {
               "$ref": "#/components/schemas/DayOfWeek"
             }
+          },
+          "endTime": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "time"
           }
         }
       },
@@ -2366,7 +2373,9 @@
           "lunchMinutes",
           "expectedBreakMinutes",
           "days",
-          "assignedCount"
+          "assignedCount",
+          "endTime",
+          "expectedWorkMinutes"
         ],
         "type": "object",
         "properties": {
@@ -2410,6 +2419,22 @@
           "assignedCount": {
             "pattern": "^-?(?:0|[1-9]\\d*)$",
             "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "endTime": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "time"
+          },
+          "expectedWorkMinutes": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
               "integer",
               "string"
             ],

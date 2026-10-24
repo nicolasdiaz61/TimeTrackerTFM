@@ -19,7 +19,7 @@ public sealed class WorkSchedulesState(IWorkSchedulesApi api, bool isManager)
     // Un campo type="time" entrega «HH:mm», pero Blazor lo recibe con segundos («HH:mm:ss») al enlazarlo.
     private static readonly string[] TimeFormats = ["HH:mm", "HH:mm:ss"];
 
-    private static readonly string[] ShownFields = ["name", "startTime", "lunchStart", "lunchMinutes", "expectedBreakMinutes", "days"];
+    private static readonly string[] ShownFields = ["name", "startTime", "endTime", "lunchStart", "lunchMinutes", "expectedBreakMinutes", "days"];
 
     private readonly FormFeedback feedback = new();
 
@@ -36,6 +36,9 @@ public sealed class WorkSchedulesState(IWorkSchedulesApi api, bool isManager)
 
     /// <summary>Hora de entrada como «HH:mm» (el valor de un campo <c>type="time"</c>).</summary>
     public string StartTime { get; set; } = string.Empty;
+
+    /// <summary>Hora de salida como «HH:mm»; obligatoria en el formulario aunque la API la admita vacía por compatibilidad.</summary>
+    public string EndTime { get; set; } = string.Empty;
 
     public string LunchStart { get; set; } = string.Empty;
 
@@ -87,6 +90,7 @@ public sealed class WorkSchedulesState(IWorkSchedulesApi api, bool isManager)
         EditingId = null;
         Name = string.Empty;
         StartTime = string.Empty;
+        EndTime = string.Empty;
         LunchStart = string.Empty;
         LunchMinutes = null;
         ExpectedBreakMinutes = null;
@@ -101,6 +105,7 @@ public sealed class WorkSchedulesState(IWorkSchedulesApi api, bool isManager)
         EditingId = schedule.Id;
         Name = schedule.Name;
         StartTime = WorkSchedulePresentation.Time(schedule.StartTime);
+        EndTime = schedule.EndTime is { } end ? WorkSchedulePresentation.Time(end) : string.Empty;
         LunchStart = WorkSchedulePresentation.Time(schedule.LunchStart);
         LunchMinutes = schedule.LunchMinutes;
         ExpectedBreakMinutes = schedule.ExpectedBreakMinutes;
@@ -131,10 +136,18 @@ public sealed class WorkSchedulesState(IWorkSchedulesApi api, bool isManager)
             return;
         }
 
+        // La API admite jornadas sin salida solo por compatibilidad: desde el formulario siempre se indica.
+        if (ParseTime(EndTime) is not { } endTime)
+        {
+            feedback.ShowField("endTime", "La hora de salida es obligatoria.");
+            IsBusy = false;
+            return;
+        }
+
         try
         {
             var request = new WorkScheduleRequestDto(
-                Name.Trim(), ParseTime(StartTime), ParseTime(LunchStart), LunchMinutes, ExpectedBreakMinutes, [.. WorkSchedulePresentation.WeekOrder.Where(selectedDays.Contains)]);
+                Name.Trim(), ParseTime(StartTime), ParseTime(LunchStart), LunchMinutes, ExpectedBreakMinutes, [.. WorkSchedulePresentation.WeekOrder.Where(selectedDays.Contains)], endTime);
             var result = EditingId is { } id
                 ? await api.UpdateAsync(id, request, cancellationToken)
                 : await api.CreateAsync(request, cancellationToken);

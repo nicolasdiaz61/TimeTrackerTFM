@@ -19,6 +19,16 @@ public class WorkSchedulePlannedTests
         => Assert.Equal("09:00 · almuerzo 14:00 (60 min) · pausa 15 min", WorkSchedulePresentation.PlannedFor(Office, new DateOnly(2026, 10, 19)));
 
     [Fact]
+    public void PlannedFor_WithAnEndTimeShowsTheRange()
+        => Assert.Equal("09:00–18:00 · almuerzo 14:00 (60 min) · pausa 15 min", WorkSchedulePresentation.PlannedFor(Office with { EndTime = new TimeOnly(18, 0) }, new DateOnly(2026, 10, 19)));
+
+    [Fact]
+    public void Overview_WithAnEndTimeShowsTheRange()
+        => Assert.Equal(
+            "Oficina: horario 09:00–18:00, almuerzo 14:00 (60 min), pausa esperada 15 min, lunes, martes, miércoles, jueves, viernes",
+            WorkSchedulePresentation.Summary(Office with { EndTime = new TimeOnly(18, 0) }));
+
+    [Fact]
     public void PlannedFor_ADayOutsideTheScheduleIsNotWorkable()
         => Assert.Equal("No laborable", WorkSchedulePresentation.PlannedFor(Office, new DateOnly(2026, 10, 24)));
 

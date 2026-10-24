@@ -45,7 +45,7 @@ public sealed class AssistantToolset(
     internal const string MaxDaysText = "31";
     private const string DateRangeSuffix = $"entre dos fechas (máximo {MaxDaysText} días).";
     private const string MemberIdDescription = $"Identificador (GUID) del miembro, obtenido SOLO de {TeamMembersTool}; nunca el nombre.";
-    private const string DailyHoursDescription = "horas previstas por día laborable para calcular las horas extra; usa 8 salvo que el usuario indique otra";
+    private const string DailyHoursDescription = "solo para personas cuya jornada no tiene hora de salida (o sin jornada): horas previstas por día laborable para las horas extra; omítelo (por defecto 8) salvo que el usuario pida otra suposición";
     private const string InvalidDailyHoursMessage = "dailyHours debe ser un número de horas entre 1 y 12, por ejemplo 8.";
     private const string UnavailableMessage = "No se ha podido completar la consulta en este momento.";
 

@@ -175,4 +175,84 @@ public class WorkScheduleTests
         Assert.Equal("Jornada de oficina", schedule.Name);
         Assert.Equal(5, schedule.Days.Count);
     }
+
+    [Fact]
+    public void WithoutEndTime_ExpectedWorkMinutesIsNull()
+    {
+        var schedule = WorkSchedule.Create(Id, CompanyId, Valid());
+
+        Assert.Null(schedule.EndTime);
+        Assert.Null(schedule.ExpectedWorkMinutes);
+    }
+
+    [Fact]
+    public void Create_WithEndTime_DerivesTheExpectedWorkMinutes()
+    {
+        var schedule = WorkSchedule.Create(Id, CompanyId, Valid() with { EndTime = new TimeOnly(18, 0) });
+
+        Assert.Equal(new TimeOnly(18, 0), schedule.EndTime);
+        Assert.Equal(480, schedule.ExpectedWorkMinutes);
+    }
+
+    [Fact]
+    public void Update_SetsAndClearsTheEndTime()
+    {
+        var schedule = WorkSchedule.Create(Id, CompanyId, Valid());
+
+        schedule.Update(Valid() with { EndTime = new TimeOnly(17, 0) });
+        Assert.Equal(420, schedule.ExpectedWorkMinutes);
+
+        schedule.Update(Valid());
+        Assert.Null(schedule.EndTime);
+    }
+
+    [Theory]
+    [InlineData(9, 0, "La hora de salida debe ser posterior a la hora de entrada.")]
+    [InlineData(8, 0, "La hora de salida debe ser posterior a la hora de entrada.")]
+    [InlineData(15, 0, "La hora de salida debe ser posterior al fin del almuerzo.")]
+    [InlineData(14, 30, "La hora de salida debe ser posterior al fin del almuerzo.")]
+    public void Validate_InvalidEndTime_ReportsTheEndTime(int hour, int minute, string message)
+    {
+        var errors = WorkSchedule.Validate(Valid() with { EndTime = new TimeOnly(hour, minute) });
+
+        Assert.Contains(errors, error => error.Field == "endTime" && error.Message == message);
+    }
+
+    [Fact]
+    public void Validate_EndTimeJustAfterTheLunch_IsValid()
+        => Assert.Empty(WorkSchedule.Validate(Valid() with { EndTime = new TimeOnly(15, 1) }));
+
+    [Fact]
+    public void Validate_LessThanAMinuteOfWork_ReportsTheEndTime()
+    {
+        var details = Valid() with
+        {
+            StartTime = new TimeOnly(9, 0, 0),
+            LunchStart = new TimeOnly(9, 0, 30),
+            LunchMinutes = 0,
+            EndTime = new TimeOnly(9, 0, 40),
+        };
+
+        Assert.Contains(WorkSchedule.Validate(details), error => error.Field == "endTime" && error.Message.Contains("un minuto"));
+    }
+
+    [Fact]
+    public void Validate_EndTime_IsNotComparedWithMissingOrInvalidData()
+    {
+        var end = new TimeOnly(18, 0);
+
+        Assert.DoesNotContain(WorkSchedule.Validate(Valid() with { StartTime = null, EndTime = end }), error => error.Field == "endTime");
+        Assert.DoesNotContain(WorkSchedule.Validate(Valid() with { LunchStart = null, EndTime = end }), error => error.Field == "endTime");
+        Assert.DoesNotContain(WorkSchedule.Validate(Valid() with { LunchMinutes = null, EndTime = end }), error => error.Field == "endTime");
+        Assert.DoesNotContain(WorkSchedule.Validate(Valid() with { LunchMinutes = 999, EndTime = end }), error => error.Field == "endTime");
+        Assert.DoesNotContain(WorkSchedule.Validate(Valid() with { LunchMinutes = -1, EndTime = end }), error => error.Field == "endTime");
+    }
+
+    [Fact]
+    public void Validate_EndTimeBeforeTheStart_ReportsOnlyOneEndTimeError()
+    {
+        var errors = WorkSchedule.Validate(Valid() with { EndTime = new TimeOnly(8, 0) });
+
+        Assert.Single(errors, error => error.Field == "endTime");
+    }
 }

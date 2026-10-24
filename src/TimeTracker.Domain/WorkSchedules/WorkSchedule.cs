@@ -7,12 +7,13 @@ public sealed record WorkScheduleDetails(
     TimeOnly? LunchStart,
     int? LunchMinutes,
     int? ExpectedBreakMinutes,
-    IReadOnlyCollection<DayOfWeek>? Days);
+    IReadOnlyCollection<DayOfWeek>? Days,
+    TimeOnly? EndTime = null);
 
 public sealed record WorkScheduleError(string Field, string Message);
 
 /// <summary>
-/// Jornada de trabajo de una compañía: hora de entrada, almuerzo, pausa esperada por día y días de la semana en que aplica.
+/// Jornada de trabajo de una compañía: hora de entrada, hora de salida (opcional), almuerzo, pausa esperada por día y días de la semana en que aplica.
 /// Las horas son locales (sin zona). Los días se guardan como máscara de bits (bit = <see cref="DayOfWeek"/>).
 /// </summary>
 public sealed class WorkSchedule
@@ -31,7 +32,8 @@ public sealed class WorkSchedule
         TimeOnly lunchStart,
         int lunchMinutes,
         int expectedBreakMinutes,
-        int daysMask)
+        int daysMask,
+        TimeOnly? endTime)
     {
         Id = id;
         CompanyId = companyId;
@@ -41,6 +43,7 @@ public sealed class WorkSchedule
         LunchMinutes = lunchMinutes;
         ExpectedBreakMinutes = expectedBreakMinutes;
         DaysMask = daysMask;
+        EndTime = endTime;
     }
 
     public Guid Id { get; }
@@ -58,6 +61,12 @@ public sealed class WorkSchedule
     public int ExpectedBreakMinutes { get; private set; }
 
     public int DaysMask { get; private set; }
+
+    /// <summary>Hora de salida; nula en las jornadas anteriores a que existiera este dato.</summary>
+    public TimeOnly? EndTime { get; private set; }
+
+    /// <summary>Minutos de trabajo esperados por día (salida - entrada - almuerzo); nulo sin hora de salida.</summary>
+    public int? ExpectedWorkMinutes => EndTime is { } end ? WorkedMinutes(StartTime, end, LunchMinutes) : null;
 
     /// <summary>Días en que aplica, ordenados de lunes a domingo.</summary>
     public IReadOnlyList<DayOfWeek> Days => FromMask(DaysMask);
@@ -78,7 +87,7 @@ public sealed class WorkSchedule
         RequireValid(details);
         return new(
             id, companyId, details.Name!.Trim(), details.StartTime!.Value, details.LunchStart!.Value,
-            details.LunchMinutes!.Value, details.ExpectedBreakMinutes!.Value, ToMask(details.Days!));
+            details.LunchMinutes!.Value, details.ExpectedBreakMinutes!.Value, ToMask(details.Days!), details.EndTime);
     }
 
     public void Update(WorkScheduleDetails details)
@@ -91,6 +100,7 @@ public sealed class WorkSchedule
         LunchMinutes = details.LunchMinutes!.Value;
         ExpectedBreakMinutes = details.ExpectedBreakMinutes!.Value;
         DaysMask = ToMask(details.Days!);
+        EndTime = details.EndTime;
     }
 
     public static IReadOnlyList<WorkScheduleError> Validate(WorkScheduleDetails details)
@@ -136,10 +146,36 @@ public sealed class WorkSchedule
             errors.Add(new("days", "Seleccione al menos un día de la semana."));
         }
 
+        AddEndTimeErrors(details, errors);
         return errors;
     }
 
     public static int ToMask(IEnumerable<DayOfWeek> days) => days.Aggregate(0, (mask, day) => mask | (1 << (int)day)) & AllDaysMask;
+
+    private static int WorkedMinutes(TimeOnly start, TimeOnly end, int lunchMinutes)
+        => (int)(end.ToTimeSpan() - start.ToTimeSpan()).TotalMinutes - lunchMinutes;
+
+    private static void AddEndTimeErrors(WorkScheduleDetails details, List<WorkScheduleError> errors)
+    {
+        if (details.EndTime is not { } end || details.StartTime is not { } start)
+        {
+            return;
+        }
+
+        if (end <= start)
+        {
+            errors.Add(new("endTime", "La hora de salida debe ser posterior a la hora de entrada."));
+        }
+        else if (details.LunchStart is { } lunchStart && details.LunchMinutes is >= 0 and <= MaxMinutes
+            && end.ToTimeSpan() <= lunchStart.ToTimeSpan() + TimeSpan.FromMinutes(details.LunchMinutes.Value))
+        {
+            errors.Add(new("endTime", "La hora de salida debe ser posterior al fin del almuerzo."));
+        }
+        else if (details.LunchMinutes is >= 0 and <= MaxMinutes && WorkedMinutes(start, end, details.LunchMinutes.Value) < 1)
+        {
+            errors.Add(new("endTime", "La jornada debe tener al menos un minuto de trabajo."));
+        }
+    }
 
     private static void RequireValid(WorkScheduleDetails details)
     {

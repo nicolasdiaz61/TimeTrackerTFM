@@ -5,7 +5,8 @@ namespace TimeTracker.Api.WorkSchedules;
 
 /// <summary>
 /// Cuerpo de alta y edición de una jornada. Las horas son locales (<c>HH:mm:ss</c>) y <c>days</c> usa los números de
-/// <see cref="DayOfWeek"/> (0 = domingo ... 6 = sábado). No lleva compañía: sale del token.
+/// <see cref="DayOfWeek"/> (0 = domingo ... 6 = sábado). <c>endTime</c> es opcional por compatibilidad con jornadas y clientes anteriores.
+/// No lleva compañía: sale del token.
 /// </summary>
 public sealed record WorkScheduleRequest(
     string? Name,
@@ -13,9 +14,10 @@ public sealed record WorkScheduleRequest(
     TimeOnly? LunchStart,
     int? LunchMinutes,
     int? ExpectedBreakMinutes,
-    DayOfWeek[]? Days)
+    DayOfWeek[]? Days,
+    TimeOnly? EndTime = null)
 {
-    public WorkScheduleCommand ToCommand() => new(Name, StartTime, LunchStart, LunchMinutes, ExpectedBreakMinutes, Days);
+    public WorkScheduleCommand ToCommand() => new(Name, StartTime, LunchStart, LunchMinutes, ExpectedBreakMinutes, Days, EndTime);
 }
 
 /// <summary>Asignación de jornada a una persona del equipo; <c>null</c> la retira.</summary>
@@ -29,7 +31,9 @@ public sealed record WorkScheduleResponse(
     int LunchMinutes,
     int ExpectedBreakMinutes,
     DayOfWeek[] Days,
-    int AssignedCount)
+    int AssignedCount,
+    TimeOnly? EndTime,
+    int? ExpectedWorkMinutes)
 {
     public static WorkScheduleResponse From(WorkScheduleView view) => From(view.Schedule, view.AssignedCount);
 
@@ -41,7 +45,9 @@ public sealed record WorkScheduleResponse(
         schedule.LunchMinutes,
         schedule.ExpectedBreakMinutes,
         [.. schedule.Days],
-        assignedCount);
+        assignedCount,
+        schedule.EndTime,
+        schedule.ExpectedWorkMinutes);
 }
 
 public sealed record WorkScheduleListResponse(IReadOnlyList<WorkScheduleResponse> Items)

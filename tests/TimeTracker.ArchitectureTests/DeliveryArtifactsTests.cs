@@ -381,14 +381,14 @@ public partial class DeliveryArtifactsTests
     // --- ADR (SA-20, SA-21, SA-22) ---
 
     [Fact]
-    public void Adr_Directory_HasThirtyAdrsWithFourSections()
+    public void Adr_Directory_HasThirtyOneAdrsWithFourSections()
     {
         string[] sections = ["## Contexto", "## Decisión", "## Consecuencias", "## Alternativas"];
         var adrs = Directory.GetFiles(Path.Combine(RepositoryRoot.Path, "docs", "adr"), "0*.md")
             .Order(StringComparer.Ordinal)
             .ToList();
 
-        int[] numbers = [.. Enumerable.Range(1, 30)];
+        int[] numbers = [.. Enumerable.Range(1, 31)];
         Assert.Equal(numbers.Length, adrs.Count);
         for (var index = 0; index < adrs.Count; index++)
         {
