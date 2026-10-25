@@ -166,6 +166,7 @@ src/
 tests/                        Pruebas de Domain, Application, Web (formato, sesión, hora local, meses y franjas), Api (integración con PostgreSQL) y de arquitectura.
 docs/adr/                     Registros de decisiones de arquitectura.
 docs/runbook-railway.md       Runbook de despliegue manual, copia de seguridad, reversión y apertura del registro.
+docs/presentacion/            Slides de la presentación del TFM (TimeTracker-TFM.pptx).
 docs/api/openapi.json         Contrato OpenAPI generado (no se edita a mano).
 scripts/check-coverage.ps1    Comprobación del umbral de cobertura.
 docker-compose.yml            Entorno local: API y PostgreSQL.
@@ -394,7 +395,7 @@ El flujo `.github/workflows/ci.yml` se ejecuta en GitHub Actions en cada `push` 
 - Web (demostración): <https://web-production-a744a.up.railway.app>
 - API (demostración): <https://api-production-0f339.up.railway.app> (comprobación: `/health`). Véase «Despliegue en Railway».
 - Vídeo de demostración: **pendiente**.
-- Presentación (slides): **pendiente**.
+- Presentación (slides): [`docs/presentacion/TimeTracker-TFM.pptx`](docs/presentacion/TimeTracker-TFM.pptx) (PowerPoint, incluido en el repositorio).
 - Credenciales de prueba: las credenciales para la evaluación se entregan por el formulario de entrega y no se publican en el repositorio.
 
 ## Convenciones
