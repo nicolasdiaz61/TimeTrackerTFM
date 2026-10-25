@@ -205,6 +205,22 @@ public class RepositoryConventionsTests
     }
 
     [Fact]
+    public void Web_SidebarStaysVisibleWhileScrolling_BecauseHtmlAndBodyAreNotScrollContainers()
+    {
+        // `overflow-x: hidden` en html y body convierte a body en contenedor de scroll y `position: sticky` del menú lateral deja de
+        // seguir al scroll de la página; `overflow-x: clip` oculta el desborde horizontal sin crear contenedor de scroll.
+        var css = ReadWeb("wwwroot/css/app.css");
+        var rootRules = System.Text.RegularExpressions.Regex.Matches(css, @"html,\s*body\s*\{([^}]*)\}").Select(match => match.Groups[1].Value).ToList();
+
+        Assert.NotEmpty(rootRules);
+        Assert.All(rootRules, rule => Assert.DoesNotMatch(@"overflow(-x|-y)?:\s*(hidden|auto|scroll)", rule));
+        Assert.Contains(rootRules, rule => rule.Contains("overflow-x: clip", StringComparison.Ordinal));
+
+        var layout = ReadWeb("Layout/MainLayout.razor.css");
+        Assert.Matches(@"\.sidebar\s*\{[^}]*position:\s*sticky[^}]*top:\s*0", layout);
+    }
+
+    [Fact]
     public void Web_HasTheAssistantConfigurationPageOnlyForManagersWithPlainTextAndNoBrowserStorage()
     {
         var pagePath = Path.Combine(RepositoryRoot.Path, "src", "TimeTracker.Web", "Pages", "AssistantConfiguration.razor");
