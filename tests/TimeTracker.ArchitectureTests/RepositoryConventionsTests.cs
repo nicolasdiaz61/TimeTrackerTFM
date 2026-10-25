@@ -371,7 +371,7 @@ public class RepositoryConventionsTests
     public void Web_HasNoPublicLinkToTheRegistrationPage_AndTheMenuHidesEverythingButTheChangeAndSignOutWhilePending()
     {
         var offenders = WebSourceFiles()
-            .Where(file => Path.GetFileName(file) != "Register.razor")
+            .Where(file => Path.GetFileName(file) is not ("Register.razor" or "Login.razor"))
             .Select(file => (file, text: File.ReadAllText(file)))
             .Where(item => item.text.Contains("href=\"registro\"", StringComparison.Ordinal)
                 || item.text.Contains("href=\"/registro\"", StringComparison.Ordinal)
@@ -380,6 +380,13 @@ public class RepositoryConventionsTests
             .Select(item => Path.GetRelativePath(RepositoryRoot.Path, item.file))
             .ToList();
         Assert.True(offenders.Count == 0, $"Enlace a /registro: {string.Join(", ", offenders)}");
+
+        // ADR 0033: el login es la única excepción y solo enlaza detrás del interruptor de configuración de la Web.
+        var login = ReadWeb("Pages/Login.razor");
+        var gate = login.IndexOf("@if (showRegisterLink)", StringComparison.Ordinal);
+        Assert.True(gate >= 0, "El enlace de Login.razor debe ir dentro de @if (showRegisterLink).");
+        Assert.Equal(login.IndexOf("href=\"registro\"", StringComparison.Ordinal), login.LastIndexOf("href=\"registro\"", StringComparison.Ordinal));
+        Assert.True(login.IndexOf("href=\"registro\"", StringComparison.Ordinal) > gate, "El enlace a /registro debe estar tras el interruptor.");
 
         var menu = ReadWeb("Layout/NavMenu.razor");
         Assert.DoesNotContain("registro", menu, StringComparison.OrdinalIgnoreCase);
@@ -715,12 +722,13 @@ public class RepositoryConventionsTests
         string[] forbidden = ["ConnectionStrings", "Database", "Identity", "Jwt", "Seed"];
         var apiDirectory = Path.Combine(RepositoryRoot.Path, "src", "TimeTracker.Api");
 
-        var found = Directory.GetFiles(apiDirectory, "appsettings*.json")
+        // Solo el appsettings.json base: appsettings.Development.json lleva la configuración de desarrollo (ADR 0032).
+        var found = Directory.GetFiles(apiDirectory, "appsettings.json")
             .SelectMany(file => FindForbiddenKeys(JsonDocument.Parse(File.ReadAllText(file)).RootElement, forbidden)
                 .Select(name => $"{Path.GetFileName(file)}: {name}"))
             .ToList();
 
-        // Estas claves solo llegan por variables de entorno (AGENTS.md §6): nunca versionadas.
+        // Estas claves solo llegan por variables de entorno (AGENTS.md §6) fuera de Development.
         Assert.True(found.Count == 0, $"appsettings versiona claves prohibidas: {string.Join(", ", found)}");
     }
 

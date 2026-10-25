@@ -63,6 +63,13 @@ public class ApiFactory : WebApplicationFactory<Program>
         builder.UseSetting("Cors:AllowedOrigins:0", ValidOrigin);
         builder.UseSetting("ConnectionStrings:Default", ValidConnectionString);
         builder.UseSetting("Jwt:SigningKey", ValidSigningKey);
+        // appsettings.Development.json (ADR 0032) activa migraciones y siembra para el uso local; estas pruebas no tienen base de datos.
+        builder.UseSetting("Database:ApplyMigrationsOnStartup", "false");
+        builder.UseSetting("Seed:DemoUsers", "false");
+        builder.UseSetting("Seed:DemoData", "false");
+        // Development abre el registro con el código de desarrollo (ADR 0033); las pruebas lo abren explícitamente cuando lo necesitan.
+        builder.UseSetting("Registration:Enabled", "false");
+        builder.UseSetting("Registration:InviteCodes", "");
         builder.ConfigureTestServices(services =>
         {
             services.Replace(ServiceDescriptor.Singleton<TimeProvider>(Clock));

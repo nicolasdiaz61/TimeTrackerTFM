@@ -2,6 +2,8 @@ using System.Net;
 
 using Microsoft.AspNetCore.Hosting;
 
+using TimeTracker.Api.Authentication;
+
 namespace TimeTracker.Api.IntegrationTests.Startup;
 
 public class JwtStartupTests
@@ -64,6 +66,30 @@ public class JwtStartupTests
         var exception = factory.StartExpectingFailure();
 
         DatabaseStartupTests.AssertStartupFailsNamingKey(exception, SigningKeyKey);
+    }
+
+    [Fact]
+    public void Production_WithTheDevelopmentSigningKey_FailsNamingKeyWithoutPrintingIt()
+    {
+        // La clave de desarrollo está versionada en appsettings.Development.json: fuera de Development es pública y no puede firmar tokens.
+        using var factory = new ApiFactory().WithWebHostBuilder(
+            builder => builder.UseEnvironment("Production").UseSetting(SigningKeyKey, DevelopmentSigningKey.Value));
+
+        var exception = factory.StartExpectingFailure();
+
+        DatabaseStartupTests.AssertStartupFailsNamingKey(exception, SigningKeyKey);
+        Assert.DoesNotContain(DevelopmentSigningKey.Value, StartupFailure.AllMessages(exception), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Development_WithTheDevelopmentSigningKey_Starts()
+    {
+        using var factory = new ApiFactory().WithWebHostBuilder(
+            builder => builder.UseEnvironment("Development").UseSetting(SigningKeyKey, DevelopmentSigningKey.Value));
+
+        var response = await factory.CreateAnonymousClient().GetAsync("/health", CancellationToken.None);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
     }
 
     [Fact]

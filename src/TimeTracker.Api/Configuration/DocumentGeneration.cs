@@ -21,8 +21,9 @@ internal static class DocumentGeneration
         ["Database:ApplyMigrationsOnStartup"] = "false",
         // Clave inventada de más de 32 bytes: solo existe en el proceso de exportación del contrato (V21).
         ["Jwt:SigningKey"] = "clave-ficticia-solo-para-exportar-openapi-0123456789",
-        // La exportación del contrato nunca siembra usuarios (V21).
+        // La exportación del contrato nunca siembra usuarios ni datos (V21); appsettings.Development.json los activa para el uso local (ADR 0032).
         ["Seed:DemoUsers"] = "false",
+        ["Seed:DemoData"] = "false",
         // Solo al exportar, el contrato documenta siempre el registro (DD-19): bandera abierta con un código ficticio que no es un secreto
         // real y que el contrato no contiene. Fuera de la exportación el registro sigue apagado por defecto.
         ["Registration:Enabled"] = "true",

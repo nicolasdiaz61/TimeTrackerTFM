@@ -24,34 +24,36 @@ public partial class DeliveryArtifactsTests
     [Fact]
     public void EnvExample_ContainsTheDocumentedKeys()
     {
-        var active = ActiveEnvEntries();
+        var example = ReadRepositoryFile(".env.example");
 
+        // Documentadas, pero comentadas: un valor activo (aunque vacío) en .env sobrescribiría appsettings.Development.json.
         foreach (var key in DocumentedEnvKeys)
         {
-            Assert.True(active.ContainsKey(key), $".env.example no define {key}.");
-        }
-
-        Assert.Equal("false", active["Database__ApplyMigrationsOnStartup"]);
-        foreach (var key in new[] { "POSTGRES_PASSWORD", "ConnectionStrings__Default" })
-        {
-            Assert.True(IsEmptyOrPlaceholder(active[key]), $"{key} debe estar vacío o ser un marcador ficticio.");
+            Assert.Matches($@"(?m)^# {Regex.Escape(key)}=", example);
         }
     }
 
     [Fact]
-    public void EnvExample_AuthenticationKeysAreEmptyOrFalseAndDocumented()
+    public void EnvExample_DoesNotActivelyOverrideTheDevelopmentConfiguration()
     {
-        var text = ReadRepositoryFile(".env.example");
         var active = ActiveEnvEntries();
 
-        // Activas (no comentadas) y vacías: quien ejecuta el proyecto las rellena en su .env local.
-        Assert.Equal(string.Empty, active["Jwt__SigningKey"]);
-        Assert.Equal(string.Empty, active["Seed__DemoPassword"]);
-        Assert.Equal("false", active["Seed__DemoUsers"]);
+        // Copiar .env.example a .env no debe pisar la configuración de desarrollo ni los valores por defecto de Compose.
+        foreach (var key in DocumentedEnvKeys.Append("Cors__AllowedOrigins__0"))
+        {
+            Assert.False(active.ContainsKey(key), $"{key} no debe estar activa en .env.example: sobrescribiría la configuración de desarrollo.");
+        }
+    }
+
+    [Fact]
+    public void EnvExample_AuthenticationKeysAreCommentedAndDocumented()
+    {
+        var text = ReadRepositoryFile(".env.example");
 
         // El comentario inmediatamente anterior a la contraseña de demostración explica su uso.
         var lines = text.Replace("\r\n", "\n").Split('\n').ToList();
-        var index = lines.FindIndex(line => line.StartsWith("Seed__DemoPassword=", StringComparison.Ordinal));
+        var index = lines.FindIndex(line => line.StartsWith("# Seed__DemoPassword=", StringComparison.Ordinal));
+        Assert.True(index > 0, ".env.example no documenta Seed__DemoPassword (comentada).");
         var comment = new List<string>();
         for (var previous = index - 1; previous >= 0 && lines[previous].TrimStart().StartsWith('#'); previous--)
         {
@@ -304,7 +306,8 @@ public partial class DeliveryArtifactsTests
         Assert.Contains("ASPNETCORE_ENVIRONMENT: Development", api);
         Assert.Contains("Database__ApplyMigrationsOnStartup: \"true\"", api);
         Assert.Contains("ConnectionStrings__Default: Host=postgres;", api);
-        Assert.Contains("env_file: .env", api);
+        // El .env es opcional: sin él, Compose usa la configuración de desarrollo de la API (ADR 0032).
+        Assert.Matches(@"(?ms)^\s+env_file:\s*\r?\n\s+- path: \.env\s*\r?\n\s+required: false\s*$", api);
     }
 
     [Fact]
@@ -319,16 +322,31 @@ public partial class DeliveryArtifactsTests
     }
 
     [Fact]
-    public void Compose_RequiresJwtAndSeedPasswordFromEnvAndEnablesSeeding()
+    public void Compose_TakesJwtAndSeedFromTheDevelopmentSettings_WithoutLiterals()
     {
         var compose = ReadRepositoryFile("docker-compose.yml");
         var api = ServiceBlock(compose, "api");
 
-        // Claves obligatorias (con mensaje si faltan) y sin ningún valor literal.
-        Assert.Matches(@"(?m)^\s+Jwt__SigningKey: \$\{Jwt__SigningKey:\?[^}]+\}\s*$", api);
-        Assert.Matches(@"(?m)^\s+Seed__DemoPassword: \$\{Seed__DemoPassword:\?[^}]+\}\s*$", api);
-        Assert.Contains("Seed__DemoUsers: \"true\"", api);
+        // Jwt__* y Seed__* vienen de appsettings.Development.json y un .env puede sobrescribirlos: no se fijan en `environment`.
+        Assert.DoesNotContain("Jwt__", compose, StringComparison.Ordinal);
+        Assert.DoesNotContain("Seed__", compose, StringComparison.Ordinal);
         Assert.DoesNotContain("Identity__", compose, StringComparison.Ordinal);
+        Assert.Contains("ASPNETCORE_ENVIRONMENT: Development", api);
+
+        var settings = ReadDevelopmentSettings();
+        var signingKey = settings.GetProperty("Jwt").GetProperty("SigningKey").GetString();
+        var demoPassword = settings.GetProperty("Seed").GetProperty("DemoPassword").GetString();
+        Assert.DoesNotContain(signingKey!, compose, StringComparison.Ordinal);
+        Assert.DoesNotContain(demoPassword!, compose, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Dockerfile_AndDockerignore_ShipTheDevelopmentSettingsInTheImage()
+    {
+        // `dotnet publish` incluye appsettings*.json del proyecto: basta con copiar el proyecto entero y no excluirlo.
+        Assert.Contains("COPY src/TimeTracker.Api/ src/TimeTracker.Api/", ReadRepositoryFile("Dockerfile"), StringComparison.Ordinal);
+        var ignored = ReadRepositoryFile(".dockerignore").Split('\n').Select(line => line.Trim()).Where(line => line.Length > 0 && !line.StartsWith('#'));
+        Assert.DoesNotContain(ignored, line => line.Contains("appsettings", StringComparison.OrdinalIgnoreCase));
     }
 
     [Fact]
@@ -336,19 +354,39 @@ public partial class DeliveryArtifactsTests
         => Assert.Contains($"image: {FixtureImage()}", ServiceBlock(ReadRepositoryFile("docker-compose.yml"), "postgres"));
 
     [Fact]
-    public void Compose_HasNoCredentialLiterals()
+    public void Compose_HasNoCredentialLiterals_ExceptTheLocalDatabaseDefaults()
     {
         var compose = ReadRepositoryFile("docker-compose.yml");
         var postgres = ServiceBlock(compose, "postgres");
 
-        // Usuario, contraseña y base solo como referencias obligatorias a .env, y sin env_file en postgres.
+        // Usuario, contraseña y base de la PostgreSQL local: referencias a .env con un valor por defecto (`:-`), sin env_file en postgres.
         foreach (var key in new[] { "POSTGRES_DB", "POSTGRES_USER", "POSTGRES_PASSWORD" })
         {
-            Assert.Matches($@"(?m)^\s+{key}: \$\{{{key}:\?[^}}]+\}}\s*$", postgres);
+            Assert.Matches($@"(?m)^\s+{key}: \$\{{{key}:-[^}}\s]+\}}\s*$", postgres);
         }
 
         Assert.DoesNotContain("env_file", postgres);
-        Assert.Contains("Password=${POSTGRES_PASSWORD}", compose);
+        Assert.DoesNotContain(":?", compose, StringComparison.Ordinal);
+        // Los únicos valores por defecto son esos tres (la cadena de conexión de la API los repite).
+        var defaults = Regex.Matches(compose, @"\$\{(\w+):-([^}]+)\}").Select(match => match.Groups[1].Value).Distinct().Order(StringComparer.Ordinal);
+        Assert.Equal(["POSTGRES_DB", "POSTGRES_PASSWORD", "POSTGRES_USER"], defaults);
+    }
+
+    [Fact]
+    public void Compose_DatabaseDefaults_MatchTheDevelopmentConnectionString()
+    {
+        var compose = ReadRepositoryFile("docker-compose.yml");
+        var connection = ReadDevelopmentSettings().GetProperty("ConnectionStrings").GetProperty("Default").GetString()!
+            .Split(';').Select(part => part.Split('=', 2)).ToDictionary(parts => parts[0], parts => parts[1], StringComparer.Ordinal);
+
+        foreach (var (variable, part) in new[] { ("POSTGRES_DB", "Database"), ("POSTGRES_USER", "Username"), ("POSTGRES_PASSWORD", "Password") })
+        {
+            var values = Regex.Matches(compose, $@"\$\{{{variable}:-([^}}]+)\}}").Select(match => match.Groups[1].Value).Distinct().ToList();
+            Assert.Equal([connection[part]], values);
+        }
+
+        // Dentro del contenedor la base está en el servicio `postgres`, no en localhost.
+        Assert.Contains("ConnectionStrings__Default: Host=postgres;Port=5432;", ServiceBlock(compose, "api"), StringComparison.Ordinal);
     }
 
     // --- ci.yml (SA-21, SA-22) ---
@@ -381,14 +419,14 @@ public partial class DeliveryArtifactsTests
     // --- ADR (SA-20, SA-21, SA-22) ---
 
     [Fact]
-    public void Adr_Directory_HasThirtyOneAdrsWithFourSections()
+    public void Adr_Directory_HasThirtyThreeAdrsWithFourSections()
     {
         string[] sections = ["## Contexto", "## Decisión", "## Consecuencias", "## Alternativas"];
         var adrs = Directory.GetFiles(Path.Combine(RepositoryRoot.Path, "docs", "adr"), "0*.md")
             .Order(StringComparer.Ordinal)
             .ToList();
 
-        int[] numbers = [.. Enumerable.Range(1, 31)];
+        int[] numbers = [.. Enumerable.Range(1, 33)];
         Assert.Equal(numbers.Length, adrs.Count);
         for (var index = 0; index < adrs.Count; index++)
         {
@@ -1048,8 +1086,13 @@ public partial class DeliveryArtifactsTests
         var readme = ReadRepositoryFile("README.md");
 
         Assert.DoesNotContain("Demo-Fichajes-2026", readme, StringComparison.Ordinal);
-        Assert.DoesNotContain("@example.test", readme, StringComparison.Ordinal);
         Assert.DoesNotContain("## Usuarios de prueba", readme, StringComparison.Ordinal);
+
+        // Los correos de demostración pueden figurar en el README; la contraseña de desarrollo, nunca (vive solo en el JSON).
+        using var development = System.Text.Json.JsonDocument.Parse(ReadRepositoryFile("src/TimeTracker.Api/appsettings.Development.json"));
+        var demoPassword = development.RootElement.GetProperty("Seed").GetProperty("DemoPassword").GetString();
+        Assert.False(string.IsNullOrWhiteSpace(demoPassword));
+        Assert.DoesNotContain(demoPassword!, readme, StringComparison.Ordinal);
         Assert.Contains("formulario de entrega", readme, StringComparison.Ordinal);
     }
 
@@ -1093,6 +1136,9 @@ public partial class DeliveryArtifactsTests
             .Where(line => line.Length > 0 && !line.StartsWith('#') && line.Contains('='))
             .Select(line => line.Split('=', 2))
             .ToDictionary(parts => parts[0], parts => parts[1], StringComparer.Ordinal);
+
+    private static System.Text.Json.JsonElement ReadDevelopmentSettings()
+        => System.Text.Json.JsonDocument.Parse(ReadRepositoryFile("src/TimeTracker.Api/appsettings.Development.json")).RootElement.Clone();
 
     private static bool IsEmptyOrPlaceholder(string value)
         => value.Length == 0 || value.StartsWith("cambiar", StringComparison.OrdinalIgnoreCase);

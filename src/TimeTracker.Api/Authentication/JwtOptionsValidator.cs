@@ -1,10 +1,11 @@
 using System.Text;
 
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Options;
 
 namespace TimeTracker.Api.Authentication;
 
-public sealed class JwtOptionsValidator : IValidateOptions<JwtOptions>
+public sealed class JwtOptionsValidator(IHostEnvironment environment) : IValidateOptions<JwtOptions>
 {
     // HMAC-SHA256 exige una clave de al menos el tamaño del resumen (RFC 7518, 3.2).
     public const int MinimumSigningKeyBytes = 32;
@@ -19,8 +20,14 @@ public sealed class JwtOptionsValidator : IValidateOptions<JwtOptions>
         }
 
         // Se miden bytes y no caracteres: 16 'ñ' ocupan 32 bytes. El mensaje nunca incluye el valor.
-        return Encoding.UTF8.GetByteCount(options.SigningKey) < MinimumSigningKeyBytes
-            ? ValidateOptionsResult.Fail($"{Key}: debe tener al menos {MinimumSigningKeyBytes} bytes.")
+        if (Encoding.UTF8.GetByteCount(options.SigningKey) < MinimumSigningKeyBytes)
+        {
+            return ValidateOptionsResult.Fail($"{Key}: debe tener al menos {MinimumSigningKeyBytes} bytes.");
+        }
+
+        // La clave de desarrollo es pública (está en el repositorio): firmaría tokens falsificables fuera de Development.
+        return !environment.IsDevelopment() && string.Equals(options.SigningKey, DevelopmentSigningKey.Value, StringComparison.Ordinal)
+            ? ValidateOptionsResult.Fail($"{Key}: es la clave de desarrollo del repositorio y solo se admite en Development; defina una clave propia.")
             : ValidateOptionsResult.Success;
     }
 }
