@@ -1,6 +1,6 @@
 #!/bin/sh
-# Se ejecuta al arrancar el contenedor (antes de nginx). Con API_BASE_URL genera:
-#  - wwwroot/appsettings.json con ApiBaseUrl (la Web lee la URL de la API de ahí), y
+# Se ejecuta al arrancar el contenedor (antes de nginx). Con API_BASE_URL (y SHOW_REGISTER_LINK, opcional) genera:
+#  - wwwroot/appsettings.json con ApiBaseUrl (la Web lee la URL de la API de ahí) y Features:ShowRegisterLink, y
 #  - las cabeceras de seguridad, con la CSP abierta solo al origen de la API.
 # Sin código ni URLs reales en el repositorio: el valor llega por variable de entorno.
 set -eu
@@ -32,7 +32,13 @@ importmap_hash="$(cat /etc/nginx/importmap.sha256)"
 # que nadie sirva la antigua con gzip_static. Tampoco se publica el de desarrollo (apunta a localhost).
 rm -f "$html"/appsettings.json "$html"/appsettings.json.gz "$html"/appsettings.json.br \
     "$html"/appsettings.Development.json "$html"/appsettings.Development.json.gz "$html"/appsettings.Development.json.br
-printf '{\n  "ApiBaseUrl": "%s"\n}\n' "$api_url" > "$html/appsettings.json"
+
+# Enlace «Crear una compañía» del login (ADR 0033): oculto salvo que SHOW_REGISTER_LINK valga exactamente true. No abre el registro de la API.
+case "${SHOW_REGISTER_LINK:-}" in
+    true) show_register_link=true ;;
+    *) show_register_link=false ;;
+esac
+printf '{\n  "ApiBaseUrl": "%s",\n  "Features": {\n    "ShowRegisterLink": %s\n  }\n}\n' "$api_url" "$show_register_link" > "$html/appsettings.json"
 
 # 'wasm-unsafe-eval' lo exige Blazor WebAssembly para compilar el WebAssembly; el importmap en línea se admite por hash.
 csp="default-src 'self'; script-src 'self' 'wasm-unsafe-eval' 'sha256-${importmap_hash}'; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'self' ${api_origin}; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"

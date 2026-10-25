@@ -4,6 +4,9 @@
 @inject JwtAuthenticationStateProvider Authentication
 @inject NavigationManager Navigation
 @inject SessionNotice Notice
+@inject IConfiguration Configuration
+@using Microsoft.Extensions.Configuration
+@using TimeTracker.Web.Registration
 
 <PageTitle>Iniciar sesión - TimeTracker</PageTitle>
 
@@ -34,16 +37,26 @@
 
     <button type="submit" class="btn btn-primary" disabled="@form.IsBusy">Entrar</button>
 </EditForm>
+
+@if (showRegisterLink)
+{
+    <p class="mt-3 mb-0"><a class="btn btn-outline-secondary" href="registro">Crear una compañía</a></p>
+}
 </div>
 
 @code {
     private LoginForm form = default!;
     private bool sessionExpired;
+    private bool showRegisterLink;
 
     [SupplyParameterFromQuery(Name = "returnUrl")]
     public string? ReturnUrlParameter { get; set; }
 
-    protected override void OnInitialized() => form = new LoginForm(Api, Session);
+    protected override void OnInitialized()
+    {
+        form = new LoginForm(Api, Session);
+        showRegisterLink = RegisterLinkOption.IsEnabled(Configuration);
+    }
 
     protected override async Task OnInitializedAsync()
     {

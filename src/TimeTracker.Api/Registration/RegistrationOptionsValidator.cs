@@ -25,6 +25,7 @@ public sealed class RegistrationOptionsValidator(IConfiguration configuration, I
 
         var failures = new List<string>();
         AddInviteCodeFailures(options, failures);
+        AddDevelopmentInviteCodeFailure(options, failures);
         AddGlobalLimitFailure(options, failures);
         AddDemoSeedFailure(failures);
         AddForwardedHeadersFailure(failures);
@@ -45,6 +46,16 @@ public sealed class RegistrationOptionsValidator(IConfiguration configuration, I
         }
     }
 
+    // El código de desarrollo es público (está en el repositorio): fuera de Development abriría el registro a cualquiera (ADR 0033).
+    // El mensaje nombra la clave y nunca imprime el valor.
+    private void AddDevelopmentInviteCodeFailure(RegistrationOptions options, List<string> failures)
+    {
+        if (!environment.IsDevelopment() && options.ParseInviteCodes().Contains(DevelopmentInviteCode.Value, StringComparer.Ordinal))
+        {
+            failures.Add("Registration:InviteCodes: incluye el código de invitación de desarrollo del repositorio, que es público y solo se admite en Development; defina códigos propios.");
+        }
+    }
+
     private static void AddGlobalLimitFailure(RegistrationOptions options, List<string> failures)
     {
         if (options.GlobalHourlyLimit is < 1 or > RegistrationOptions.MaxGlobalHourlyLimit)
@@ -53,10 +64,12 @@ public sealed class RegistrationOptionsValidator(IConfiguration configuration, I
         }
     }
 
-    // La siembra crea usuarios con una contraseña pública (README): jamás deben coexistir con el registro abierto (DD-22).
+    // La siembra crea usuarios con una contraseña pública (README): fuera de Development no deben coexistir con el registro abierto (DD-22).
+    // En Development sí pueden (ADR 0033): la compañía nueva queda aislada por company_id y los usuarios demo son de la compañía por
+    // defecto; el riesgo real es Production, que mantiene la regla (DemoUsersStartupGuard solo actúa también en Production).
     private void AddDemoSeedFailure(List<string> failures)
     {
-        if (seed.Value.DemoUsers)
+        if (seed.Value.DemoUsers && !environment.IsDevelopment())
         {
             failures.Add("Registration:Enabled y Seed:DemoUsers no pueden ser true a la vez: la siembra de demostración crea usuarios con una contraseña pública y no debe coexistir con el registro abierto. Desactive Seed:DemoUsers (y Seed:DemoData) o cierre el registro.");
         }

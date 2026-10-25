@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.Mvc.Testing;
 using Npgsql;
 
 using TimeTracker.Api.IntegrationTests.Postgres;
+using TimeTracker.Api.Registration;
 
 namespace TimeTracker.Api.IntegrationTests.Startup;
 
@@ -28,10 +29,10 @@ public class RegistrationStartupGuardsTests(PostgresFixture postgres)
     private const string DemoPassword = "contrasena-demo-prueba";
 
     [Fact]
-    public async Task RegistrationAndDemoUsersTogether_FailBeforeAnyMigration_NamingBothKeysWithoutSecrets()
+    public async Task RegistrationAndDemoUsersTogetherInProduction_FailBeforeAnyMigration_NamingBothKeysWithoutSecrets()
     {
         var connectionString = await postgres.CreateEmptyDatabaseAsync();
-        using var factory = CreateFactory(connectionString, migrate: true, (RegistrationKey, "true"), (CodesKey, Code), (DemoUsersKey, "true"), (DemoPasswordKey, DemoPassword));
+        using var factory = CreateFactory(connectionString, migrate: true, production: true, (RegistrationKey, "true"), (CodesKey, Code), (ForwardedEnabledKey, "true"), (DemoUsersKey, "true"), (DemoPasswordKey, DemoPassword));
 
         var exception = factory.StartExpectingFailure();
 
@@ -46,16 +47,63 @@ public class RegistrationStartupGuardsTests(PostgresFixture postgres)
     }
 
     [Fact]
-    public async Task RegistrationAndDemoDataTogether_AlsoFailNamingTheSeedAndTheRegistrationKeys()
+    public async Task RegistrationAndDemoDataTogetherInProduction_AlsoFailNamingTheSeedAndTheRegistrationKeys()
     {
         var connectionString = await postgres.CreateEmptyDatabaseAsync();
-        using var factory = CreateFactory(connectionString, migrate: true, (RegistrationKey, "true"), (CodesKey, Code), (DemoUsersKey, "true"), (DemoDataKey, "true"), (DemoPasswordKey, DemoPassword));
+        using var factory = CreateFactory(connectionString, migrate: true, production: true, (RegistrationKey, "true"), (CodesKey, Code), (ForwardedEnabledKey, "true"), (DemoUsersKey, "true"), (DemoDataKey, "true"), (DemoPasswordKey, DemoPassword));
 
         var exception = factory.StartExpectingFailure();
 
         Assert.Contains(DemoUsersKey, StartupFailure.AllMessages(exception), StringComparison.Ordinal);
         Assert.Contains(RegistrationKey, StartupFailure.AllMessages(exception), StringComparison.Ordinal);
         await AssertNothingWasMigratedAsync(connectionString);
+    }
+
+    [Fact]
+    public async Task RegistrationAndDemoUsersTogetherInDevelopment_Start_BecauseTheNewCompanyIsIsolatedFromTheDemoOnes()
+    {
+        // ADR 0033: en Development coexisten (la compañía nueva queda aislada por company_id); en Production la regla se mantiene.
+        using var factory = CreateFactory(postgres.ConnectionString, migrate: false, production: false, (RegistrationKey, "true"), (CodesKey, Code), (DemoUsersKey, "true"), (DemoDataKey, "true"), (DemoPasswordKey, DemoPassword));
+
+        var response = await factory.CreateAnonymousClient().GetAsync("/health", CancellationToken.None);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+    }
+
+    [Theory]
+    [InlineData("Production")]
+    [InlineData("Staging")]
+    public async Task TheDevelopmentInviteCodeOutsideDevelopment_FailsBeforeAnyMigration_NamingTheKeyWithoutPrintingIt(string environment)
+    {
+        var connectionString = await postgres.CreateEmptyDatabaseAsync();
+        using var factory = new ApiFactory().WithWebHostBuilder(builder =>
+        {
+            builder.UseEnvironment(environment);
+            builder.UseSetting("ConnectionStrings:Default", connectionString);
+            builder.UseSetting("Database:ApplyMigrationsOnStartup", "true");
+            builder.UseSetting(RegistrationKey, "true");
+            builder.UseSetting(CodesKey, $"{Code},{DevelopmentInviteCode.Value}");
+            builder.UseSetting(ForwardedEnabledKey, "true");
+        });
+
+        var exception = factory.StartExpectingFailure();
+
+        var messages = StartupFailure.AllMessages(exception);
+        Assert.Contains(CodesKey, messages, StringComparison.Ordinal);
+        Assert.Contains("desarrollo", messages, StringComparison.Ordinal);
+        Assert.DoesNotContain(DevelopmentInviteCode.Value, messages, StringComparison.Ordinal);
+        Assert.DoesNotContain(Code, messages, StringComparison.Ordinal);
+        await AssertNothingWasMigratedAsync(connectionString);
+    }
+
+    [Fact]
+    public async Task TheDevelopmentInviteCodeInDevelopment_Starts()
+    {
+        using var factory = CreateFactory(postgres.ConnectionString, migrate: false, production: false, (RegistrationKey, "true"), (CodesKey, DevelopmentInviteCode.Value));
+
+        var response = await factory.CreateAnonymousClient().GetAsync("/health", CancellationToken.None);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
     }
 
     [Fact]
